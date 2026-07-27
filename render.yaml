@@ -1,13 +1,11 @@
 services:
   - type: web
     name: ai-girl-bot
-    runtime: image   # Docker Image बनाएगा
-    dockerfilePath: ./Dockerfile   # यह इंगित करें
+    runtime: docker   # Render will build and run the Dockerfile itself
+    dockerfilePath: ./Dockerfile
     plan: free
     envVars:
       - key: BOT_TOKEN
         sync: false
       - key: GROQ_API_KEY
         sync: false
-    buildCommand: docker build -t ai-girl-bot .
-    startCommand: docker run -p 8000:8000 -e BOT_TOKEN=$BOT_TOKEN -e GROQ_API_KEY=$GROQ_API_KEY ai-girl-bot
