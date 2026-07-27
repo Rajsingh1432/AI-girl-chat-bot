@@ -26,10 +26,9 @@ client = Groq(api_key=GROQ_API_KEY)
 user_warning_count = {}
 
 # ---------- Spam Protection Tracker ----------
-# Ye har user ka alag data rakhega. Agar ek user spam karega toh dusre user ko koi farak nahi padega.
 user_spam_tracker = {}
-SPAM_LIMIT = 10  # Kitne random messages/stickers baad spam warning de
-SPAM_COOLDOWN = 20 * 60  # 20 minutes (seconds me)
+SPAM_LIMIT = 10
+SPAM_COOLDOWN = 20 * 60
 
 # ---------- Per-user conversation memory ----------
 conversation_memory = {}
@@ -154,48 +153,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     bot_username = context.bot.username
 
     # ---------- SMART SPAM & INTERACTION CHECK ----------
-    # Agar user kisi bhi message ko slide reply kar raha hai, ya kisi bhi @username ko tag kar raha hai
-    # Toh usko direct interaction maan lo, spam limit ispe lagani nahi hai.
     is_direct_interaction = False
     if update.message.reply_to_message:
-        is_direct_interaction = True  # Kisi bhi msg ko reply (slide) kiya
+        is_direct_interaction = True
         
     if not is_direct_interaction and update.message.text and update.message.entities:
         for entity in update.message.entities:
             if entity.type in ["mention", "text_mention"]:
-                is_direct_interaction = True  # Kisi bhi user/bot ko @mention kiya
+                is_direct_interaction = True
                 break
 
     # ---------- USER-SPECIFIC SPAM PROTECTION LOGIC ----------
     current_time = time.time()
-    # Yaha hum sirf usi user ka data nikal rahe hain jo message bhej raha hai
     user_spam_data = user_spam_tracker.get(user_id, {"count": 0, "muted_until": 0})
 
     if current_time < user_spam_data["muted_until"]:
-        # Ye user abhi mute (spam cooldown) me hai
         if is_direct_interaction:
-            # Agar user abhi kisi ko reply/tag kar raha hai, toh use unmute kar do aur normal reply do
             user_spam_data["muted_until"] = 0
             user_spam_data["count"] = 0
             user_spam_tracker[user_id] = user_spam_data
         else:
-            # Agar bina tag/reply kiye spam kar raha hai, toh SIRF ISI USER KO silently ignore karo
-            # Bot dusre users ko normal reply karta rahega
             return
     else:
-        # Mute period khatam hua ya fresh user hai
         if not is_direct_interaction:
             user_spam_data["count"] += 1
             if user_spam_data["count"] > SPAM_LIMIT:
-                # Limit cross ho gayi, ab sirf usi user ko mute kar do aur warning do
                 await update.message.reply_text("Bas kar baby, spam mat karo! 😒 Mai tumse abhi baat nahi karungi. 20 minute baad aana.")
                 user_spam_data["muted_until"] = current_time + SPAM_COOLDOWN
                 user_spam_data["count"] = 0
                 user_spam_tracker[user_id] = user_spam_data
-                return  # Yahi ruk jao, is user ko reply mat do
+                return
             user_spam_tracker[user_id] = user_spam_data
         else:
-            # Direct tag/reply me counter reset ho jayega
             user_spam_data["count"] = 0
             user_spam_tracker[user_id] = user_spam_data
 
@@ -256,6 +245,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if update.message.forward_date:
         is_standalone = False
 
+    # Case 1: Standalone Random Message (Here we tag the user)
     if is_standalone:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         reply = await get_ai_reply(update.message.text, get_history(user_id))
@@ -264,6 +254,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"{user_mention} {reply}")
         return
 
+    # Case 2: Slide Reply to Bot (NO TAG, Natural Conversation)
     is_reply_to_bot = False
     if update.message.reply_to_message:
         original_sender = update.message.reply_to_message.from_user
@@ -274,10 +265,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         reply = await get_ai_reply(update.message.text, get_history(user_id))
         update_history(user_id, update.message.text, reply)
-        user_mention = f"@{user.username}" if user.username else user.first_name
-        await update.message.reply_text(f"{user_mention} {reply}")
+        # No username mention here, just direct reply
+        await update.message.reply_text(reply)
         return
 
+    # Case 3: Bot Mentioned via @ (NO TAG, Natural Conversation)
     is_bot_mentioned = False
     if update.message.entities:
         for entity in update.message.entities:
@@ -295,8 +287,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         reply = await get_ai_reply(update.message.text, get_history(user_id))
         update_history(user_id, update.message.text, reply)
-        user_mention = f"@{user.username}" if user.username else user.first_name
-        await update.message.reply_text(f"{user_mention} {reply}")
+        # No username mention here, just direct reply
+        await update.message.reply_text(reply)
         return
 
     logger.debug(f"Ignored message: {update.message.text[:50]}")
