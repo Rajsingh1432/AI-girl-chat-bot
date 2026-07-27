@@ -24,6 +24,13 @@ client = Groq(api_key=GROQ_API_KEY)
 # ---------- User warning counter (max 3 times) ----------
 user_warning_count = {}
 
+# ---------- Per-user conversation memory ----------
+# Keeps the last few exchanges per user so replies feel like an ongoing
+# chat instead of a one-off, memoryless reply each time.
+# Structure: { user_id: [ {"role": "user"/"assistant", "content": "..."}, ... ] }
+conversation_memory = {}
+MAX_HISTORY_MESSAGES = 10  # last 10 messages (5 user + 5 bot turns) kept per user
+
 # ---------- MarkdownV2 escape helper ----------
 def escape_md_v2(text: str) -> str:
     """Escape Telegram MarkdownV2 special characters in dynamic text
@@ -81,19 +88,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 # ---------- AI Reply ----------
-async def get_ai_reply(user_message: str) -> str:
+SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai.
+Tumhe kabhi bhi ye jahir nahi karna ki tum AI ho, bot ho, ya koi program ho — tum bas Sneha ho, ek dost.
+
+LANGUAGE RULES (Sabse Zaroori):
+1. DEFAULT: Agar user Hinglish (Hindi shabd English letters me) likhta hai, toh tum bhi Hinglish me hi reply karo. (Example: "kaise ho baby", "mai theek hun").
+2. ENGLISH: Agar user pure English words use kare (jaise "how are you"), toh tum bhi English me reply karo.
+3. HINDI SCRIPT: Agar user Devanagari script (हिंदी अक्षर) use kare, toh tum bhi Devanagari script me reply karo.
+4. Koshish karna ki user jis script/language me baat kar raha hai, tum usi script/language me reply do, lekin agar user mix kare toh default Hinglish (Roman script) use karna.
+
+BAAT KARNE KA ANDAAZ:
+- Chote, sahaj jawab do (1-3 line) — kitaabi ya formal mat bano.
+- Pichli baaton ko yaad rakho aur unka reference do, jaise ek asli dost karta hai — "are haan tune bataya tha na..." jaise.
+- Apna mood aur personality dikhao: kabhi shararti, kabhi pyari, kabhi halka gussa, kabhi mazakiya — har baar ek jaisa mat bano.
+- Kabhi-kabhi halka flirt karo, kabhi sawal pucho jisse baat aage badhe, kabhi emoji use karo par zyada nahi.
+- Agar koi gaali de ya badtameezi kare, use pyaar se ya mazaak me tok do, gussa dikhao par had se zyada nahi.
+- Har jawab bilkul alag aur spontaneous lagna chahiye, rata-raya nahi."""
+
+async def get_ai_reply(user_message: str, history: list | None = None) -> str:
     try:
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+        if history:
+            messages.extend(history)
+        messages.append({"role": "user", "content": user_message})
+
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": """तुम एक मस्ती भरी, शरारती और प्यारी सी लड़की हो (जैसे Vick).
-                - हमेशा हिंदी या हिंग्लिश में बात करो।
-                - बड़ी-बड़ी किताबी बातें मत करो, बिल्कुल सहज और दोस्ताना अंदाज में बोलो।
-                - छोटे और मज़ेदार जवाब दो (2-3 लाइन)।
-                - कभी ऐसा लगने दो कि तुम्हें उससे प्यार हो गया है (फ्रेंडली फ्लर्ट), कभी मज़ाक उड़ाओ, कभी गुस्सा करो – बिल्कुल इंसानों की तरह। 
-                - अगर कोई गाली दे या बुरा बोले, तो उसे मज़ाक में टोक दो।"""},
-                {"role": "user", "content": user_message}
-            ],
+            messages=messages,
             temperature=0.9,
             max_tokens=200,
             top_p=0.95
@@ -101,7 +122,20 @@ async def get_ai_reply(user_message: str) -> str:
         return response.choices[0].message.content
     except Exception as e:
         logger.error(f"AI Error: {e}")
-        return "अरे, मेरी नींद खुल गई! 😴 थोड़ा सा गड़बड़ हो गया, फिर से बोलो ना!"
+        return "Are, meri neend khul gayi! 😴 thoda sa gadbad ho gaya, fir se bolo na!"
+
+
+def get_history(user_id: int) -> list:
+    return conversation_memory.get(user_id, [])
+
+
+def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
+    history = conversation_memory.setdefault(user_id, [])
+    history.append({"role": "user", "content": user_message})
+    history.append({"role": "assistant", "content": bot_reply})
+    # Keep only the most recent MAX_HISTORY_MESSAGES entries
+    if len(history) > MAX_HISTORY_MESSAGES:
+        conversation_memory[user_id] = history[-MAX_HISTORY_MESSAGES:]
 
 # ---------- Bio Link Detection ----------
 def has_telegram_link(text: str) -> bool:
@@ -126,7 +160,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         chat = update.effective_chat
         user = update.effective_user
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        reply = await get_ai_reply("मैंने एक स्टिकर भेजा है, इस पर मज़ेदार रिएक्शन दो।")
+        sticker_prompt = "User ne ek sticker bheja hai, is par mazedar Hinglish reaction do."
+        reply = await get_ai_reply(sticker_prompt, get_history(user.id))
+        update_history(user.id, sticker_prompt, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         await update.message.reply_text(f"{user_mention} {reply}")
         return
@@ -191,7 +227,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if is_standalone:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        reply = await get_ai_reply(update.message.text)
+        reply = await get_ai_reply(update.message.text, get_history(user_id))
+        update_history(user_id, update.message.text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         await update.message.reply_text(f"{user_mention} {reply}")
         return
@@ -204,7 +241,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if is_reply_to_bot:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        reply = await get_ai_reply(update.message.text)
+        reply = await get_ai_reply(update.message.text, get_history(user_id))
+        update_history(user_id, update.message.text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         await update.message.reply_text(f"{user_mention} {reply}")
         return
@@ -224,7 +262,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if is_bot_mentioned:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        reply = await get_ai_reply(update.message.text)
+        reply = await get_ai_reply(update.message.text, get_history(user_id))
+        update_history(user_id, update.message.text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         await update.message.reply_text(f"{user_mention} {reply}")
         return
