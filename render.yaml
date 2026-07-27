@@ -1,13 +1,13 @@
 services:
   - type: web
     name: ai-girl-bot
-    runtime: python
-    # repo: https://github.com/YOUR_USERNAME/YOUR_REPO_NAME   # अपना रिपो लिंक डालें
+    runtime: image   # Docker Image बनाएगा
+    dockerfilePath: ./Dockerfile   # यह इंगित करें
     plan: free
     envVars:
       - key: BOT_TOKEN
         sync: false
       - key: GROQ_API_KEY
         sync: false
-    buildCommand: pip install -r requirements.txt
-    startCommand: python bot.py
+    buildCommand: docker build -t ai-girl-bot .
+    startCommand: docker run -p 8000:8000 -e BOT_TOKEN=$BOT_TOKEN -e GROQ_API_KEY=$GROQ_API_KEY ai-girl-bot
