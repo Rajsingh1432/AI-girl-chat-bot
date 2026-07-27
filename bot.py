@@ -1,6 +1,7 @@
 import os
 import logging
 import re
+import time
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import Groq
@@ -24,18 +25,18 @@ client = Groq(api_key=GROQ_API_KEY)
 # ---------- User warning counter (max 3 times) ----------
 user_warning_count = {}
 
+# ---------- Spam Protection Tracker ----------
+# Ye har user ka alag data rakhega. Agar ek user spam karega toh dusre user ko koi farak nahi padega.
+user_spam_tracker = {}
+SPAM_LIMIT = 10  # Kitne random messages/stickers baad spam warning de
+SPAM_COOLDOWN = 20 * 60  # 20 minutes (seconds me)
+
 # ---------- Per-user conversation memory ----------
-# Keeps the last few exchanges per user so replies feel like an ongoing
-# chat instead of a one-off, memoryless reply each time.
-# Structure: { user_id: [ {"role": "user"/"assistant", "content": "..."}, ... ] }
 conversation_memory = {}
-MAX_HISTORY_MESSAGES = 10  # last 10 messages (5 user + 5 bot turns) kept per user
+MAX_HISTORY_MESSAGES = 10
 
 # ---------- MarkdownV2 escape helper ----------
 def escape_md_v2(text: str) -> str:
-    """Escape Telegram MarkdownV2 special characters in dynamic text
-    (e.g. a user's display name) so a name like 'A.J. (Bot!)' can't
-    break formatting and crash the whole message."""
     specials = r'_*[]()~`>#+-=|{}.!'
     return "".join(f"\\{ch}" if ch in specials else ch for ch in text)
 
@@ -65,9 +66,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    # Send local image file bundled in the repo (more reliable than an
-    # external URL — free image hosts often send a Content-Type that
-    # Telegram rejects with "Wrong type of the web page content").
     image_path = os.path.join(os.path.dirname(__file__), "welcome.png")
     try:
         with open(image_path, "rb") as photo_file:
@@ -78,8 +76,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 reply_markup=reply_markup
             )
     except FileNotFoundError:
-        # Fallback: if the image file isn't present, still send the text
-        # + buttons so /start never goes completely silent.
         logger.warning(f"welcome.png not found at {image_path}, sending text-only.")
         await update.message.reply_text(
             welcome_text,
@@ -133,7 +129,6 @@ def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
     history = conversation_memory.setdefault(user_id, [])
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": bot_reply})
-    # Keep only the most recent MAX_HISTORY_MESSAGES entries
     if len(history) > MAX_HISTORY_MESSAGES:
         conversation_memory[user_id] = history[-MAX_HISTORY_MESSAGES:]
 
@@ -147,18 +142,65 @@ def has_telegram_link(text: str) -> bool:
 
 # ---------- Message Handler ----------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Ignore bot itself
     if update.effective_user and update.effective_user.is_bot:
         return
 
+    if not update.message.text and not update.message.sticker:
+        return
+
+    user = update.effective_user
+    chat = update.effective_chat
+    user_id = user.id
+    bot_username = context.bot.username
+
+    # ---------- SMART SPAM & INTERACTION CHECK ----------
+    # Agar user kisi bhi message ko slide reply kar raha hai, ya kisi bhi @username ko tag kar raha hai
+    # Toh usko direct interaction maan lo, spam limit ispe lagani nahi hai.
+    is_direct_interaction = False
+    if update.message.reply_to_message:
+        is_direct_interaction = True  # Kisi bhi msg ko reply (slide) kiya
+        
+    if not is_direct_interaction and update.message.text and update.message.entities:
+        for entity in update.message.entities:
+            if entity.type in ["mention", "text_mention"]:
+                is_direct_interaction = True  # Kisi bhi user/bot ko @mention kiya
+                break
+
+    # ---------- USER-SPECIFIC SPAM PROTECTION LOGIC ----------
+    current_time = time.time()
+    # Yaha hum sirf usi user ka data nikal rahe hain jo message bhej raha hai
+    user_spam_data = user_spam_tracker.get(user_id, {"count": 0, "muted_until": 0})
+
+    if current_time < user_spam_data["muted_until"]:
+        # Ye user abhi mute (spam cooldown) me hai
+        if is_direct_interaction:
+            # Agar user abhi kisi ko reply/tag kar raha hai, toh use unmute kar do aur normal reply do
+            user_spam_data["muted_until"] = 0
+            user_spam_data["count"] = 0
+            user_spam_tracker[user_id] = user_spam_data
+        else:
+            # Agar bina tag/reply kiye spam kar raha hai, toh SIRF ISI USER KO silently ignore karo
+            # Bot dusre users ko normal reply karta rahega
+            return
+    else:
+        # Mute period khatam hua ya fresh user hai
+        if not is_direct_interaction:
+            user_spam_data["count"] += 1
+            if user_spam_data["count"] > SPAM_LIMIT:
+                # Limit cross ho gayi, ab sirf usi user ko mute kar do aur warning do
+                await update.message.reply_text("Bas kar baby, spam mat karo! 😒 Mai tumse abhi baat nahi karungi. 20 minute baad aana.")
+                user_spam_data["muted_until"] = current_time + SPAM_COOLDOWN
+                user_spam_data["count"] = 0
+                user_spam_tracker[user_id] = user_spam_data
+                return  # Yahi ruk jao, is user ko reply mat do
+            user_spam_tracker[user_id] = user_spam_data
+        else:
+            # Direct tag/reply me counter reset ho jayega
+            user_spam_data["count"] = 0
+            user_spam_tracker[user_id] = user_spam_data
+
     # ---------- STICKER HANDLING ----------
-    # A sticker sent standalone (not as a reply) should get an instant reply,
-    # same as a standalone text message.
     if update.message.sticker and not update.message.text:
-        if update.message.reply_to_message:
-            return  # sticker sent as a reply to someone -> stay silent
-        chat = update.effective_chat
-        user = update.effective_user
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         sticker_prompt = "User ne ek sticker bheja hai, is par mazedar Hinglish reaction do."
         reply = await get_ai_reply(sticker_prompt, get_history(user.id))
@@ -169,11 +211,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if not update.message.text:
         return
-
-    user = update.effective_user
-    chat = update.effective_chat
-    user_id = user.id
-    bot_username = context.bot.username
 
     # ---------- BIO LINK DETECTION with 3-WARNING LIMIT ----------
     try:
@@ -201,15 +238,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                     await update.message.reply_text(warning_msg, parse_mode="Markdown")
                     user_warning_count[user_id] = count + 1
                     logger.info(f"User {user_id} warned {count+1}/3 times.")
-                    # Still within the 3-warning window: send warning instead
-                    # of a normal reply, and stop here.
                     return
                 else:
-                    # Already warned 3 times before — stop nagging and let
-                    # them get normal AI replies like everyone else.
                     logger.info(f"User {user_id} already warned 3 times, giving normal reply now.")
-            # Admin with a link in bio (or a non-admin past the 3-warning
-            # limit): no warning, fall through to normal reply logic below.
     except Exception as e:
         logger.warning(f"Could not fetch bio for {user_id}: {e}")
 
@@ -272,15 +303,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 # ---------- MAIN ----------
 async def main() -> None:
-    # Build Application
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
 
     port = int(os.environ.get("PORT", 8000))
-    # Render provides this automatically for every web service.
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
 
     if webhook_url:
@@ -293,8 +321,6 @@ async def main() -> None:
         import uvicorn
 
         async def health(request: Request) -> PlainTextResponse:
-            # Root route so uptime/cron pingers (e.g. cron-job.org) get a
-            # 200 instead of a 404, keeping the free Render instance awake.
             return PlainTextResponse("Bot is alive!")
 
         async def telegram_webhook(request: Request) -> PlainTextResponse:
