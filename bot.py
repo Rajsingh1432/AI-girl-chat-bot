@@ -1,7 +1,6 @@
 import os
 import logging
 import re
-import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import Groq
@@ -66,7 +65,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def get_ai_reply(user_message: str) -> str:
     try:
         response = client.chat.completions.create(
-            model="llama3-70b-8192",
+            model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": """तुम एक मस्ती भरी, शरारती और प्यारी सी लड़की हो (जैसे Vick).
                 - हमेशा हिंदी या हिंग्लिश में बात करो।
@@ -97,6 +96,20 @@ def has_telegram_link(text: str) -> bool:
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Ignore bot itself
     if update.effective_user and update.effective_user.is_bot:
+        return
+
+    # ---------- STICKER HANDLING ----------
+    # A sticker sent standalone (not as a reply) should get an instant reply,
+    # same as a standalone text message.
+    if update.message.sticker and not update.message.text:
+        if update.message.reply_to_message:
+            return  # sticker sent as a reply to someone -> stay silent
+        chat = update.effective_chat
+        user = update.effective_user
+        await context.bot.send_chat_action(chat_id=chat.id, action="typing")
+        reply = await get_ai_reply("मैंने एक स्टिकर भेजा है, इस पर मज़ेदार रिएक्शन दो।")
+        user_mention = f"@{user.username}" if user.username else user.first_name
+        await update.message.reply_text(f"{user_mention} {reply}")
         return
 
     if not update.message.text:
@@ -195,50 +208,33 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     logger.debug(f"Ignored message: {update.message.text[:50]}")
 
-# ---------- MAIN (FIXED: Proper Webhook Initialization) ----------
-async def main() -> None:
+# ---------- MAIN ----------
+def main() -> None:
     # Build Application
     application = Application.builder().token(BOT_TOKEN).build()
 
     # Add handlers
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
 
     port = int(os.environ.get("PORT", 8000))
+    # Render provides this automatically for every web service.
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
 
     if webhook_url:
-        # ✅ Step 1: Initialize the Application (MUST DO!)
-        await application.initialize()
-
-        # ✅ Step 2: Start the Application (so update queue processes)
-        await application.start()
-
-        # ✅ Step 3: Set Webhook
-        await application.bot.set_webhook(url=f"{webhook_url}/webhook")
-        logger.info(f"✅ Webhook set to {webhook_url}/webhook")
-
-        # ✅ Step 4: Get the built-in Starlette app and run it
-        webhook_app = application.webhook_app
-        import uvicorn
-
-        # ✅ Step 5: Run uvicorn (without blocking the event loop)
-        server = uvicorn.Server(
-            uvicorn.Config(
-                app=webhook_app,
-                host="0.0.0.0",
-                port=port,
-                log_level="info"
-            )
+        logger.info(f"Starting in WEBHOOK mode -> {webhook_url}/webhook")
+        # run_webhook() handles initialize(), start(), set_webhook(), and
+        # serving the app internally — no need to wire uvicorn/starlette by hand.
+        application.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path="webhook",
+            webhook_url=f"{webhook_url}/webhook",
+            drop_pending_updates=True,
         )
-        await server.serve()
     else:
-        # Local polling mode
-        await application.initialize()
-        await application.start()
-        await application.updater.start_polling()
-        # Keep running until manually stopped
-        await asyncio.Event().wait()
+        logger.info("Starting in POLLING mode (local/dev)")
+        application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
