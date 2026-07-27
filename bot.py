@@ -1,6 +1,7 @@
 import os
 import logging
 import re
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import Groq
@@ -52,7 +53,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    image_url = "https://i.imgur.com/8KmK7XW.jpeg"
+    image_url = "https://ibb.co/hbVLDNB"
 
     await update.message.reply_photo(
         photo=image_url,
@@ -231,11 +232,12 @@ async def main() -> None:
         ])
 
         await application.bot.set_webhook(url=f"{webhook_url}/webhook")
+        
+        # ✅ FIX: uvicorn को async thread में चलाएं
         import uvicorn
-        uvicorn.run(app, host="0.0.0.0", port=port)
+        await asyncio.to_thread(uvicorn.run, app, host="0.0.0.0", port=port)
     else:
         await application.run_polling()
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
