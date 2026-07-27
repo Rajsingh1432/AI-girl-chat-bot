@@ -254,5 +254,6 @@ def main() -> None:
     else:
         logger.info("Starting in POLLING mode (local/dev)")
         application.run_polling(drop_pending_updates=True)
-    if __name__ == "__main__":
+
+if __name__ == "__main__":
     main()
