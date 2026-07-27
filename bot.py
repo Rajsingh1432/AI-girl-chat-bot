@@ -209,34 +209,22 @@ async def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Render.com webhook
+    # Render.com webhook mode – built-in method
     port = int(os.environ.get("PORT", 8000))
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
 
     if webhook_url:
-        from starlette.applications import Starlette
-        from starlette.responses import JSONResponse
-        from starlette.routing import Route
-
-        async def health(request):
-            return JSONResponse({"status": "ok"})
-
-        async def webhook(request):
-            data = await request.json()
-            await application.update_queue.put(Update.de_json(data, application.bot))
-            return JSONResponse({"status": "ok"})
-
-        app = Starlette(routes=[
-            Route("/healthcheck", health),
-            Route("/webhook", webhook, methods=["POST"]),
-        ])
-
+        # ✅ सही तरीका: application.run_webhook() का इस्तेमाल करें
         await application.bot.set_webhook(url=f"{webhook_url}/webhook")
-        
-        # ✅ FIX: uvicorn को async thread में चलाएं
-        import uvicorn
-        await asyncio.to_thread(uvicorn.run, app, host="0.0.0.0", port=port)
+        # यह Webhook Server चलाएगा – बिना किसी extra कोड के
+        await application.run_webhook(
+            host="0.0.0.0",
+            port=port,
+            webhook_url=webhook_url,
+            path="/webhook"
+        )
     else:
+        # Local polling
         await application.run_polling()
 
 if __name__ == "__main__":
