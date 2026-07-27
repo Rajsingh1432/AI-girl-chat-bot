@@ -209,20 +209,23 @@ async def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Render.com webhook mode – built-in method
+    # Render.com webhook
     port = int(os.environ.get("PORT", 8000))
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
 
     if webhook_url:
-        # ✅ सही तरीका: application.run_webhook() का इस्तेमाल करें
+        # 1. Webhook Set करें
         await application.bot.set_webhook(url=f"{webhook_url}/webhook")
-        # यह Webhook Server चलाएगा – बिना किसी extra कोड के
-        await application.run_webhook(
-            host="0.0.0.0",
-            port=port,
-            webhook_url=webhook_url,
-            path="/webhook"
-        )
+        logger.info(f"✅ Webhook set to {webhook_url}/webhook")
+
+        # 2. Application Start करें (Update Queue process करने के लिए)
+        await application.start()
+
+        # 3. Webhook App (Starlette) को Uvicorn से चलाएं
+        app = application.webhook_app  # यह एक Starlette App है
+        import uvicorn
+        # Uvicorn को Async Thread में चलाएं ताकि Event Loop ब्लॉक न हो
+        await asyncio.to_thread(uvicorn.run, app, host="0.0.0.0", port=port)
     else:
         # Local polling
         await application.run_polling()
