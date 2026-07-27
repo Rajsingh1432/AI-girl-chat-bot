@@ -143,33 +143,37 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     try:
         full_user = await context.bot.get_chat(user_id)
         bio = full_user.bio if full_user.bio else ""
-        
+
         if has_telegram_link(bio):
-            # Check if admin
+            is_admin = False
             try:
                 member = await context.bot.get_chat_member(chat.id, user_id)
                 if member.status in ["administrator", "creator"]:
-                    logger.info(f"Admin {user_id} has link in bio, ignored.")
-                    return
+                    is_admin = True
+                    logger.info(f"Admin {user_id} has link in bio, warning skipped.")
             except Exception as e:
                 logger.warning(f"Could not get chat member status: {e}")
 
-            # Check warning count
-            count = user_warning_count.get(user_id, 0)
-            if count >= 3:
-                logger.info(f"User {user_id} already warned 3 times. No more warnings.")
-                return
-
-            # Send warning
-            warning_msg = (
-                f"🥺 **Baby, please remove the Telegram link from your bio!**\n"
-                f"🚫 **Promotion is not allowed here.**\n\n"
-                f"👮 @admin – this baby has a link in their bio. If it's okay with you, then no problem, but please check! 🙏"
-            )
-            await update.message.reply_text(warning_msg, parse_mode="Markdown")
-            user_warning_count[user_id] = count + 1
-            logger.info(f"User {user_id} warned {count+1}/3 times.")
-            return
+            if not is_admin:
+                count = user_warning_count.get(user_id, 0)
+                if count < 3:
+                    warning_msg = (
+                        f"🥺 **Baby, please remove the Telegram link from your bio!**\n"
+                        f"🚫 **Promotion is not allowed here.**\n\n"
+                        f"👮 @admin – this baby has a link in their bio. If it's okay with you, then no problem, but please check! 🙏"
+                    )
+                    await update.message.reply_text(warning_msg, parse_mode="Markdown")
+                    user_warning_count[user_id] = count + 1
+                    logger.info(f"User {user_id} warned {count+1}/3 times.")
+                    # Still within the 3-warning window: send warning instead
+                    # of a normal reply, and stop here.
+                    return
+                else:
+                    # Already warned 3 times before — stop nagging and let
+                    # them get normal AI replies like everyone else.
+                    logger.info(f"User {user_id} already warned 3 times, giving normal reply now.")
+            # Admin with a link in bio (or a non-admin past the 3-warning
+            # limit): no warning, fall through to normal reply logic below.
     except Exception as e:
         logger.warning(f"Could not fetch bio for {user_id}: {e}")
 
