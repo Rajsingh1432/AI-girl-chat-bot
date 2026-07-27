@@ -228,7 +228,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     logger.debug(f"Ignored message: {update.message.text[:50]}")
 
 # ---------- MAIN ----------
-def main() -> None:
+async def main() -> None:
     # Build Application
     application = Application.builder().token(BOT_TOKEN).build()
 
@@ -242,18 +242,45 @@ def main() -> None:
 
     if webhook_url:
         logger.info(f"Starting in WEBHOOK mode -> {webhook_url}/webhook")
-        # run_webhook() handles initialize(), start(), set_webhook(), and
-        # serving the app internally — no need to wire uvicorn/starlette by hand.
-        application.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path="webhook",
-            webhook_url=f"{webhook_url}/webhook",
-            drop_pending_updates=True,
+
+        from starlette.applications import Starlette
+        from starlette.responses import PlainTextResponse
+        from starlette.requests import Request
+        from starlette.routing import Route
+        import uvicorn
+
+        async def health(request: Request) -> PlainTextResponse:
+            # Root route so uptime/cron pingers (e.g. cron-job.org) get a
+            # 200 instead of a 404, keeping the free Render instance awake.
+            return PlainTextResponse("Bot is alive!")
+
+        async def telegram_webhook(request: Request) -> PlainTextResponse:
+            data = await request.json()
+            update = Update.de_json(data, application.bot)
+            await application.update_queue.put(update)
+            return PlainTextResponse("OK")
+
+        starlette_app = Starlette(routes=[
+            Route("/", health, methods=["GET"]),
+            Route("/webhook", telegram_webhook, methods=["POST"]),
+        ])
+
+        await application.initialize()
+        await application.start()
+        await application.bot.set_webhook(url=f"{webhook_url}/webhook")
+
+        server = uvicorn.Server(
+            uvicorn.Config(app=starlette_app, host="0.0.0.0", port=port, log_level="info")
         )
+        await server.serve()
     else:
         logger.info("Starting in POLLING mode (local/dev)")
-        application.run_polling(drop_pending_updates=True)
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling(drop_pending_updates=True)
+        import asyncio
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
