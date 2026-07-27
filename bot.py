@@ -24,12 +24,20 @@ client = Groq(api_key=GROQ_API_KEY)
 # ---------- User warning counter (max 3 times) ----------
 user_warning_count = {}
 
+# ---------- MarkdownV2 escape helper ----------
+def escape_md_v2(text: str) -> str:
+    """Escape Telegram MarkdownV2 special characters in dynamic text
+    (e.g. a user's display name) so a name like 'A.J. (Bot!)' can't
+    break formatting and crash the whole message."""
+    specials = r'_*[]()~`>#+-=|{}.!'
+    return "".join(f"\\{ch}" if ch in specials else ch for ch in text)
+
 # ---------- /start Command ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
-    user_name = user.first_name or "Buddy"
+    user_name = escape_md_v2(user.first_name or "Buddy")
     bot_username = context.bot.username
-    bot_name = context.bot.first_name or "AI Girl Bot"
+    bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
 
     welcome_text = (
         f"🌟 *Welcome to {bot_name}, {user_name}\\!* 🌟\n\n"
@@ -49,14 +57,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [InlineKeyboardButton("☞︎︎︎ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ ☜︎︎︎", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    image_url = "https://i.ibb.co/mk4b6K9/Gemini-Generated-Image-5ejv2j5ejv2j5ejv.png"
 
-    await update.message.reply_photo(
-        photo=image_url,
-        caption=welcome_text,
-        parse_mode="MarkdownV2",
-        reply_markup=reply_markup
-    )
+    # Send local image file bundled in the repo (more reliable than an
+    # external URL — free image hosts often send a Content-Type that
+    # Telegram rejects with "Wrong type of the web page content").
+    image_path = os.path.join(os.path.dirname(__file__), "welcome.png")
+    try:
+        with open(image_path, "rb") as photo_file:
+            await update.message.reply_photo(
+                photo=photo_file,
+                caption=welcome_text,
+                parse_mode="MarkdownV2",
+                reply_markup=reply_markup
+            )
+    except FileNotFoundError:
+        # Fallback: if the image file isn't present, still send the text
+        # + buttons so /start never goes completely silent.
+        logger.warning(f"welcome.png not found at {image_path}, sending text-only.")
+        await update.message.reply_text(
+            welcome_text,
+            parse_mode="MarkdownV2",
+            reply_markup=reply_markup
+        )
 
 # ---------- AI Reply ----------
 async def get_ai_reply(user_message: str) -> str:
@@ -232,6 +254,5 @@ def main() -> None:
     else:
         logger.info("Starting in POLLING mode (local/dev)")
         application.run_polling(drop_pending_updates=True)
-
-if __name__ == "__main__":
+    if __name__ == "__main__":
     main()
