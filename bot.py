@@ -32,32 +32,29 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot_name = context.bot.first_name or "AI Girl Bot"
 
     welcome_text = (
-        f"🌟 **𝐖𝐞𝐥𝐜𝐨𝐦𝐞 𝐭𝐨 {bot_name}, {user_name}!** 🌟\n\n"
-        f"💖 I'm your *fun, flirty, and friendly* chat companion bot!\n"
-        f"I'll keep your Telegram group **alive & entertaining** 🎉\n\n"
-        f"👉 **Just add me to your group & give me admin** –\n"
-        f"   I'll reply to *every message* automatically! 😉\n\n"
-        f"⚡ **Powered by Groq AI** – lightning fast & 100% free!\n"
-        f"❤️ **Crafted with love** by @its_raj_king\n\n"
-        f"👇 *Tap a button below to get started!*"
+        f"🌟 *Welcome to {bot_name}, {user_name}\\!* 🌟\n\n"
+        f"💖 I'm your *fun, flirty and friendly* chat companion bot\\.\n"
+        f"I'll keep your Telegram group *alive & entertaining* 🎉\n\n"
+        f"👉 Just add me to your group and make me admin –\n"
+        f"I'll reply to *every message* automatically\\! 😉\n\n"
+        f"⚡ Powered by *Groq AI* – lightning fast & 100% free\\!\n"
+        f"❤️ Crafted with love by [@its\\_raj\\_king](https://t.me/its_raj_king)\n\n"
+        f"👇 Tap a button below to get started\\!"
     )
 
     keyboard = [
-        [
-            InlineKeyboardButton("𖤍 ᴋɪᴅɴᴀᴘ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ ʙᴀʙʏ 𖤍", url=f"https://t.me/{bot_username}?startgroup=start"),
-            InlineKeyboardButton("♧︎︎︎ ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ♧︎︎︎", url="https://t.me/its_raj_king")
-        ],
-        [
-            InlineKeyboardButton("➪ sᴜᴘᴘᴏʀᴛ ✍︎", url="https://t.me/+WJneJ6gRAqg2ZTI1")
-        ]
+        [InlineKeyboardButton("𖤍 ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ 𖤍", url=f"https://t.me/{bot_username}?startgroup=start")],
+        [InlineKeyboardButton("👨‍💻 ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ༄", url="https://t.me/its_raj_king")],
+        [InlineKeyboardButton("🌿 sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ ✍︎", url="https://t.me/KnowRajpapa")],
+        [InlineKeyboardButton("☞︎︎︎ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ ☜︎︎︎", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    image_url = "https://i.imgur.com/8KmK7XW.jpeg"
+    image_url = "https://i.ibb.co/mk4b6K9/Gemini-Generated-Image-5ejv2j5ejv2j5ejv.png"
 
     await update.message.reply_photo(
         photo=image_url,
         caption=welcome_text,
-        parse_mode="Markdown",
+        parse_mode="MarkdownV2",
         reply_markup=reply_markup
     )
 
