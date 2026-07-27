@@ -53,7 +53,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         ]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    image_url = "https://ibb.co/hbVLDNB"
+    image_url = "https://i.imgur.com/8KmK7XW.jpeg"
 
     await update.message.reply_photo(
         photo=image_url,
@@ -125,7 +125,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             # Check warning count
             count = user_warning_count.get(user_id, 0)
             if count >= 3:
-                # Already warned 3 times – stop warning
                 logger.info(f"User {user_id} already warned 3 times. No more warnings.")
                 return
 
@@ -136,16 +135,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 f"👮 @admin – this baby has a link in their bio. If it's okay with you, then no problem, but please check! 🙏"
             )
             await update.message.reply_text(warning_msg, parse_mode="Markdown")
-
-            # Increment warning count
             user_warning_count[user_id] = count + 1
             logger.info(f"User {user_id} warned {count+1}/3 times.")
-            return  # Don't send AI reply after warning
+            return
     except Exception as e:
         logger.warning(f"Could not fetch bio for {user_id}: {e}")
 
     # ---------- 3 CASES WHERE BOT REPLIES ----------
-    # Case 1: Standalone message (no reply, no mention, no forward)
     is_standalone = True
     if update.message.reply_to_message:
         is_standalone = False
@@ -164,7 +160,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"{user_mention} {reply}")
         return
 
-    # Case 2: Reply to bot's own message
     is_reply_to_bot = False
     if update.message.reply_to_message:
         original_sender = update.message.reply_to_message.from_user
@@ -178,7 +173,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"{user_mention} {reply}")
         return
 
-    # Case 3: Bot mentioned (@botusername)
     is_bot_mentioned = False
     if update.message.entities:
         for entity in update.message.entities:
@@ -199,36 +193,52 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"{user_mention} {reply}")
         return
 
-    # If none of the 3 cases – ignore
     logger.debug(f"Ignored message: {update.message.text[:50]}")
 
-# ---------- Main ----------
+# ---------- MAIN (FIXED: Proper Webhook Initialization) ----------
 async def main() -> None:
+    # Build Application
     application = Application.builder().token(BOT_TOKEN).build()
 
+    # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Render.com webhook
     port = int(os.environ.get("PORT", 8000))
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
 
     if webhook_url:
-        # 1. Webhook Set करें
+        # ✅ Step 1: Initialize the Application (MUST DO!)
+        await application.initialize()
+
+        # ✅ Step 2: Start the Application (so update queue processes)
+        await application.start()
+
+        # ✅ Step 3: Set Webhook
         await application.bot.set_webhook(url=f"{webhook_url}/webhook")
         logger.info(f"✅ Webhook set to {webhook_url}/webhook")
 
-        # 2. Application Start करें (Update Queue process करने के लिए)
-        await application.start()
-
-        # 3. Webhook App (Starlette) को Uvicorn से चलाएं
-        app = application.webhook_app  # यह एक Starlette App है
+        # ✅ Step 4: Get the built-in Starlette app and run it
+        webhook_app = application.webhook_app
         import uvicorn
-        # Uvicorn को Async Thread में चलाएं ताकि Event Loop ब्लॉक न हो
-        await asyncio.to_thread(uvicorn.run, app, host="0.0.0.0", port=port)
+
+        # ✅ Step 5: Run uvicorn (without blocking the event loop)
+        server = uvicorn.Server(
+            uvicorn.Config(
+                app=webhook_app,
+                host="0.0.0.0",
+                port=port,
+                log_level="info"
+            )
+        )
+        await server.serve()
     else:
-        # Local polling
-        await application.run_polling()
+        # Local polling mode
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling()
+        # Keep running until manually stopped
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
     asyncio.run(main())
