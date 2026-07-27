@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # पूरा Bot Code कॉपी करें (सिर्फ bot.py ही काफी है, लेकिन सारी .py फाइलें)
 COPY bot.py .
+COPY welcome.png .
 
 # Port 8000 खोलें (Render Web Service के लिए)
 EXPOSE 8000
