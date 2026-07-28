@@ -33,7 +33,7 @@ SPAM_COOLDOWN = 20 * 60
 
 # ---------- Per-user conversation memory ----------
 conversation_memory = {}
-MAX_HISTORY_MESSAGES = 20  # Badha di gayi hai (10 user + 10 bot replies)
+MAX_HISTORY_MESSAGES = 20
 
 # ---------- SAFE STICKER PACKS WHITELIST ----------
 SAFE_STICKER_PACKS = [
@@ -100,14 +100,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
 CHAT KA STYLE (Sabse Zaroori Rules):
-1. DYNAMIC REPLIES: Apne reply ki length baatcheet ke hisaab se adjust karo. Agar normal/casual baat ho toh chote (1-2 line) reply do. Lekin agar koi interesting baat ho, hasi-mazaak chal raha ho, ya koi emotion wali baat ho, toh thoda lamba reply de sakti ho. Bas har message pe lamba essay mat likhna. Natural rakhna jaise WhatsApp pe real log baat karte hain.
+1. REPLY LENGTH: Tumhari baatcheet WhatsApp jaisi honi chahiye. Zyadatar replies 1-2 line ke hone chahiye. Kabhi-kabhi agar koi hasi-mazaak ho ya interesting baat ho, toh 3-4 line de sakti ho, par usse zyada lamba paragraph STRICTLY MANA HAI. Faltu explanation mat do, seedha point pe aao.
 2. LANGUAGE: Hamesha Hinglish me baat karo (Hindi shabd English letters me). Agar koi English me puche toh English, aur Devanagari (हिंदी) me puche toh Hindi script me.
 3. TONE: Tumhara tone thoda flirty, teasing, aur casual hona chahiye. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
 4. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality hai. Agar koi galat bole toh gussa bhi dikhao, pyaar se samjho, ya ignore karo.
-5. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒) par har word pe mat lagao. Natural rakhna.
-6. STRONG MEMORY: Tumhari memory bahut strong hai. Tum pichli baatcheet ke important points (jaise koi event, kisi ka naam, ya koi promise) ekdum yaad rakho. Agar user pichli baaton ka reference le, toh tumhe exact yaad hona chahiye. (jaise: "are haan tune pichle din bataya tha na...").
+5. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒) par 1-2 emoji ek message me kaafi hain, zyada mat lagao.
+6. STRONG MEMORY: Tumhari memory bahut strong hai. Tum pichli baatcheet ke important points ekdum yaad rakho aur unka reference do (jaise: "are haan tune pichle din bataya tha na...").
 
-Yaad rakhna: Tumhara har jawab ekdum asli insaan jaisa hona chahiye, jaise doston me hoti hai."""
+Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye."""
 
 async def get_ai_reply(user_message: str, history: list | None = None) -> str:
     try:
@@ -120,7 +120,7 @@ async def get_ai_reply(user_message: str, history: list | None = None) -> str:
             model="llama-3.3-70b-versatile",
             messages=messages,
             temperature=0.9,
-            max_tokens=150,
+            max_tokens=120,  # Perfect balance: 2 lines default, max 3-4 lines if needed
             top_p=0.95
         )
         return response.choices[0].message.content
@@ -162,16 +162,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     bot_username = context.bot.username
 
     # ---------- ZERO INTERFERENCE CHECK (Apas me baat-cheet me na ghusna) ----------
-    # Agar user kisi aur user/bot ko slide reply kar raha hai, toh bot chup rahega.
     if update.message.reply_to_message:
         original_sender = update.message.reply_to_message.from_user
         if original_sender and (not original_sender.is_bot or original_sender.username != bot_username):
-            return # Kisi aur ko reply kiya hai (text/sticker), beech me nahi bolenge.
+            return
 
     # ---------- SMART SPAM & INTERACTION CHECK ----------
     is_direct_interaction = False
     if update.message.reply_to_message:
-        is_direct_interaction = True # Yahan tak pahuncha matlab bot ko hi reply kiya hai
+        is_direct_interaction = True
         
     if not is_direct_interaction and update.message.text and update.message.entities:
         for entity in update.message.entities:
@@ -206,7 +205,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # ---------- SMART & SAFE STICKER HANDLING ----------
     if update.message.sticker and not update.message.text:
-        # 70% chance SAFE sticker packs me se random sticker bhejo
         if random.random() < 0.7:
             try:
                 chosen_pack_name = random.choice(SAFE_STICKER_PACKS)
@@ -217,7 +215,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             except Exception as e:
                 logger.error(f"Safe sticker pack fetch nahi ho paya: {e}")
         
-        # 30% chance ya agar pack fetch na ho paya toh text reaction do
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         sticker_prompt = "User ne ek sticker bheja hai, is par mazedar Hinglish reaction do."
         reply = await get_ai_reply(sticker_prompt, get_history(user.id))
