@@ -255,7 +255,7 @@ Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye.""
 
 
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str:
-    # ---> YAHAN DATABASE SE MEMORY LEE RAHE HAIN <---
+    # ---> DATABASE SE MEMORY LEE RAHE HAIN <---
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
@@ -269,21 +269,28 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     indices = list(range(len(clients)))
     random.shuffle(indices)
     last_error = None
+    
     for i in indices:
         try:
             response = clients[i].chat.completions.create(
                 model="llama-3.3-70b-versatile",
-                messages=messages, temperature=0.9,
-                max_tokens=120, top_p=0.95)
+                messages=messages, 
+                temperature=0.9,
+                max_tokens=120, 
+                top_p=0.95,
+                timeout=4.0  
+            )
             return response.choices[0].message.content
         except Exception as e:
             last_error = e
-            if "429" in str(e).lower() or "rate_limit" in str(e).lower():
-                logger.warning(f"Server {i+1} rate limited, next...")
+            err_str = str(e).lower()
+            if "429" in err_str or "rate_limit" in err_str or "timeout" in err_str:
+                logger.warning(f"Server {i+1} slow/limited, shifting to next...")
                 continue
             else:
                 logger.error(f"AI Error Server {i+1}: {e}")
                 break
+                
     if last_error and ("429" in str(last_error) or "rate_limit" in str(last_error).lower()):
         return "Arre yaar, meri saari chat limits full ho gayi hain abhi! 😭 1 minute ruk jao!"
     return "Are, meri neend khul gayi! 😴 thoda sa gadbad ho gaya, fir se bolo na!"
@@ -299,7 +306,6 @@ def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
     if len(history) > MAX_HISTORY_MESSAGES:
         conversation_memory[user_id] = history[-MAX_HISTORY_MESSAGES:]
     
-    # Har 15 messages pe Database me summary save karo
     count = user_msg_counter.get(user_id, 0) + 1
     user_msg_counter[user_id] = count
     if count % 15 == 0:
@@ -325,6 +331,24 @@ async def safe_reply_sticker(update: Update, file_id: str) -> None:
         await update.message.reply_sticker(file_id)
     except Exception as e:
         logger.warning(f"reply_sticker fail: {e}")
+
+
+# ---------- REALISTIC TYPING SIMULATOR ----------
+async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str) -> None:
+    """Message ki length ke hisab se realistic typing dikhata hai (Expert Typer)"""
+    try:
+        # 1 char = 0.18 sec (Expert fast typer speed)
+        # Minimum 0.6 sec (Chhota msg bhi thoda soche)
+        # Maximum 1.8 sec (Bada msg bhi 1.8 sec se zyada nahi sochega)
+        delay = min(max(len(text) * 0.18, 0.6), 1.8)
+        
+        # Thoda randomness add karo (0.1 to 0.3 sec) taaki lagatar same time na lage
+        delay += random.uniform(0.1, 0.3)
+        
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        await asyncio.sleep(delay)
+    except Exception:
+        pass
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -379,13 +403,15 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             logger.warning(f"sticker pack fail: {e}")
 
         try:
-            await context.bot.send_chat_action(chat_id=chat.id, action="typing")
             sticker_prompt = "User ne ek sticker bheja hai, is par mazedar Hinglish reaction do."
-            # user_id add kiya
             reply = await get_ai_reply(sticker_prompt, user_id, get_history(user.id))
             update_history(user.id, sticker_prompt, reply)
             user_mention = f"@{user.username}" if user.username else user.first_name
-            await safe_reply_text(update, f"{user_mention} {reply}")
+            final_reply = f"{user_mention} {reply}"
+            
+            # REALISTIC TYPING
+            await realistic_typing_delay(context, chat.id, final_reply)
+            await safe_reply_text(update, final_reply)
         except Exception as e:
             logger.error(f"sticker AI fail: {e}")
         return
@@ -432,12 +458,14 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         is_standalone = False
 
     if is_standalone:
-        await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        # user_id add kiya
         reply = await get_ai_reply(message_text, user_id, get_history(user_id))
         update_history(user_id, message_text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
-        await safe_reply_text(update, f"{user_mention} {reply}")
+        final_reply = f"{user_mention} {reply}"
+        
+        # REALISTIC TYPING
+        await realistic_typing_delay(context, chat.id, final_reply)
+        await safe_reply_text(update, final_reply)
         return
 
     is_reply_to_bot = False
@@ -447,10 +475,11 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             is_reply_to_bot = True
 
     if is_reply_to_bot:
-        await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        # user_id add kiya
         reply = await get_ai_reply(message_text, user_id, get_history(user_id))
         update_history(user_id, message_text, reply)
+        
+        # REALISTIC TYPING
+        await realistic_typing_delay(context, chat.id, reply)
         await safe_reply_text(update, reply)
         return
 
@@ -468,10 +497,11 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     break
 
     if is_bot_mentioned:
-        await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        # user_id add kiya
         reply = await get_ai_reply(message_text, user_id, get_history(user_id))
         update_history(user_id, message_text, reply)
+        
+        # REALISTIC TYPING
+        await realistic_typing_delay(context, chat.id, reply)
         await safe_reply_text(update, reply)
         return
 
