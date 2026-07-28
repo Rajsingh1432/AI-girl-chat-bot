@@ -17,9 +17,9 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 BOT_TOKEN = os.getenv("BOT_TOKEN")
+OWNER_ID = int(os.getenv("OWNER_ID", "0"))  # Owner ka Telegram ID
 
 # ---------- MULTIPLE GROQ API KEYS ROTATION ----------
-# Yaha hum 1 se 5 tak keys check karenge. Tum chahe 2 dalo ya 5, ye automatic handle karega.
 GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_1"),
     os.getenv("GROQ_API_KEY_2"),
@@ -27,7 +27,6 @@ GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_4"),
     os.getenv("GROQ_API_KEY_5")
 ]
-# Jo jo keys empty nahi hain, unka client bana lo
 GROQ_API_KEYS = [key for key in GROQ_API_KEYS if key]
 
 if not BOT_TOKEN or not GROQ_API_KEYS:
@@ -36,10 +35,9 @@ if not BOT_TOKEN or not GROQ_API_KEYS:
 clients = [Groq(api_key=key) for key in GROQ_API_KEYS]
 
 def get_client():
-    """Har message pe random API key use karega taaki limit cross na ho"""
     return random.choice(clients)
 
-# ---------- User warning counter (max 3 times) ----------
+# ---------- User warning counter ----------
 user_warning_count = {}
 
 # ---------- Spam Protection Tracker ----------
@@ -52,17 +50,7 @@ conversation_memory = {}
 MAX_HISTORY_MESSAGES = 20
 
 # ---------- SAFE STICKER PACKS WHITELIST ----------
-SAFE_STICKER_PACKS = [
-    "Sigma", 
-    "Cats", 
-    "Monkeys", 
-    "Peach", 
-    "Animals", 
-    "HonestStickers", 
-    "cute", 
-    "Memenny", 
-    "Dobby"
-]
+SAFE_STICKER_PACKS = ["Sigma", "Cats", "Monkeys", "Peach", "Animals", "HonestStickers", "cute", "Memenny", "Dobby"]
 
 # ---------- MarkdownV2 escape helper ----------
 def escape_md_v2(text: str) -> str:
@@ -98,21 +86,44 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     image_path = os.path.join(os.path.dirname(__file__), "welcome.png")
     try:
         with open(image_path, "rb") as photo_file:
-            await update.message.reply_photo(
-                photo=photo_file,
-                caption=welcome_text,
-                parse_mode="MarkdownV2",
-                reply_markup=reply_markup
-            )
+            await update.message.reply_photo(photo=photo_file, caption=welcome_text, parse_mode="MarkdownV2", reply_markup=reply_markup)
     except FileNotFoundError:
         logger.warning(f"welcome.png not found at {image_path}, sending text-only.")
-        await update.message.reply_text(
-            welcome_text,
-            parse_mode="MarkdownV2",
-            reply_markup=reply_markup
-        )
+        await update.message.reply_text(welcome_text, parse_mode="MarkdownV2", reply_markup=reply_markup)
 
-# ---------- AI Reply ----------
+# ---------- /stats Command (OWNER ONLY) ----------
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        return  # Agar owner nahi hai toh ignore karo
+
+    await update.message.reply_text("⏳ Sabhi API Servers check ho rahe hain, ruko...")
+
+    status_report = "📊 *API Keys Status Report:*\n\n"
+    
+    for i, client in enumerate(clients):
+        server_name = f"Server {i+1}"
+        start_time = time.perf_counter()
+        
+        try:
+            # Ek chhota sa test request bhej rahe hain
+            response = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": "Say OK"}],
+                max_tokens=2,
+                temperature=0
+            )
+            end_time = time.perf_counter()
+            ms = int((end_time - start_time) * 1000)
+            status_report += f"✅ *{server_name}:* Working Perfectly!\n⚡ Speed: {ms} ms\n\n"
+        except Exception as e:
+            end_time = time.perf_counter()
+            ms = int((end_time - start_time) * 1000)
+            error_reason = str(e)[:50]
+            status_report += f"❌ *{server_name}:* Error/Dead!\n🚫 Reason: {error_reason}\n\n"
+
+    await update.message.reply_text(status_report, parse_mode="Markdown")
+
+# ---------- AI Reply (With Auto-Fallback & Recovery) ----------
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
 CHAT KA STYLE (Sabse Zaroori Rules):
@@ -126,32 +137,49 @@ CHAT KA STYLE (Sabse Zaroori Rules):
 Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye."""
 
 async def get_ai_reply(user_message: str, history: list | None = None) -> str:
-    try:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
-        if history:
-            messages.extend(history)
-        messages.append({"role": "user", "content": user_message})
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if history:
+        messages.extend(history)
+    messages.append({"role": "user", "content": user_message})
 
-        # Random client use karenge taaki limit distribute ho
-        response = get_client().chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            temperature=0.9,
-            max_tokens=120,
-            top_p=0.95
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.error(f"AI Error: {e}")
-        # Agar limit full ho jaye toh ye message do
-        if "429" in str(e) or "rate_limit" in str(e).lower():
-            return "Arre yaar, itni tezi me mat bolo! 😭 Ek minute ruk jao, meri chat limit full ho gayi hai. Thoda sa ruko fir batao."
-        return "Are, meri neend khul gayi! 😴 thoda sa gadbad ho gaya, fir se bolo na!"
+    # Shuffle indices so we don't always hit Server 1 first
+    indices = list(range(len(clients)))
+    random.shuffle(indices)
+    
+    last_error = None
+
+    for i in indices:
+        try:
+            # Try to get response from current client
+            response = clients[i].chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=messages,
+                temperature=0.9,
+                max_tokens=120,
+                top_p=0.95
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            last_error = e
+            err_str = str(e).lower()
+            # Agar 429 (Rate Limit) error aaye, toh next API key try karo
+            if "429" in err_str or "rate_limit" in err_str:
+                logger.warning(f"Server {i+1} pe limit full hai. Next server try kar rahe hain...")
+                continue
+            else:
+                # Agar koi aur error ho (jaise network down), toh break
+                logger.error(f"AI Error on Server {i+1}: {e}")
+                break
+
+    # Agar saari API keys limit me chali gayi hain
+    if last_error and ("429" in str(last_error) or "rate_limit" in str(last_error).lower()):
+        return "Arre yaar, meri saari chat limits full ho gayi hain abhi! 😭 1 minute ruk jao, fir main khud ba khud theek ho jaungi."
+    
+    return "Are, meri neend khul gayi! 😴 thoda sa gadbad ho gaya, fir se bolo na!"
 
 
 def get_history(user_id: int) -> list:
     return conversation_memory.get(user_id, [])
-
 
 def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
     history = conversation_memory.setdefault(user_id, [])
@@ -162,49 +190,38 @@ def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
 
 # ---------- Bio Link Detection ----------
 def has_telegram_link(text: str) -> bool:
-    if not text:
-        return False
+    if not text: return False
     pattern_url = r'(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:[a-zA-Z0-9_]+)'
     pattern_mention = r'@[a-zA-Z0-9_]{4,}'
     return bool(re.search(pattern_url, text)) or bool(re.search(pattern_mention, text))
 
 # ---------- Message Handler ----------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # --- 1. MASTER CRASH PREVENTION ---
-    if not update.message or not update.effective_user or not update.effective_chat:
-        return
-        
-    if update.effective_user.is_bot:
-        return
-
-    # Agar message me text na ho, aur sticker bhi na ho, toh chup raho (photos/videos etc.)
-    if not update.message.text and not update.message.sticker:
-        return
+    if not update.message or not update.effective_user or not update.effective_chat: return
+    if update.effective_user.is_bot: return
+    if not update.message.text and not update.message.sticker: return
 
     user = update.effective_user
     chat = update.effective_chat
     user_id = user.id
     bot_username = context.bot.username
-    message_text = update.message.text or ""  # Safe text extraction
+    message_text = update.message.text or ""
 
-    # ---------- ZERO INTERFERENCE CHECK (Apas me baat-cheet me na ghusna) ----------
+    # ZERO INTERFERENCE CHECK
     if update.message.reply_to_message:
         original_sender = update.message.reply_to_message.from_user
-        if original_sender and (not original_sender.is_bot or original_sender.username != bot_username):
-            return
+        if original_sender and (not original_sender.is_bot or original_sender.username != bot_username): return
 
-    # ---------- SMART SPAM & INTERACTION CHECK ----------
+    # SMART SPAM & INTERACTION CHECK
     is_direct_interaction = False
-    if update.message.reply_to_message:
-        is_direct_interaction = True
-        
+    if update.message.reply_to_message: is_direct_interaction = True
     if not is_direct_interaction and message_text and update.message.entities:
         for entity in update.message.entities:
             if entity.type in ["mention", "text_mention"]:
                 is_direct_interaction = True
                 break
 
-    # ---------- USER-SPECIFIC SPAM PROTECTION LOGIC ----------
+    # USER-SPECIFIC SPAM PROTECTION
     current_time = time.time()
     user_spam_data = user_spam_tracker.get(user_id, {"count": 0, "muted_until": 0})
 
@@ -213,8 +230,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             user_spam_data["muted_until"] = 0
             user_spam_data["count"] = 0
             user_spam_tracker[user_id] = user_spam_data
-        else:
-            return
+        else: return
     else:
         if not is_direct_interaction:
             user_spam_data["count"] += 1
@@ -229,7 +245,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             user_spam_data["count"] = 0
             user_spam_tracker[user_id] = user_spam_data
 
-    # ---------- SMART & SAFE STICKER HANDLING ----------
+    # SMART & SAFE STICKER HANDLING
     if update.message.sticker and not update.message.text:
         if random.random() < 0.7:
             try:
@@ -250,54 +266,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"{user_mention} {reply}")
         return
 
-    if not update.message.text:
-        return
+    if not update.message.text: return
 
-    # ---------- BIO LINK DETECTION with 3-WARNING LIMIT ----------
+    # BIO LINK DETECTION
     try:
         full_user = await context.bot.get_chat(user_id)
         bio = full_user.bio if full_user.bio else ""
-
         if has_telegram_link(bio):
             is_admin = False
             try:
                 member = await context.bot.get_chat_member(chat.id, user_id)
-                if member.status in ["administrator", "creator"]:
-                    is_admin = True
-                    logger.info(f"Admin {user_id} has link in bio, warning skipped.")
-            except Exception as e:
-                logger.warning(f"Could not get chat member status: {e}")
+                if member.status in ["administrator", "creator"]: is_admin = True
+            except Exception as e: logger.warning(f"Could not get chat member status: {e}")
 
             if not is_admin:
                 count = user_warning_count.get(user_id, 0)
                 if count < 3:
-                    warning_msg = (
-                        f"🥺 **Baby, please remove the Telegram link from your bio!**\n"
-                        f"🚫 **Promotion is not allowed here.**\n\n"
-                        f"👮 @admin – this baby has a link in their bio. If it's okay with you, then no problem, but please check! 🙏"
-                    )
+                    warning_msg = ("🥺 **Baby, please remove the Telegram link from your bio!**\n"
+                                   f"🚫 **Promotion is not allowed here.**\n\n"
+                                   f"👮 @admin – this baby has a link in their bio. If it's okay with you, then no problem, but please check! 🙏")
                     await update.message.reply_text(warning_msg, parse_mode="Markdown")
                     user_warning_count[user_id] = count + 1
-                    logger.info(f"User {user_id} warned {count+1}/3 times.")
                     return
-                else:
-                    logger.info(f"User {user_id} already warned 3 times, giving normal reply now.")
-    except Exception as e:
-        logger.warning(f"Could not fetch bio for {user_id}: {e}")
+    except Exception as e: logger.warning(f"Could not fetch bio for {user_id}: {e}")
 
-    # ---------- 3 CASES WHERE BOT REPLIES ----------
+    # 3 CASES WHERE BOT REPLIES
     is_standalone = True
-    if update.message.reply_to_message:
-        is_standalone = False
+    if update.message.reply_to_message: is_standalone = False
     if update.message.entities:
         for entity in update.message.entities:
             if entity.type in ["mention", "text_mention"]:
                 is_standalone = False
                 break
-    if update.message.forward_date:
-        is_standalone = False
+    if update.message.forward_date: is_standalone = False
 
-    # Case 1: Standalone Random Message (Tag the user)
     if is_standalone:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         reply = await get_ai_reply(message_text, get_history(user_id))
@@ -306,12 +308,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"{user_mention} {reply}")
         return
 
-    # Case 2: Slide Reply to Bot (NO TAG)
     is_reply_to_bot = False
     if update.message.reply_to_message:
         original_sender = update.message.reply_to_message.from_user
-        if original_sender and original_sender.is_bot and original_sender.username == bot_username:
-            is_reply_to_bot = True
+        if original_sender and original_sender.is_bot and original_sender.username == bot_username: is_reply_to_bot = True
 
     if is_reply_to_bot:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
@@ -320,7 +320,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(reply)
         return
 
-    # Case 3: Bot Mentioned via @ (NO TAG)
     is_bot_mentioned = False
     if update.message.entities:
         for entity in update.message.entities:
@@ -341,12 +340,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(reply)
         return
 
-    logger.debug(f"Ignored message: {message_text[:50]}")
-
 # ---------- Global Error Handler ----------
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     error = context.error
-    # Agar Telegram rate limit (429) ka error aaye, toh thodi der ruko
     if isinstance(error, RetryAfter):
         logger.warning(f"Telegram Rate limit hit. Sleeping for {error.retry_after} seconds.")
         await asyncio.sleep(error.retry_after)
@@ -360,9 +356,8 @@ async def main() -> None:
     application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("stats", stats_command)) # Stats command add kiya
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
-    
-    # Register the global error handler
     application.add_error_handler(error_handler)
 
     port = int(os.environ.get("PORT", 8000))
@@ -370,7 +365,6 @@ async def main() -> None:
 
     if webhook_url:
         logger.info(f"Starting in WEBHOOK mode -> {webhook_url}/webhook")
-
         from starlette.applications import Starlette
         from starlette.responses import PlainTextResponse
         from starlette.requests import Request
@@ -394,10 +388,7 @@ async def main() -> None:
         await application.initialize()
         await application.start()
         await application.bot.set_webhook(url=f"{webhook_url}/webhook")
-
-        server = uvicorn.Server(
-            uvicorn.Config(app=starlette_app, host="0.0.0.0", port=port, log_level="info")
-        )
+        server = uvicorn.Server(uvicorn.Config(app=starlette_app, host="0.0.0.0", port=port, log_level="info"))
         await server.serve()
     else:
         logger.info("Starting in POLLING mode (local/dev)")
