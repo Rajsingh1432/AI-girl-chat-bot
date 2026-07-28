@@ -3,8 +3,10 @@ import logging
 import re
 import time
 import random
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.error import RetryAfter, TimedOut
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -15,13 +17,27 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if not BOT_TOKEN or not GROQ_API_KEY:
-    raise ValueError("BOT_TOKEN and GROQ_API_KEY must be set!")
+# ---------- MULTIPLE GROQ API KEYS ROTATION ----------
+# Yaha hum 1 se 5 tak keys check karenge. Tum chahe 2 dalo ya 5, ye automatic handle karega.
+GROQ_API_KEYS = [
+    os.getenv("GROQ_API_KEY_1"),
+    os.getenv("GROQ_API_KEY_2"),
+    os.getenv("GROQ_API_KEY_3"),
+    os.getenv("GROQ_API_KEY_4"),
+    os.getenv("GROQ_API_KEY_5")
+]
+# Jo jo keys empty nahi hain, unka client bana lo
+GROQ_API_KEYS = [key for key in GROQ_API_KEYS if key]
 
-# Groq client
-client = Groq(api_key=GROQ_API_KEY)
+if not BOT_TOKEN or not GROQ_API_KEYS:
+    raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY (1 se 5 me se) set karna zaroori hai!")
+
+clients = [Groq(api_key=key) for key in GROQ_API_KEYS]
+
+def get_client():
+    """Har message pe random API key use karega taaki limit cross na ho"""
+    return random.choice(clients)
 
 # ---------- User warning counter (max 3 times) ----------
 user_warning_count = {}
@@ -116,16 +132,20 @@ async def get_ai_reply(user_message: str, history: list | None = None) -> str:
             messages.extend(history)
         messages.append({"role": "user", "content": user_message})
 
-        response = client.chat.completions.create(
+        # Random client use karenge taaki limit distribute ho
+        response = get_client().chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=messages,
             temperature=0.9,
-            max_tokens=120,  # Perfect balance: 2 lines default, max 3-4 lines if needed
+            max_tokens=120,
             top_p=0.95
         )
         return response.choices[0].message.content
     except Exception as e:
         logger.error(f"AI Error: {e}")
+        # Agar limit full ho jaye toh ye message do
+        if "429" in str(e) or "rate_limit" in str(e).lower():
+            return "Arre yaar, itni tezi me mat bolo! 😭 Ek minute ruk jao, meri chat limit full ho gayi hai. Thoda sa ruko fir batao."
         return "Are, meri neend khul gayi! 😴 thoda sa gadbad ho gaya, fir se bolo na!"
 
 
@@ -170,7 +190,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # ---------- ZERO INTERFERENCE CHECK (Apas me baat-cheet me na ghusna) ----------
     if update.message.reply_to_message:
         original_sender = update.message.reply_to_message.from_user
-        # Agar original sender exist karta hai aur wo bot nahi hai, toh chup raho
         if original_sender and (not original_sender.is_bot or original_sender.username != bot_username):
             return
 
@@ -231,7 +250,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"{user_mention} {reply}")
         return
 
-    # Agar text nahi hai (sticker wala case upar handle ho gaya), toh yahi ruko
     if not update.message.text:
         return
 
@@ -327,15 +345,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 # ---------- Global Error Handler ----------
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Ye function kisi bhi error ko silently log karega, taaki bot crash/se Silent na ho."""
-    logger.error("Exception while handling an update:", exc_info=context.error)
+    error = context.error
+    # Agar Telegram rate limit (429) ka error aaye, toh thodi der ruko
+    if isinstance(error, RetryAfter):
+        logger.warning(f"Telegram Rate limit hit. Sleeping for {error.retry_after} seconds.")
+        await asyncio.sleep(error.retry_after)
+    elif isinstance(error, TimedOut):
+        logger.warning("Telegram request timed out, ignoring...")
+    else:
+        logger.error("Exception while handling an update:", exc_info=error)
 
 # ---------- MAIN ----------
 async def main() -> None:
-    # Build Application
     application = Application.builder().token(BOT_TOKEN).build()
 
-    # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
     
@@ -381,9 +404,7 @@ async def main() -> None:
         await application.initialize()
         await application.start()
         await application.updater.start_polling(drop_pending_updates=True)
-        import asyncio
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
