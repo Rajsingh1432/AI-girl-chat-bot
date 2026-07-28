@@ -161,7 +161,7 @@ SAFE_STICKER_PACKS = ["Sigma", "Cats", "Monkeys", "Peach", "Animals",
                       "HonestStickers", "cute", "Memenny", "Dobby"]
 
 # ImgBB Direct Link (Fixed 'i.' for fast loading)
-WELCOME_IMAGE_URL = "https://i.ibb.co/Tq2Rb2Nz/image.png"
+WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
 
 def escape_md_v2(text: str) -> str:
