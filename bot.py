@@ -4,6 +4,7 @@ import re
 import time
 import random
 import asyncio
+import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import RetryAfter, TimedOut
@@ -16,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
+
+# Render automatically yeh URL daal dega
+DATABASE_URL = os.getenv("DATABASE_URL") 
 
 GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_1"),
@@ -40,11 +44,83 @@ FLOOD_THRESHOLD = 6
 FLOOD_COOLDOWN = 120
 LAST_CLEANUP = 0.0
 
+# ---------- 100% PERMANENT MEMORY (POSTGRESQL) ----------
+user_msg_counter = {}
+
+def get_db_conn():
+    if not DATABASE_URL: return None
+    return psycopg2.connect(DATABASE_URL)
+
+def init_db():
+    if not DATABASE_URL:
+        logger.warning("DATABASE_URL nahi mila, PostgreSQL skip ho raha hai.")
+        return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS user_memory
+                     (user_id BIGINT PRIMARY KEY, summary TEXT, updated_at REAL)''')
+        conn.commit()
+        c.close()
+        conn.close()
+        logger.info("✅ PostgreSQL Permanent Database Connected!")
+    except Exception as e:
+        logger.error(f"DB Connection error: {e}")
+
+def get_user_summary(user_id: int) -> str:
+    if not DATABASE_URL: return ""
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT summary FROM user_memory WHERE user_id=%s", (user_id,))
+        row = c.fetchone()
+        c.close()
+        conn.close()
+        return row[0] if row and row[0] else ""
+    except Exception as e:
+        return ""
+
+def save_user_summary(user_id: int, summary: str):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("INSERT INTO user_memory (user_id, summary, updated_at) VALUES (%s, %s, %s) "
+                  "ON CONFLICT (user_id) DO UPDATE SET summary=%s, updated_at=%s",
+                  (user_id, summary, time.time(), summary, time.time()))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception as e:
+        pass
+
+async def generate_summary(user_id: int, history: list):
+    if len(history) < 10 or not DATABASE_URL: return
+    try:
+        prompt = """Is user ki pichli baatcheet ka ek bilkul choti si 2-line summary banao. 
+        Sirf important facts yaad rakhna (jaise uska kaam, uske dost, uska mood, koi special baat). 
+        Boring summary mat bana. Hinglish me likho."""
+        messages = [{"role": "user", "content": f"Pichli baatein: {str(history[-10:])}\n\n{prompt}"}]
+        
+        for client in clients:
+            try:
+                response = client.chat.completions.create(
+                    model="llama-3.1-8b-instant", 
+                    messages=messages, temperature=0.3, max_tokens=100)
+                new_summary = response.choices[0].message.content
+                old_summary = get_user_summary(user_id)
+                final_summary = f"{old_summary}\n{new_summary}" if old_summary else new_summary
+                save_user_summary(user_id, final_summary)
+                break
+            except Exception:
+                continue
+    except Exception:
+        pass
+
 
 def check_flood(user_id: int, is_sticker: bool = False) -> str:
     global LAST_CLEANUP
     now = time.time()
-
     if now - LAST_CLEANUP > 600:
         expired = [uid for uid, d in user_flood_data.items()
                    if d["cd"] > 0 and now >= d["cd"] and not d["ts"]]
@@ -53,14 +129,11 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
         LAST_CLEANUP = now
 
     data = user_flood_data.get(user_id)
-
     if data is None:
         user_flood_data[user_id] = {"ts": [now], "cd": 0.0}
         return "ok"
-
     if now < data["cd"]:
         return "cooldown"
-
     if data["cd"] > 0.0:
         data["cd"] = 0.0
         data["ts"] = []
@@ -87,8 +160,8 @@ MAX_HISTORY_MESSAGES = 20
 SAFE_STICKER_PACKS = ["Sigma", "Cats", "Monkeys", "Peach", "Animals",
                       "HonestStickers", "cute", "Memenny", "Dobby"]
 
-# NAYA RESIZED IMAGE LINK (1280px - HD Quality, Fast Loading)
-WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
+# ImgBB Direct Link (Fixed 'i.' for fast loading)
+WELCOME_IMAGE_URL = "https://i.ibb.co/Tq2Rb2Nz/image.png"
 
 
 def escape_md_v2(text: str) -> str:
@@ -110,8 +183,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"ɪ'ʟʟ ᴋᴇᴇᴘ ʏᴏᴜʀ ᴛᴇʟᴇɢʀᴀᴍ ɢʀᴏᴜᴘ *ᴀʟɪᴠᴇ & ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ* 🎉\n\n"
             f"👉 ᴊᴜsᴛ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀɴᴅ ᴍᴀᴋᴇ ᴍᴇ ᴀᴅᴍɪɴ –\n"
             f"ɪ'ʟʟ  ᴛᴏ *ᴇᴠᴇʀʏ ᴍᴇssᴀɢᴇ* ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ\\! 😉\n\n"
-            f"⚡ ᴘᴏᴡᴇʀᴇᴅ ʙʏ *Rᴀᴊ Aɪ* – ʟɪɢʜᴛɴɪɴɢ ғᴀsᴛ & ᴄᴏᴏʟ\\!\n"
-            f"❤️ ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ ᴏᴜʀ ᴏᴡɴᴇʀ [@its\\_raj\\_king](https://t.me/its_raj_king)\n\n"
+            f"⚡ ᴘᴏᴡᴇʀᴇᴅ ʙʏ *Rᴀᴊ Aɪ* – ʟɪɢʜᴛɴɪɴɢ ғᴀsᴛ & ᴄᴏᴏʟ\\!\n\n"
+            f"🌿 ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ ᴏᴜʀ ᴏᴡɴᴇʀ [@its\\_raj\\_king](https://t.me/its_raj_king)\n\n"
             f"👇 ᴛᴀᴘ ᴀ ʙᴇʟʟᴏᴡ ʙᴜᴛᴛᴏɴ ᴀɴᴅ ᴜsᴇ ᴍᴇ \\!"
         )
 
@@ -122,12 +195,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                                   url="https://t.me/its_raj_king")],
             [InlineKeyboardButton("🌿 sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ ✍︎",
                                   url="https://t.me/KnowRajpapa")],
-            [InlineKeyboardButton("☞︎︎︎ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ ☜︎︎︎",
+            [InlineKeyboardButton("☞︎︎︎ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ ☜︎︎",
                                   url="https://t.me/+WJneJ6gRAqg2ZTI1")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        # Direct URL se bhej rahe hain (No Render Timeout, No Fattti Hui Image)
         await update.message.reply_photo(
             photo=WELCOME_IMAGE_URL,
             caption=welcome_text,
@@ -182,11 +254,18 @@ CHAT KA STYLE (Sabse Zaroori Rules):
 Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye."""
 
 
-async def get_ai_reply(user_message: str, history: list | None = None) -> str:
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str:
+    # ---> YAHAN DATABASE SE MEMORY LEE RAHE HAIN <---
+    db_summary = get_user_summary(user_id)
+    memory_context = ""
+    if db_summary:
+        memory_context = f"\n\n[SECRET MEMORY: Ye tumhare is user ke baare me pichli baaton se yaad rakha hua data hai, iska reference lo: {db_summary}]\n\n"
+
+    messages = [{"role": "system", "content": SYSTEM_PROMPT + memory_context}]
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": user_message})
+    
     indices = list(range(len(clients)))
     random.shuffle(indices)
     last_error = None
@@ -213,13 +292,18 @@ async def get_ai_reply(user_message: str, history: list | None = None) -> str:
 def get_history(user_id: int) -> list:
     return conversation_memory.get(user_id, [])
 
-
 def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
     history = conversation_memory.setdefault(user_id, [])
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": bot_reply})
     if len(history) > MAX_HISTORY_MESSAGES:
         conversation_memory[user_id] = history[-MAX_HISTORY_MESSAGES:]
+    
+    # Har 15 messages pe Database me summary save karo
+    count = user_msg_counter.get(user_id, 0) + 1
+    user_msg_counter[user_id] = count
+    if count % 15 == 0:
+        asyncio.create_task(generate_summary(user_id, history))
 
 
 def has_telegram_link(text: str) -> bool:
@@ -297,7 +381,8 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         try:
             await context.bot.send_chat_action(chat_id=chat.id, action="typing")
             sticker_prompt = "User ne ek sticker bheja hai, is par mazedar Hinglish reaction do."
-            reply = await get_ai_reply(sticker_prompt, get_history(user.id))
+            # user_id add kiya
+            reply = await get_ai_reply(sticker_prompt, user_id, get_history(user.id))
             update_history(user.id, sticker_prompt, reply)
             user_mention = f"@{user.username}" if user.username else user.first_name
             await safe_reply_text(update, f"{user_mention} {reply}")
@@ -348,7 +433,8 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if is_standalone:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        reply = await get_ai_reply(message_text, get_history(user_id))
+        # user_id add kiya
+        reply = await get_ai_reply(message_text, user_id, get_history(user_id))
         update_history(user_id, message_text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         await safe_reply_text(update, f"{user_mention} {reply}")
@@ -362,7 +448,8 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if is_reply_to_bot:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        reply = await get_ai_reply(message_text, get_history(user_id))
+        # user_id add kiya
+        reply = await get_ai_reply(message_text, user_id, get_history(user_id))
         update_history(user_id, message_text, reply)
         await safe_reply_text(update, reply)
         return
@@ -382,7 +469,8 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if is_bot_mentioned:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        reply = await get_ai_reply(message_text, get_history(user_id))
+        # user_id add kiya
+        reply = await get_ai_reply(message_text, user_id, get_history(user_id))
         update_history(user_id, message_text, reply)
         await safe_reply_text(update, reply)
         return
@@ -400,6 +488,9 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def main() -> None:
+    # DATABASE START HO RAHI HAI
+    init_db()
+    
     application = (
         Application.builder()
         .token(BOT_TOKEN)
