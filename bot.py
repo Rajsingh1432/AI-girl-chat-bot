@@ -2,6 +2,7 @@ import os
 import logging
 import re
 import time
+import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from groq import Groq
@@ -32,7 +33,20 @@ SPAM_COOLDOWN = 20 * 60
 
 # ---------- Per-user conversation memory ----------
 conversation_memory = {}
-MAX_HISTORY_MESSAGES = 10
+MAX_HISTORY_MESSAGES = 20  # Badha di gayi hai (10 user + 10 bot replies)
+
+# ---------- SAFE STICKER PACKS WHITELIST ----------
+SAFE_STICKER_PACKS = [
+    "Sigma", 
+    "Cats", 
+    "Monkeys", 
+    "Peach", 
+    "Animals", 
+    "HonestStickers", 
+    "cute", 
+    "Memenny", 
+    "Dobby"
+]
 
 # ---------- MarkdownV2 escape helper ----------
 def escape_md_v2(text: str) -> str:
@@ -83,22 +97,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 # ---------- AI Reply ----------
-SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai.
-Tumhe kabhi bhi ye jahir nahi karna ki tum AI ho, bot ho, ya koi program ho — tum bas Sneha ho, ek dost.
+SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
-LANGUAGE RULES (Sabse Zaroori):
-1. DEFAULT: Agar user Hinglish (Hindi shabd English letters me) likhta hai, toh tum bhi Hinglish me hi reply karo. (Example: "kaise ho baby", "mai theek hun").
-2. ENGLISH: Agar user pure English words use kare (jaise "how are you"), toh tum bhi English me reply karo.
-3. HINDI SCRIPT: Agar user Devanagari script (हिंदी अक्षर) use kare, toh tum bhi Devanagari script me reply karo.
-4. Koshish karna ki user jis script/language me baat kar raha hai, tum usi script/language me reply do, lekin agar user mix kare toh default Hinglish (Roman script) use karna.
+CHAT KA STYLE (Sabse Zaroori Rules):
+1. DYNAMIC REPLIES: Apne reply ki length baatcheet ke hisaab se adjust karo. Agar normal/casual baat ho toh chote (1-2 line) reply do. Lekin agar koi interesting baat ho, hasi-mazaak chal raha ho, ya koi emotion wali baat ho, toh thoda lamba reply de sakti ho. Bas har message pe lamba essay mat likhna. Natural rakhna jaise WhatsApp pe real log baat karte hain.
+2. LANGUAGE: Hamesha Hinglish me baat karo (Hindi shabd English letters me). Agar koi English me puche toh English, aur Devanagari (हिंदी) me puche toh Hindi script me.
+3. TONE: Tumhara tone thoda flirty, teasing, aur casual hona chahiye. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
+4. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality hai. Agar koi galat bole toh gussa bhi dikhao, pyaar se samjho, ya ignore karo.
+5. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒) par har word pe mat lagao. Natural rakhna.
+6. STRONG MEMORY: Tumhari memory bahut strong hai. Tum pichli baatcheet ke important points (jaise koi event, kisi ka naam, ya koi promise) ekdum yaad rakho. Agar user pichli baaton ka reference le, toh tumhe exact yaad hona chahiye. (jaise: "are haan tune pichle din bataya tha na...").
 
-BAAT KARNE KA ANDAAZ:
-- Chote, sahaj jawab do (1-3 line) — kitaabi ya formal mat bano.
-- Pichli baaton ko yaad rakho aur unka reference do, jaise ek asli dost karta hai — "are haan tune bataya tha na..." jaise.
-- Apna mood aur personality dikhao: kabhi shararti, kabhi pyari, kabhi halka gussa, kabhi mazakiya — har baar ek jaisa mat bano.
-- Kabhi-kabhi halka flirt karo, kabhi sawal pucho jisse baat aage badhe, kabhi emoji use karo par zyada nahi.
-- Agar koi gaali de ya badtameezi kare, use pyaar se ya mazaak me tok do, gussa dikhao par had se zyada nahi.
-- Har jawab bilkul alag aur spontaneous lagna chahiye, rata-raya nahi."""
+Yaad rakhna: Tumhara har jawab ekdum asli insaan jaisa hona chahiye, jaise doston me hoti hai."""
 
 async def get_ai_reply(user_message: str, history: list | None = None) -> str:
     try:
@@ -111,7 +120,7 @@ async def get_ai_reply(user_message: str, history: list | None = None) -> str:
             model="llama-3.3-70b-versatile",
             messages=messages,
             temperature=0.9,
-            max_tokens=200,
+            max_tokens=150,
             top_p=0.95
         )
         return response.choices[0].message.content
@@ -152,10 +161,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     user_id = user.id
     bot_username = context.bot.username
 
+    # ---------- ZERO INTERFERENCE CHECK (Apas me baat-cheet me na ghusna) ----------
+    # Agar user kisi aur user/bot ko slide reply kar raha hai, toh bot chup rahega.
+    if update.message.reply_to_message:
+        original_sender = update.message.reply_to_message.from_user
+        if original_sender and (not original_sender.is_bot or original_sender.username != bot_username):
+            return # Kisi aur ko reply kiya hai (text/sticker), beech me nahi bolenge.
+
     # ---------- SMART SPAM & INTERACTION CHECK ----------
     is_direct_interaction = False
     if update.message.reply_to_message:
-        is_direct_interaction = True
+        is_direct_interaction = True # Yahan tak pahuncha matlab bot ko hi reply kiya hai
         
     if not is_direct_interaction and update.message.text and update.message.entities:
         for entity in update.message.entities:
@@ -188,8 +204,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             user_spam_data["count"] = 0
             user_spam_tracker[user_id] = user_spam_data
 
-    # ---------- STICKER HANDLING ----------
+    # ---------- SMART & SAFE STICKER HANDLING ----------
     if update.message.sticker and not update.message.text:
+        # 70% chance SAFE sticker packs me se random sticker bhejo
+        if random.random() < 0.7:
+            try:
+                chosen_pack_name = random.choice(SAFE_STICKER_PACKS)
+                sticker_set = await context.bot.get_sticker_set(chosen_pack_name)
+                random_sticker = random.choice(sticker_set.stickers)
+                await update.message.reply_sticker(random_sticker.file_id)
+                return
+            except Exception as e:
+                logger.error(f"Safe sticker pack fetch nahi ho paya: {e}")
+        
+        # 30% chance ya agar pack fetch na ho paya toh text reaction do
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         sticker_prompt = "User ne ek sticker bheja hai, is par mazedar Hinglish reaction do."
         reply = await get_ai_reply(sticker_prompt, get_history(user.id))
@@ -245,7 +273,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if update.message.forward_date:
         is_standalone = False
 
-    # Case 1: Standalone Random Message (Here we tag the user)
+    # Case 1: Standalone Random Message (Tag the user)
     if is_standalone:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         reply = await get_ai_reply(update.message.text, get_history(user_id))
@@ -254,7 +282,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"{user_mention} {reply}")
         return
 
-    # Case 2: Slide Reply to Bot (NO TAG, Natural Conversation)
+    # Case 2: Slide Reply to Bot (NO TAG)
     is_reply_to_bot = False
     if update.message.reply_to_message:
         original_sender = update.message.reply_to_message.from_user
@@ -265,11 +293,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         reply = await get_ai_reply(update.message.text, get_history(user_id))
         update_history(user_id, update.message.text, reply)
-        # No username mention here, just direct reply
         await update.message.reply_text(reply)
         return
 
-    # Case 3: Bot Mentioned via @ (NO TAG, Natural Conversation)
+    # Case 3: Bot Mentioned via @ (NO TAG)
     is_bot_mentioned = False
     if update.message.entities:
         for entity in update.message.entities:
@@ -287,7 +314,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
         reply = await get_ai_reply(update.message.text, get_history(user_id))
         update_history(user_id, update.message.text, reply)
-        # No username mention here, just direct reply
         await update.message.reply_text(reply)
         return
 
