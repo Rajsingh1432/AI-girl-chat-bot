@@ -34,9 +34,6 @@ if not BOT_TOKEN or not GROQ_API_KEYS:
 
 clients = [Groq(api_key=key) for key in GROQ_API_KEYS]
 
-def get_client():
-    return random.choice(clients)
-
 # ---------- User warning counter ----------
 user_warning_count = {}
 
@@ -105,7 +102,6 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         start_time = time.perf_counter()
         
         try:
-            # Ek chhota sa test request bhej rahe hain
             response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=[{"role": "user", "content": "Say OK"}],
@@ -150,7 +146,6 @@ async def get_ai_reply(user_message: str, history: list | None = None) -> str:
 
     for i in indices:
         try:
-            # Try to get response from current client
             response = clients[i].chat.completions.create(
                 model="llama-3.3-70b-versatile",
                 messages=messages,
@@ -167,7 +162,6 @@ async def get_ai_reply(user_message: str, history: list | None = None) -> str:
                 logger.warning(f"Server {i+1} pe limit full hai. Next server try kar rahe hain...")
                 continue
             else:
-                # Agar koi aur error ho (jaise network down), toh break
                 logger.error(f"AI Error on Server {i+1}: {e}")
                 break
 
@@ -353,10 +347,19 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 # ---------- MAIN ----------
 async def main() -> None:
-    application = Application.builder().token(BOT_TOKEN).build()
+    # Timeout fix applied here for Render free tier
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .read_timeout(30)
+        .write_timeout(30)
+        .connect_timeout(30)
+        .pool_timeout(30)
+        .build()
+    )
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("stats", stats_command)) # Stats command add kiya
+    application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
 
