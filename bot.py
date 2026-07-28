@@ -88,7 +88,7 @@ SAFE_STICKER_PACKS = ["Sigma", "Cats", "Monkeys", "Peach", "Animals",
                       "HonestStickers", "cute", "Memenny", "Dobby"]
 
 # NAYA RESIZED IMAGE LINK (1280px - HD Quality, Fast Loading)
-WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz/image.png"
+WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
 
 def escape_md_v2(text: str) -> str:
