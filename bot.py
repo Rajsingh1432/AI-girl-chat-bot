@@ -150,9 +150,14 @@ def has_telegram_link(text: str) -> bool:
 
 # ---------- Message Handler ----------
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_user and update.effective_user.is_bot:
+    # --- 1. MASTER CRASH PREVENTION ---
+    if not update.message or not update.effective_user or not update.effective_chat:
+        return
+        
+    if update.effective_user.is_bot:
         return
 
+    # Agar message me text na ho, aur sticker bhi na ho, toh chup raho (photos/videos etc.)
     if not update.message.text and not update.message.sticker:
         return
 
@@ -160,10 +165,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     chat = update.effective_chat
     user_id = user.id
     bot_username = context.bot.username
+    message_text = update.message.text or ""  # Safe text extraction
 
     # ---------- ZERO INTERFERENCE CHECK (Apas me baat-cheet me na ghusna) ----------
     if update.message.reply_to_message:
         original_sender = update.message.reply_to_message.from_user
+        # Agar original sender exist karta hai aur wo bot nahi hai, toh chup raho
         if original_sender and (not original_sender.is_bot or original_sender.username != bot_username):
             return
 
@@ -172,7 +179,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if update.message.reply_to_message:
         is_direct_interaction = True
         
-    if not is_direct_interaction and update.message.text and update.message.entities:
+    if not is_direct_interaction and message_text and update.message.entities:
         for entity in update.message.entities:
             if entity.type in ["mention", "text_mention"]:
                 is_direct_interaction = True
@@ -209,9 +216,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             try:
                 chosen_pack_name = random.choice(SAFE_STICKER_PACKS)
                 sticker_set = await context.bot.get_sticker_set(chosen_pack_name)
-                random_sticker = random.choice(sticker_set.stickers)
-                await update.message.reply_sticker(random_sticker.file_id)
-                return
+                if sticker_set and sticker_set.stickers:
+                    random_sticker = random.choice(sticker_set.stickers)
+                    await update.message.reply_sticker(random_sticker.file_id)
+                    return
             except Exception as e:
                 logger.error(f"Safe sticker pack fetch nahi ho paya: {e}")
         
@@ -223,6 +231,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"{user_mention} {reply}")
         return
 
+    # Agar text nahi hai (sticker wala case upar handle ho gaya), toh yahi ruko
     if not update.message.text:
         return
 
@@ -273,8 +282,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Case 1: Standalone Random Message (Tag the user)
     if is_standalone:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        reply = await get_ai_reply(update.message.text, get_history(user_id))
-        update_history(user_id, update.message.text, reply)
+        reply = await get_ai_reply(message_text, get_history(user_id))
+        update_history(user_id, message_text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         await update.message.reply_text(f"{user_mention} {reply}")
         return
@@ -288,8 +297,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if is_reply_to_bot:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        reply = await get_ai_reply(update.message.text, get_history(user_id))
-        update_history(user_id, update.message.text, reply)
+        reply = await get_ai_reply(message_text, get_history(user_id))
+        update_history(user_id, message_text, reply)
         await update.message.reply_text(reply)
         return
 
@@ -298,7 +307,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if update.message.entities:
         for entity in update.message.entities:
             if entity.type == "mention":
-                mentioned_text = update.message.text[entity.offset:entity.offset + entity.length]
+                mentioned_text = message_text[entity.offset:entity.offset + entity.length]
                 if mentioned_text.lower() == f"@{bot_username.lower()}":
                     is_bot_mentioned = True
                     break
@@ -309,19 +318,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     if is_bot_mentioned:
         await context.bot.send_chat_action(chat_id=chat.id, action="typing")
-        reply = await get_ai_reply(update.message.text, get_history(user_id))
-        update_history(user_id, update.message.text, reply)
+        reply = await get_ai_reply(message_text, get_history(user_id))
+        update_history(user_id, message_text, reply)
         await update.message.reply_text(reply)
         return
 
-    logger.debug(f"Ignored message: {update.message.text[:50]}")
+    logger.debug(f"Ignored message: {message_text[:50]}")
+
+# ---------- Global Error Handler ----------
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Ye function kisi bhi error ko silently log karega, taaki bot crash/se Silent na ho."""
+    logger.error("Exception while handling an update:", exc_info=context.error)
 
 # ---------- MAIN ----------
 async def main() -> None:
+    # Build Application
     application = Application.builder().token(BOT_TOKEN).build()
 
+    # Add handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
+    
+    # Register the global error handler
+    application.add_error_handler(error_handler)
 
     port = int(os.environ.get("PORT", 8000))
     webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
