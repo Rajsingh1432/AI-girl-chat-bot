@@ -34,13 +34,6 @@ clients = [Groq(api_key=key) for key in GROQ_API_KEYS]
 user_warning_count = {}
 
 # ---------- ANTI-FLOOD PROTECTION ----------
-# Sticker double count hota hai, text single.
-# THRESHOLD=6 ka matlab:
-#   - 5 text in 4 sec → 5 < 6 → SAFE (fast typer)
-#   - 6 text in 4 sec → 6 >= 6 → FLOOD (real spam)
-#   - 3 sticker in 4 sec → 6 >= 6 → FLOOD (3rd pe catch!)
-#   - 2 sticker in 4 sec → 4 < 6 → SAFE (normal)
-#   - 2 sticker + 1 text → 5 < 6 → SAFE
 user_flood_data = {}
 FLOOD_WINDOW = 4
 FLOOD_THRESHOLD = 6
@@ -49,14 +42,9 @@ LAST_CLEANUP = 0.0
 
 
 def check_flood(user_id: int, is_sticker: bool = False) -> str:
-    """
-    Per-user flood check. Stickers count double.
-    Returns: "ok" | "flood" | "cooldown"
-    """
     global LAST_CLEANUP
     now = time.time()
 
-    # Har 10 min me purane users clean karo
     if now - LAST_CLEANUP > 600:
         expired = [uid for uid, d in user_flood_data.items()
                    if d["cd"] > 0 and now >= d["cd"] and not d["ts"]]
@@ -66,29 +54,23 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
 
     data = user_flood_data.get(user_id)
 
-    # First time → ok
     if data is None:
         user_flood_data[user_id] = {"ts": [now], "cd": 0.0}
         return "ok"
 
-    # Active cooldown → silent ignore
     if now < data["cd"]:
         return "cooldown"
 
-    # Cooldown expired → fresh start
     if data["cd"] > 0.0:
         data["cd"] = 0.0
         data["ts"] = []
 
-    # Add timestamp (sticker = double entry)
     data["ts"].append(now)
     if is_sticker:
         data["ts"].append(now)
 
-    # Purane timestamps hatao
     data["ts"] = [t for t in data["ts"] if now - t < FLOOD_WINDOW]
 
-    # Threshold check
     if len(data["ts"]) >= FLOOD_THRESHOLD:
         data["cd"] = now + FLOOD_COOLDOWN
         data["ts"] = []
@@ -105,12 +87,16 @@ MAX_HISTORY_MESSAGES = 20
 SAFE_STICKER_PACKS = ["Sigma", "Cats", "Monkeys", "Peach", "Animals",
                       "HonestStickers", "cute", "Memenny", "Dobby"]
 
+# ImgBB Direct Image Link (Page link me 'i.' add kiya hai)
+WELCOME_IMAGE_URL = "https://i.ibb.co/bgPf6fw2/image.png"
+
 
 def escape_md_v2(text: str) -> str:
     specials = r'_*[]()~`>#+-=|{}.!'
     return "".join(f"\\{ch}" if ch in specials else ch for ch in text)
 
 
+# ---------- /start Command (FAST IMAGE VIA URL) ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         user = update.effective_user
@@ -141,18 +127,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        image_path = os.path.join(os.path.dirname(__file__), "welcome.png")
-        try:
-            with open(image_path, "rb") as photo_file:
-                await update.message.reply_photo(
-                    photo=photo_file, caption=welcome_text,
-                    parse_mode="MarkdownV2", reply_markup=reply_markup)
-        except FileNotFoundError:
-            logger.warning("welcome.png not found, sending text-only.")
-            await update.message.reply_text(
-                welcome_text, parse_mode="MarkdownV2", reply_markup=reply_markup)
+        # URL se directly bhej rahe hain (Render pe 0% timeout)
+        await update.message.reply_photo(
+            photo=WELCOME_IMAGE_URL,
+            caption=welcome_text,
+            parse_mode="MarkdownV2",
+            reply_markup=reply_markup
+        )
     except Exception as e:
         logger.error(f"start error: {e}")
+        # Agar image URL fail bhi ho jaye toh bot crash nahi hoga, text bhej dega
+        try:
+            await update.message.reply_text(
+                "🌟 Welcome! Bot me aapka swagat hai! Neeche buttons check karo 👇",
+                reply_markup=reply_markup
+            )
+        except Exception:
+            pass
 
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -261,7 +252,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 
 async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # --- Basic guards ---
     if not update.message or not update.effective_user or not update.effective_chat:
         return
     if update.effective_user.is_bot:
@@ -274,26 +264,15 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = user.id
     is_sticker = bool(update.message.sticker and not update.message.text)
 
-    # ================================================================
-    # ANTI-FLOOD — SABSE PELE, ZERO INTERFERENCE SE PEHLE
-    # Koi bhi message type (sticker/text/reply/standalone) —
-    # sab pe yeh check lagega. Koi bypass nahi hoga.
-    # ================================================================
+    # ========== ANTI-FLOOD (SABSE PELE) ==========
     flood_status = check_flood(user_id, is_sticker=is_sticker)
 
     if flood_status == "cooldown":
-        # Silent ignore — baaki users pe ZERO effect
         return
 
     if flood_status == "flood":
-        # Warning bhejo + cooldown start
-        await safe_reply_text(
-            update,
-            "Ruko ruko baby! 😤 Itni jaldi kya hai? 2 minute baad aana!"
-        )
+        await safe_reply_text(update, "Ruko ruko baby! 😤 Itni jaldi kya hai? 2 minute baad aana!")
         return
-
-    # flood_status == "ok" → aage badho
 
     # ========== ZERO INTERFERENCE ==========
     bot_username = context.bot.username
@@ -311,8 +290,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 chosen_pack_name = random.choice(SAFE_STICKER_PACKS)
                 sticker_set = await context.bot.get_sticker_set(chosen_pack_name)
                 if sticker_set and sticker_set.stickers:
-                    await safe_reply_sticker(
-                        update, random.choice(sticker_set.stickers).file_id)
+                    await safe_reply_sticker(update, random.choice(sticker_set.stickers).file_id)
                     return
         except Exception as e:
             logger.warning(f"sticker pack fail: {e}")
@@ -358,8 +336,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.warning(f"bio check fail {user_id}: {e}")
 
     # ========== REPLY LOGIC ==========
-
-    # Standalone?
     is_standalone = True
     if update.message.reply_to_message:
         is_standalone = False
@@ -379,7 +355,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, f"{user_mention} {reply}")
         return
 
-    # Reply to bot?
     is_reply_to_bot = False
     if update.message.reply_to_message:
         orig = update.message.reply_to_message.from_user
@@ -393,7 +368,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, reply)
         return
 
-    # Bot mentioned?
     is_bot_mentioned = False
     if update.message.entities:
         for entity in update.message.entities:
