@@ -1,11 +1,23 @@
 services:
   - type: web
-    name: ai-girl-bot
-    runtime: docker   # Render will build and run the Dockerfile itself
-    dockerfilePath: ./Dockerfile
-    plan: free
+    name: AI-girl-chat-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn bot:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.0
       - key: BOT_TOKEN
         sync: false
-      - key: GROQ_API_KEY
+      - key: OWNER_ID
+        sync: false
+      - key: GROQ_API_KEY_1
+        sync: false
+      - key: GROQ_API_KEY_2
+        sync: false
+      - key: GROQ_API_KEY_3
+        sync: false
+      - key: GROQ_API_KEY_4
+        sync: false
+      - key: GROQ_API_KEY_5
         sync: false
