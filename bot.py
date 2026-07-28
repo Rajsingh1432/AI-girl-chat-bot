@@ -87,8 +87,8 @@ MAX_HISTORY_MESSAGES = 20
 SAFE_STICKER_PACKS = ["Sigma", "Cats", "Monkeys", "Peach", "Animals",
                       "HonestStickers", "cute", "Memenny", "Dobby"]
 
-# ImgBB Direct Image Link (Page link me 'i.' add kiya hai)
-WELCOME_IMAGE_URL = "https://i.ibb.co/bgPf6fw2/image.png"
+# NAYA RESIZED IMAGE LINK (1280px - HD Quality, Fast Loading)
+WELCOME_IMAGE_URL = "https://i.ibb.co/kgDJW4LM/image.png"
 
 
 def escape_md_v2(text: str) -> str:
@@ -96,7 +96,7 @@ def escape_md_v2(text: str) -> str:
     return "".join(f"\\{ch}" if ch in specials else ch for ch in text)
 
 
-# ---------- /start Command (FAST IMAGE VIA URL) ----------
+# ---------- /start Command ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         user = update.effective_user
@@ -127,7 +127,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        # URL se directly bhej rahe hain (Render pe 0% timeout)
+        # Direct URL se bhej rahe hain (No Render Timeout, No Fattti Hui Image)
         await update.message.reply_photo(
             photo=WELCOME_IMAGE_URL,
             caption=welcome_text,
@@ -136,7 +136,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
     except Exception as e:
         logger.error(f"start error: {e}")
-        # Agar image URL fail bhi ho jaye toh bot crash nahi hoga, text bhej dega
         try:
             await update.message.reply_text(
                 "🌟 Welcome! Bot me aapka swagat hai! Neeche buttons check karo 👇",
