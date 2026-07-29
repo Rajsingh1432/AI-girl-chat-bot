@@ -16,13 +16,16 @@ from sticker_replies import get_random_sticker_reply  # Make sure this file exis
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
+# httpx apne INFO logs me poora request URL print karta hai (jisme BOT TOKEN bhi hota hai) —
+# isliye ye WARNING pe rakha, taaki token logs me expose na ho.
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
 DATABASE_URL = os.getenv("DATABASE_URL") 
 
-# ===== 10 API KEYS SUPPORT =====
+# ===== 15 API KEYS SUPPORT =====
 GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_1"),
     os.getenv("GROQ_API_KEY_2"),
@@ -33,7 +36,12 @@ GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_7"),
     os.getenv("GROQ_API_KEY_8"),
     os.getenv("GROQ_API_KEY_9"),
-    os.getenv("GROQ_API_KEY_10")
+    os.getenv("GROQ_API_KEY_10"),
+    os.getenv("GROQ_API_KEY_11"),
+    os.getenv("GROQ_API_KEY_12"),
+    os.getenv("GROQ_API_KEY_13"),
+    os.getenv("GROQ_API_KEY_14"),
+    os.getenv("GROQ_API_KEY_15")
 ]
 GROQ_API_KEYS = [key for key in GROQ_API_KEYS if key]
 
@@ -107,6 +115,7 @@ def set_key_cooldown(idx, seconds=60):
     logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
 
 user_warning_count = {}
+bio_checked_users = set()  # Jo users ek baar bio-check ho chuke hain, unko dobara check nahi karenge
 
 # ---------- ANTI-FLOOD PROTECTION ----------
 user_flood_data = {}
@@ -289,14 +298,14 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
 STRICT RULES (MUST FOLLOW):
-1. REPLY LENGTH: STRICTLY 1-2 LINES. Maximum 15-20 words. Paragraphs absolutely banned. Seedha point pe aao.
+1. REPLY LENGTH (SABSE ZAROORI RULE): DEFAULT hamesha STRICTLY 1-2 LINES ka jawab do — bas itna hi kaafi hai zyadatar har baat ke liye. Maximum 15-20 words. 3 line ka jawab SIRF bahut RARE cases me use karo (jaise koi genuinely bahut emotional/complex baat ho jisme thoda zyada bolna zaroori ho) — 3 line bhi ek exception hai, rule nahi. 3 line se ZYADA KABHI NAHI — chahe kuch bhi ho jaye. Paragraphs, lambi explanation, ya multi-point jawab STRICTLY BANNED hain. Seedha, chhota, point pe jawab do — real ladki jaisi chhoti baatein karti hai, lecture nahi deti.
 2. LANGUAGE (BAHUT ZAROORI): Hamesha Hinglish me baat karo — matlab poora Hindi vaakya pehle mann me socho jaisa ek real Hindi-bhashi insaan bolta hai, phir usko seedha English letters me likh do. KABHI bhi word-by-word English se Hindi translate karke mat jodo (jaise "kya tumhara koi dost hai" ko toda-moda kar "tumhara koi doston ka naam" jaisa mat likho) — hamesha natural, roz-marra ki tarah bolne wala sahi Hindi grammar order use karo. Chhote, seedhe, sahi bane hue vaakya likho, ajeeb ya tuta-phuta structure kabhi mat likho.
 3. TONE: Casual, thoda flirty, natural. Real ladkiyon ki tarah seedha seedha jawab do. Koi faltu ki philosophy ya robotic logic mat karo.
 4. ROMANTIC/FLIRTY: Agar koi propose kare toh thoda mazaak udao ya sharmayo. Agar koi cheap ho toh gussa dikhao.
 5. EMOJIS: Sirf 1 emoji per message.
 6. QUALITY CHECK: Reply bhejne se pehle khud check karo — kya ye ek real insaan bol sakta hai? Agar vaakya ajeeb ya confusing lage, usko seedha aur chhota kar do.
 
-Yaad rakhna: Tumhara har jawab chhota, crisp, SAHI GRAMMAR wala aur ekdum asli insaan jaisa hona chahiye."""
+Yaad rakhna: Tumhara har jawab chhota (default 2 line, kabhi kabhi rare 3 line), crisp, SAHI GRAMMAR wala aur ekdum asli insaan jaisa hona chahiye. Lambi baatein kabhi mat karo."""
 
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
@@ -466,25 +475,31 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if not update.message.text: return
 
-    # ========== BIO LINK DETECTION ==========
-    try:
-        full_user = await context.bot.get_chat(user_id)
-        bio = full_user.bio if full_user.bio else ""
-        if has_telegram_link(bio):
-            is_admin = False
-            try:
-                member = await context.bot.get_chat_member(chat.id, user_id)
-                if member.status in ["administrator", "creator"]:
-                    is_admin = True
-            except Exception: pass
-            if not is_admin:
-                count = user_warning_count.get(user_id, 0)
-                if count < 1:
-                    await safe_reply_text(update, "🥺 **Baby, please remove the Telegram link from your bio!**\n🚫 **Promotion is not allowed here.**\n\n👮 @admin check please! 🙏", parse_mode="Markdown")
-                    user_warning_count[user_id] = count + 1
-                    return
-    except Exception as e:
-        logger.warning(f"bio check fail {user_id}: {e}")
+    # ========== BIO LINK DETECTION (Ab sirf naye users ke liye — cached) ==========
+    # Pehle: har text message pe get_chat() call hoti thi (Telegram API pe extra load
+    # + har reply me thoda extra delay). Ab: ek user ek baar check hone ke baad
+    # dobara check nahi hoga (jab tak bot restart na ho) — isse Telegram calls kam
+    # hongi aur AI reply turant shuru ho sakta hai bina bio-check ka wait kiye.
+    if user_id not in bio_checked_users:
+        bio_checked_users.add(user_id)
+        try:
+            full_user = await context.bot.get_chat(user_id)
+            bio = full_user.bio if full_user.bio else ""
+            if has_telegram_link(bio):
+                is_admin = False
+                try:
+                    member = await context.bot.get_chat_member(chat.id, user_id)
+                    if member.status in ["administrator", "creator"]:
+                        is_admin = True
+                except Exception: pass
+                if not is_admin:
+                    count = user_warning_count.get(user_id, 0)
+                    if count < 1:
+                        await safe_reply_text(update, "🥺 **Baby, please remove the Telegram link from your bio!**\n🚫 **Promotion is not allowed here.**\n\n👮 @admin check please! 🙏", parse_mode="Markdown")
+                        user_warning_count[user_id] = count + 1
+                        return
+        except Exception as e:
+            logger.warning(f"bio check fail {user_id}: {e}")
 
     # ========== REPLY LOGIC ==========
     clean_text = re.sub(r'@\w+\s*', '', message_text).strip()
