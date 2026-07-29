@@ -188,7 +188,7 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
     return "ok"
 
 conversation_memory = {}
-MAX_HISTORY_MESSAGES = 20
+MAX_HISTORY_MESSAGES = 12
 
 WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
@@ -285,14 +285,14 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         
         client = clients[idx]
         try:
-            # 👈 FIX 5: Await used here & Timeout increased to 15.0
+            # 👈 FIX 5: Await used here & timeout tuned for fast Groq LPU response
             response = await client.chat.completions.create(
                 model="llama-3.1-8b-instant",  
                 messages=messages, 
                 temperature=0.85,   
-                max_tokens=70,      
+                max_tokens=90,      
                 top_p=0.9,
-                timeout=15.0        # 👈 10.0 se badha kar 15.0 kiya
+                timeout=10.0        # 15.0 se ghata kar 10.0 kiya (jaldi next key try ho)
             )
             reply = response.choices[0].message.content
             logger.info(f"✅ Key {idx+1} se reply aaya!")
