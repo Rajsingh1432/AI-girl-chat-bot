@@ -497,13 +497,6 @@ async def handle_sticker(update: Update, context: ContextTypes.DEFAULT_TYPE):
             sticker_emoji = message.sticker.emoji or "😄"
             await message.reply_text(f"Cute sticker! {sticker_emoji} Mujhe text message karo na! 😊")
 
-# ===== BIO LINK =====
-async def handle_bio_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.callback_query:
-        return
-    if hasattr(update, 'chat_join_request'):
-        await update.approve_chat_join_request(chat_id=update.chat_join_request.chat.id)
-
 # ===== CALLBACK QUERY =====
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -519,9 +512,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(
             "ℹ️ *About Me*\n\n"
             "Main Sneha hoon — ek AI girl chatbot!\n\n"
-            "🤖 Powered by: Raj Engine 2.0 (Database)\n"
-            "💬 Language: Hinglish All Languages Smart\n\n"
-            "👤 My Honey: @its_raj_king\n\n"
+            "🤖 Powered by: Llama 3.1 (Groq)\n"
+            "💬 Language: Hinglish\n"
+            "👤 Owner: @its_raj_king\n\n"
             "Mujhe group me add karo aur chat karo!",
             parse_mode="Markdown"
         )
@@ -548,31 +541,20 @@ def main():
         handle_sticker
     ))
     
-    # Callbacks (FIXED: CallbackQueryHandler used instead of MessageHandler)
+    # Callbacks
     application.add_handler(CallbackQueryHandler(handle_callback))
     
-    # Health check for Render
+    # Render Webhook Setup
     port = int(os.environ.get("PORT", 8000))
-    
-    from starlette.applications import Starlette
-    from starlette.responses import PlainTextResponse
-    from starlette.routing import Route
-    
-    async def health(request):
-        return PlainTextResponse("OK")
-    
-    web_app = Starlette(routes=[Route("/", health)])
-    
-    # Webhook URL setup (Tumhare Render URL ke according)
     render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://ai-girl-chat-bot.onrender.com').rstrip('/')
-    webhook_path = os.environ.get('WEBHOOK_PATH', BOT_TOKEN) # Default path token rakha hai for security
+    webhook_path = os.environ.get('WEBHOOK_PATH', BOT_TOKEN)
     
+    # Start webhook (Starlette hata diya, PTB ka native webhook use kar rahe hain)
     application.run_webhook(
         listen="0.0.0.0",
         port=port,
         url_path=webhook_path,
-        webhook_url=f"{render_url}/{webhook_path}",
-        web_app=web_app
+        webhook_url=f"{render_url}/{webhook_path}"
     )
 
 if __name__ == "__main__":
