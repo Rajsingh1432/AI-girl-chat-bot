@@ -177,19 +177,26 @@ def save_user_summary(user_id: int, summary: str):
 async def generate_summary(user_id: int, history: list):
     if len(history) < 4 or not DATABASE_URL: return
     try:
-        prompt = """Is user ki pichli baatcheet ka ek bilkul choti si 2-line summary banao. Hinglish me likho."""
-        messages = [{"role": "user", "content": f"Pichli baatein: {str(history[-6:])}\n\n{prompt}"}]
-        
+        old_summary = get_user_summary(user_id)
+        prompt = f"""Neeche PURANI MEMORY di gayi hai aur user ki KUCH NAYI BAATEIN di gayi hain.
+
+PURANI MEMORY:
+{old_summary if old_summary else "(abhi tak kuch yaad nahi hai)"}
+
+NAYI BAATEIN:
+{str(history[-6:])}
+
+In dono ko milakar EK CHHOTI (max 3-4 line) UPDATED summary likho — purani important baatein (naam, kaam, pasand, special cheezein) mat bhulna, sirf nayi info add karo. Hinglish me likho. Sirf final summary do, extra explanation nahi."""
+        messages = [{"role": "user", "content": prompt}]
+
         idx, _ = get_next_available_client()
         if idx is not None:
             try:
                 # 👈 FIX 3: Await used here
                 response = await clients[idx].chat.completions.create(
                     model="llama-3.1-8b-instant", 
-                    messages=messages, temperature=0.3, max_tokens=100)
-                new_summary = response.choices[0].message.content
-                old_summary = get_user_summary(user_id)
-                final_summary = f"{old_summary}\n{new_summary}" if old_summary else new_summary
+                    messages=messages, temperature=0.3, max_tokens=120)
+                final_summary = response.choices[0].message.content
                 save_user_summary(user_id, final_summary)
             except Exception:
                 pass
@@ -298,7 +305,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
 STRICT RULES (MUST FOLLOW):
-1. REPLY LENGTH (SABSE ZAROORI RULE): DEFAULT hamesha STRICTLY 2-3 LINES ka jawab do — bas itna hi kaafi hai zyadatar har baat ke liye. Maximum 20-30 words. 4 line ka jawab SIRF bahut RARE cases me use karo (jaise koi genuinely bahut emotional/complex baat ho jisme thoda zyada bolna zaroori ho) — 4 line bhi ek exception hai, rule nahi. 4 line se ZYADA KABHI NAHI — chahe kuch bhi ho jaye. Paragraphs, lambi explanation, ya multi-point jawab STRICTLY BANNED hain. Seedha, chhota, point pe jawab do — real ladki jaisi chhoti baatein karti hai, lecture nahi deti.
+1. REPLY LENGTH (SABSE ZAROORI RULE): DEFAULT hamesha STRICTLY 1-2 LINES ka jawab do — bas itna hi kaafi hai zyadatar har baat ke liye. Maximum 15-20 words. 3 line ka jawab SIRF bahut RARE cases me use karo (jaise koi genuinely bahut emotional/complex baat ho jisme thoda zyada bolna zaroori ho) — 3 line bhi ek exception hai, rule nahi. 3 line se ZYADA KABHI NAHI — chahe kuch bhi ho jaye. Paragraphs, lambi explanation, ya multi-point jawab STRICTLY BANNED hain. Seedha, chhota, point pe jawab do — real ladki jaisi chhoti baatein karti hai, lecture nahi deti.
 2. LANGUAGE (BAHUT ZAROORI): Hamesha Hinglish me baat karo — matlab poora Hindi vaakya pehle mann me socho jaisa ek real Hindi-bhashi insaan bolta hai, phir usko seedha English letters me likh do. KABHI bhi word-by-word English se Hindi translate karke mat jodo (jaise "kya tumhara koi dost hai" ko toda-moda kar "tumhara koi doston ka naam" jaisa mat likho) — hamesha natural, roz-marra ki tarah bolne wala sahi Hindi grammar order use karo. Chhote, seedhe, sahi bane hue vaakya likho, ajeeb ya tuta-phuta structure kabhi mat likho.
 3. TONE: Casual, thoda flirty, natural. Real ladkiyon ki tarah seedha seedha jawab do. Koi faltu ki philosophy ya robotic logic mat karo.
 4. ROMANTIC/FLIRTY: Agar koi propose kare toh thoda mazaak udao ya sharmayo. Agar koi cheap ho toh gussa dikhao.
