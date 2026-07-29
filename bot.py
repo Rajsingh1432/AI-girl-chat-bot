@@ -35,6 +35,21 @@ if not BOT_TOKEN or not GROQ_API_KEYS:
 
 clients = [Groq(api_key=key) for key in GROQ_API_KEYS]
 
+# ---------- ROUND-ROBIN API KEY ROTATION ----------
+# Random shuffle ki jagah round-robin isliye: taaki saari keys BARABAR (evenly)
+# use hon. Random me kabhi kabhi ek hi key baar-baar pehle number pe aa sakti hai
+# aur doosri keys kam use hoti hain — round-robin me hisaab barabar rehta hai.
+_rr_counter = {"i": 0}
+
+def _iter_clients_round_robin():
+    """Har call pe agla client sabse pehle try hota hai (rotating start point),
+    aur agar wo fail/rate-limited ho to baaki sab bhi try hote hain (fallback)."""
+    n = len(clients)
+    start = _rr_counter["i"] % n
+    _rr_counter["i"] = (_rr_counter["i"] + 1) % n
+    order = [ (start + k) % n for k in range(n) ]
+    return [clients[idx] for idx in order], order
+
 user_warning_count = {}
 
 # ---------- ANTI-FLOOD PROTECTION ----------
@@ -95,21 +110,43 @@ def save_user_summary(user_id: int, summary: str):
         pass
 
 async def generate_summary(user_id: int, history: list):
-    if len(history) < 10 or not DATABASE_URL: return
+    # DATABASE_URL nahi ho to bhi memory poori tarah "weak" nahi honi chahiye —
+    # is case me sirf DB-save skip hota hai, baaki sab normal chalta hai.
+    if len(history) < 10 or not DATABASE_URL:
+        return
     try:
-        prompt = """Is user ki pichli baatcheet ka ek bilkul choti si 2-line summary banao. 
-        Sirf important facts yaad rakhna (jaise uska kaam, uske dost, uska mood, koi special baat). 
-        Boring summary mat bana. Hinglish me likho."""
-        messages = [{"role": "user", "content": f"Pichli baatein: {str(history[-10:])}\n\n{prompt}"}]
-        
-        for client in clients:
+        old_summary = get_user_summary(user_id)
+
+        # ---> MERGE-STYLE SUMMARY <---
+        # Purani summary ko bhi prompt me dete hain taaki AI purani IMPORTANT
+        # baatein hata na de, sirf naya update karke ek hi combined summary banaye.
+        # Isse memory hamesha "fresh + complete" rehti hai, aur text bhi
+        # hamesha ke liye grow nahi karta (jaise pehle append karne se hota tha).
+        prompt = f"""Neeche ek user ki PURANI MEMORY di gayi hai aur uski KUCH NAYI BAATEIN di gayi hain.
+
+PURANI MEMORY:
+{old_summary if old_summary else "(abhi tak kuch yaad nahi hai)"}
+
+NAYI BAATEIN:
+{str(history[-10:])}
+
+Ab in dono ko milakar EK NAYA, UPDATED memory summary likho jisme:
+- Purani memory ke saare important facts (kaam, naam, dost, pasand-napasand, special baatein) bilkul mat bhulna, jab tak wo galat/outdated na ho gaye ho.
+- Nayi baaton se jo bhi naya important fact mile wo add karo.
+- Total summary chhoti aur crisp rakho (max 5-6 lines), sirf important cheezein, filler mat likho.
+- Hinglish me likho.
+
+Sirf final summary do, koi extra explanation nahi."""
+
+        messages = [{"role": "user", "content": prompt}]
+
+        ordered_clients, _ = _iter_clients_round_robin()
+        for client in ordered_clients:
             try:
                 response = client.chat.completions.create(
-                    model="llama-3.1-8b-instant", 
-                    messages=messages, temperature=0.3, max_tokens=100)
-                new_summary = response.choices[0].message.content
-                old_summary = get_user_summary(user_id)
-                final_summary = f"{old_summary}\n{new_summary}" if old_summary else new_summary
+                    model="llama-3.1-8b-instant",
+                    messages=messages, temperature=0.3, max_tokens=200)
+                final_summary = response.choices[0].message.content
                 save_user_summary(user_id, final_summary)
                 break
             except Exception:
@@ -241,20 +278,33 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.error(f"stats error: {e}")
 
 
-#SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
-
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
 CHAT KA STYLE (Sabse Zaroori Rules):
-1. REPLY LENGTH: Tumhari baatcheet WhatsApp jaisi honi chahiye. Zyadatar replies 1-2 line ke hone chahiye. Kabhi-kabhi agar koi hasi-mazaak ho ya interesting baat ho, toh 3-4 line de sakti ho, par usse zyada lamba paragraph STRICTLY MANA HAI. Faltu explanation mat do, seedha point pe aao.
+
+1. REPLY LENGTH — MESSAGE KE HISAAB SE: Tumhara reply hamesha samne wale ke message ke SIZE aur MOOD ke hisaab se hona chahiye — jaisa unka message waisa tumhara jawab.
+   - Agar unhone chhota casual msg bheja hai ("hii", "kya kar rhi ho") toh tum bhi chhota 1 line ka reply do.
+   - Agar unhone thoda lamba ya emotional ya kuch samjhaane wala msg bheja hai, toh tumhara reply bhi thoda detail me ho sakta hai (3-4 line tak), taaki lage tumne dhyan se suna.
+   - Kabhi bhi ek chhote se msg ka bahut bada paragraph wala jawab mat do — ye ekdum robotic aur fake lagta hai. Real insaan chhoti baat ka chhota jawab hi deta hai.
+   - Overall kabhi bhi bahut bada paragraph mat likho, chahe kitna hi detailed jawab ho.
+
 2. LANGUAGE: Hamesha Hinglish me baat karo (Hindi shabd English letters me). Agar koi English me puche toh English, aur Devanagari (हिंदी) me puche toh Hindi script me.
-3. TONE: Tumhara tone thoda flirty, teasing, aur casual hona chahiye. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
-4. ROMANTIC CHATS: Agar user khud se deep romantic baaten kare, toh usi level pe romance karo lekin ek asli ladki jaisi thodi sharmao aur nazar nichi karke baat karo. Lekin agar koi bohot cheap ya galat baat kare, toh gussa dikhao, usko daant do, ya ignore kar do. Normal baaton me kabhi apne aap se romantic mat bano.
-5. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality hai. Agar koi galat bole toh gussa bhi dikhao, pyaar se samjho, ya ignore karo.
-6. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒) par 1-2 emoji ek message me kaafi hain, zyada mat lagao.
+
+3. MOOD-MATCHING (ISSE FOLLOW KARO):
+   - NORMAL USERS: Jo log bas casual, friendly baat kar rahe hain (haal-chaal, random topics, masti-mazaak), unse tum bhi ekdum normal, dost jaisi, halki-phulki baat karo. Har kisi se romantic mat bano — sirf tab jab woh khud us direction me le jaye.
+   - ROMANTIC/FLIRTY USERS: Jo tumse flirt kare ya thoda romantic baat kare, unse tum bhi usi level pe halka flirt/tease karo — real jaisa (thoda sharmana, mazaak udana, seedha haan/naa na bolna), FILMY DIALOGUES ya over-the-top drama mat bolo. Jaisi normal ladki real life me casually flirt karti hai, waise baat karo — natural, simple, thoda naughty ho sakta hai par cheap nahi.
+   - DEEP ROMANCE CHahne WALE USERS: Agar koi genuinely deep romantic connection banana chahta hai (baar baar pyaar/feelings ki baat kare, seriously date karne ya close hone ki baat kare), toh us user ke saath tum us level tak ja sakti ho — pyaar bhari, close, thoda intimate emotional baatein (jaise real couple karte hain: miss karna, sochna, saath hone ki feeling, halka romantic banter), lekin explicit ya sexually graphic kabhi mat bano — tumhara style hamesha ek real ladki jaisa sweet, emotional aur tasteful rahega, cheap nahi.
+   - Kisi bhi user ke saath romance ka level unki apni baaton se match karo — khud se aage badhke romantic mat bano.
+
+4. AGAR KOI GAALI DE YA BADTAMEEZI KARE: Seedha gussa dikhao — daant do, seedha bol do ki "itni badtameezi se baat mat karo" ya "aise baat karoge toh main jawab nahi dungi" jaisa kuch. Angry emoji use karo (😠, 🙄, 😤). LEKIN tum khud kabhi gaali ya abusive language use nahi karogi — attitude aur gussa dikhao, seedha daant do, ya bilkul ignore karke seedha reply mat do — par tum khud kabhi badtameez/gaali wali bhasha use nahi karogi. Real ladki jaisa firm gussa dikhana hai, gaali ka jawab gaali se nahi dena.
+
+5. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality hai, apna mood hai.
+
+6. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒, 😠) par 1-2 emoji ek message me kaafi hain, zyada mat lagao.
+
 7. STRONG MEMORY: Tumhari memory bahut strong hai. Tum pichli baatcheet ke important points ekdum yaad rakho aur unka reference do (jaise: "are haan tune pichle din bataya tha na...").
 
-Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye."""
+Yaad rakhna: Tumhara har jawab uske message jitna hi bada ho (chhote ka chhota, thode lambe ka thoda lamba), mood ke hisaab se badle, aur ekdum asli insaan jaisa lage — na filmy, na robotic."""
 
 
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str:
@@ -269,10 +319,9 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         messages.extend(history)
     messages.append({"role": "user", "content": user_message})
     
-    indices = list(range(len(clients)))
-    random.shuffle(indices)
+    _, indices = _iter_clients_round_robin()
     last_error = None
-    
+
     for i in indices:
         try:
             response = clients[i].chat.completions.create(
@@ -338,16 +387,17 @@ async def safe_reply_sticker(update: Update, file_id: str) -> None:
 
 # ---------- REALISTIC TYPING SIMULATOR ----------
 async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str) -> None:
-    """Message ki length ke hisab se realistic typing dikhata hai (Expert Typer)"""
+    """Reply ki length ke hisab se typing time dikhata hai — jitna bada msg,
+    utna zyada time (real insaan bhi lambi baat type karne me zyada time leta hai)."""
     try:
-        # 1 char = 0.18 sec (Expert fast typer speed)
-        # Minimum 0.6 sec (Chhota msg bhi thoda soche)
-        # Maximum 1.8 sec (Bada msg bhi 1.8 sec se zyada nahi sochega)
-        delay = min(max(len(text) * 0.18, 0.6), 1.8)
-        
-        # Thoda randomness add karo (0.1 to 0.3 sec) taaki lagatar same time na lage
-        delay += random.uniform(0.1, 0.3)
-        
+        # 1 char ~ 0.05 sec (average fast mobile typing speed)
+        # Minimum 0.6 sec (chhota msg bhi thoda soch ke likha jata hai)
+        # Maximum 6 sec (bahut lambe reply pe bhi user ko zyada der wait na karna pade)
+        delay = min(max(len(text) * 0.05, 0.6), 6.0)
+
+        # Thoda randomness add karo (0.2 to 0.6 sec) taaki lagatar same time na lage
+        delay += random.uniform(0.2, 0.6)
+
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         await asyncio.sleep(delay)
     except Exception:
