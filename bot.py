@@ -9,7 +9,7 @@ import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import RetryAfter, TimedOut
-from groq import AsyncGroq  # 👈 Changed to AsyncGroq (No more freezing)
+from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -34,18 +34,19 @@ GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_9"),
     os.getenv("GROQ_API_KEY_10")
 ]
-GROQ_API_KEYS = [key for key in GROQ_API_KEYS if key] 
+GROQ_API_KEYS = [key for key in GROQ_API_KEYS if key]
 
 if not BOT_TOKEN or not GROQ_API_KEYS:
     raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY set karna zaroori hai!")
 
-clients = [AsyncGroq(api_key=key) for key in GROQ_API_KEYS] # 👈 Async clients
+clients = [Groq(api_key=key) for key in GROQ_API_KEYS]
 
-# ===== API KEY ROTATION WITH COOLDOWN =====
+# ===== API KEY ROTATION WITH COOLDOWN (Smart Manager) =====
 _rr_index = 0
-_key_cooldowns = {}
+_key_cooldowns = {}  # key_index -> cooldown_until_timestamp
 
 def get_next_available_client():
+    """Returns (idx, wait_time). wait_time=0 means key available."""
     global _rr_index
     now = time.time()
     
@@ -58,7 +59,7 @@ def get_next_available_client():
             logger.warning(f"Key {idx+1} cooldown mein hai ({remaining}s baaki)")
             continue
         
-        return idx, 0
+        return idx, 0  # ✅ Always tuple return
     
     min_cooldown = min(_key_cooldowns.values()) if _key_cooldowns else now
     wait_time = max(0, min_cooldown - now)
@@ -78,7 +79,7 @@ FLOOD_THRESHOLD = 6
 FLOOD_COOLDOWN = 120
 LAST_CLEANUP = 0.0
 
-# ---------- MEMORY ----------
+# ---------- 100% PERMANENT MEMORY (POSTGRESQL) ----------
 user_msg_counter = {}
 
 def get_db_conn():
@@ -87,7 +88,7 @@ def get_db_conn():
 
 def init_db():
     if not DATABASE_URL:
-        logger.warning("DATABASE_URL nahi mila.")
+        logger.warning("DATABASE_URL nahi mila, PostgreSQL skip ho raha hai.")
         return
     try:
         conn = get_db_conn()
@@ -97,9 +98,9 @@ def init_db():
         conn.commit()
         c.close()
         conn.close()
-        logger.info("✅ PostgreSQL Connected!")
+        logger.info("✅ PostgreSQL Permanent Database Connected!")
     except Exception as e:
-        logger.error(f"DB error: {e}")
+        logger.error(f"DB Connection error: {e}")
 
 def get_user_summary(user_id: int) -> str:
     if not DATABASE_URL: return ""
@@ -137,9 +138,9 @@ async def generate_summary(user_id: int, history: list):
         idx, _ = get_next_available_client()
         if idx is not None:
             try:
-                response = await clients[idx].chat.completions.create(  # 👈 Await
-                    model="llama-3.3-70b-versatile", 
-                    messages=messages, temperature=0.3, max_tokens=60)
+                response = clients[idx].chat.completions.create(
+                    model="llama-3.1-8b-instant", 
+                    messages=messages, temperature=0.3, max_tokens=100)
                 new_summary = response.choices[0].message.content
                 old_summary = get_user_summary(user_id)
                 final_summary = f"{old_summary}\n{new_summary}" if old_summary else new_summary
@@ -186,6 +187,9 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
 conversation_memory = {}
 MAX_HISTORY_MESSAGES = 20
 
+SAFE_STICKER_PACKS = ["Sigma", "Cats", "Monkeys", "Peach", "Animals",
+                      "HonestStickers", "cute", "Memenny", "Dobby"]
+
 WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
 def escape_md_v2(text: str) -> str:
@@ -204,7 +208,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"💖 ɪ'ᴍ ʏᴏᴜʀ *ғᴜɴ, ғʟɪʀᴛʏ ᴀɴᴅ ғʀɪᴇɴᴅʟʏ* ᴄʜᴀᴛ ᴄᴏᴍᴘᴀɴɪᴏɴ ʙᴏᴛ\\.\n"
             f"ɪ'ʟʟ ᴋᴇᴇᴘ ʏᴏᴜʀ ᴛᴇʟᴇɢʀᴀᴍ ɢʀᴏᴜᴘ *ᴀʟɪᴠᴇ & ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ* 🎉\n\n"
             f"👉 ᴊᴜsᴛ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀɴᴅ ᴍᴀᴋᴇ ᴍᴇ ᴀᴅᴍɪɴ –\n"
-            f"ɪ'ʟʟ ʀᴇᴘʟʏ ᴛᴏ *ᴇᴠᴇʀʏ ᴍᴇssᴀɢᴇ* ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ\\! 😉\n\n"
+            f"ɪ'ʟʟ  ʀᴇᴘʟʏ ᴛᴏ *ᴇᴠᴇʀʏ ᴍᴇssᴀɢᴇ* ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ\\! 😉\n\n"
             f"⚡ ᴘᴏᴡᴇʀᴇᴅ ʙʏ *Rᴀᴊ Aɪ* – ʟɪɢʜᴛɴɪɴɢ ғᴀsᴛ & ᴄᴏᴏʟ\\!\n\n"
             f"🌿 ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ ᴏᴜʀ ᴏᴡɴᴇʀ [@its\\_raj\\_king](https://t.me/its_raj_king)\n\n"
             f"👇 ᴛᴀᴘ ᴀ ʙᴇʟʟᴏᴡ ʙᴜᴛᴛᴏɴ ᴀɴᴅ ᴜsᴇ ᴍᴇ \\!"
@@ -221,6 +225,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="MarkdownV2", reply_markup=reply_markup)
     except Exception as e:
         logger.error(f"start error: {e}")
+        try:
+            await update.message.reply_text("🌟 Welcome! Bot me aapka swagat hai! Neeche buttons check karo 👇", reply_markup=reply_markup)
+        except Exception:
+            pass
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -231,7 +239,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             name = f"Server {i+1}"
             t = time.perf_counter()
             try:
-                await client.chat.completions.create(  # 👈 Await
+                client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": "Say OK"}],
                     max_tokens=2, temperature=0)
@@ -246,9 +254,9 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
 STRICT RULES (MUST FOLLOW):
-1. REPLY LENGTH: STRICTLY 1-2 LINES. Maximum 15-20 words. Paragraphs absolutely banned.
-2. LANGUAGE: Hamesha Hinglish me baat karo.
-3. TONE: Casual, thoda flirty, natural. Koi faltu ki philosophy ya robotic logic mat karo.
+1. REPLY LENGTH: STRICTLY 1-2 LINES. Maximum 15-20 words. Paragraphs absolutely banned. Seedha point pe aao.
+2. LANGUAGE: Hamesha Hinglish me baat karo (Hindi in English letters). 
+3. TONE: Casual, thoda flirty, natural. Real ladkiyon ki tarah seedha seedha jawab do. Koi faltu ki philosophy ya robotic logic mat karo.
 4. ROMANTIC/FLIRTY: Agar koi propose kare toh thoda mazaak udao ya sharmayo. Agar koi cheap ho toh gussa dikhao.
 5. EMOJIS: Sirf 1 emoji per message.
 
@@ -276,13 +284,13 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         
         client = clients[idx]
         try:
-            response = await client.chat.completions.create(  # 👈 Await
+            response = client.chat.completions.create(
                 model="llama-3.3-70b-versatile",  
                 messages=messages, 
                 temperature=0.85,   
                 max_tokens=70,      
                 top_p=0.9,
-                timeout=15.0        # 👈 Kept 15s so it doesn't freeze
+                timeout=10.0        
             )
             reply = response.choices[0].message.content
             logger.info(f"✅ Key {idx+1} se reply aaya!")
@@ -353,13 +361,13 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_user.is_bot: return
     if not update.message.text and not update.message.sticker: return
 
-    # ===== IGNORE OLD MESSAGES (If bot wakes up after 60s, it won't reply to old msgs) =====
+    # ===== IGNORE OLD MESSAGES (Magic Logic) =====
     msg_date = update.message.date
     if msg_date:
         msg_time = msg_date.timestamp()
         current_time = datetime.now(msg_date.tzinfo).timestamp()
-        if current_time - msg_time > 15:  # 👈 Agar message 15 second purana hai, toh ignore karo
-            logger.info("Ignored an old message.")
+        if current_time - msg_time > 15:  # 👈 Agar message 15 sec purana hai, toh ignore karo
+            logger.info("Ignored an old message to prevent spam.")
             return
 
     user = update.effective_user
@@ -395,13 +403,25 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if orig and orig.is_bot and orig.username == bot_username:
             is_reply_to_bot = True
 
+    # ========== STICKER HANDLING ==========
     if is_sticker:
+        try:
+            if random.random() < 0.7:
+                chosen_pack_name = random.choice(SAFE_STICKER_PACKS)
+                sticker_set = await context.bot.get_sticker_set(chosen_pack_name)
+                if sticker_set and sticker_set.stickers:
+                    await update.message.reply_sticker(random.choice(sticker_set.stickers).file_id)
+                    return
+        except Exception as e:
+            logger.warning(f"sticker pack fail: {e}")
+
         try:
             sticker_prompt = "User ne ek sticker bheja hai, is par mazedar Hinglish reaction do."
             reply = await get_ai_reply(sticker_prompt, user_id, get_history(user.id))
             update_history(user.id, sticker_prompt, reply)
             user_mention = f"@{user.username}" if user.username else user.first_name
             final_reply = f"{user_mention} {reply}"
+            
             await realistic_typing_delay(context, chat.id, final_reply)
             await safe_reply_text(update, final_reply)
         except Exception as e:
@@ -410,6 +430,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if not update.message.text: return
 
+    # ========== BIO LINK DETECTION ==========
     try:
         full_user = await context.bot.get_chat(user_id)
         bio = full_user.bio if full_user.bio else ""
@@ -429,6 +450,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except Exception as e:
         logger.warning(f"bio check fail {user_id}: {e}")
 
+    # ========== REPLY LOGIC ==========
     clean_text = re.sub(r'@\w+\s*', '', message_text).strip()
     if not clean_text: clean_text = "Hi"
 
@@ -442,6 +464,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         update_history(user_id, clean_text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         final_reply = f"{user_mention} {reply}"
+        
         await realistic_typing_delay(context, chat.id, final_reply)
         await safe_reply_text(update, final_reply)
         return
@@ -449,6 +472,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if is_reply_to_bot:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
         update_history(user_id, clean_text, reply)
+        
         await realistic_typing_delay(context, chat.id, reply)
         await safe_reply_text(update, reply)
         return
@@ -456,6 +480,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if is_bot_mentioned:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
         update_history(user_id, clean_text, reply)
+        
         await realistic_typing_delay(context, chat.id, reply)
         await safe_reply_text(update, reply)
         return
@@ -470,8 +495,9 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     else:
         logger.error("Unhandled:", exc_info=error)
 
-def main():
+async def main() -> None:
     init_db()
+    
     application = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -489,10 +515,36 @@ def main():
 
     if webhook_url:
         logger.info(f"WEBHOOK mode -> {webhook_url}/webhook")
-        application.run_webhook(listen="0.0.0.0", port=port, url_path="webhook", webhook_url=f"{webhook_url}/webhook")
+        from starlette.applications import Starlette
+        from starlette.responses import PlainTextResponse
+        from starlette.requests import Request
+        from starlette.routing import Route
+        import uvicorn
+
+        async def health(r: Request) -> PlainTextResponse:
+            return PlainTextResponse("Bot is alive!")
+
+        async def tg_webhook(r: Request) -> PlainTextResponse:
+            data = await r.json()
+            await application.update_queue.put(Update.de_json(data, application.bot))
+            return PlainTextResponse("OK")
+
+        app = Starlette(routes=[
+            Route("/", health, methods=["GET"]),
+            Route("/webhook", tg_webhook, methods=["POST"]),
+        ])
+        await application.initialize()
+        await application.start()
+        await application.bot.set_webhook(url=f"{webhook_url}/webhook")
+        await uvicorn.Server(
+            uvicorn.Config(app=app, host="0.0.0.0", port=port, log_level="info")
+        ).serve()
     else:
-        logger.info("POLLING mode (Local testing)")
-        application.run_polling(drop_pending_updates=True)
+        logger.info("POLLING mode")
+        await application.initialize()
+        await application.start()
+        await application.updater.start_polling(drop_pending_updates=True)
+        await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
