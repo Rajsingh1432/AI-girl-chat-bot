@@ -150,7 +150,7 @@ async def generate_summary(user_id: int, history: list):
     except Exception:
         pass
 
-def check_flood(user_id: int, is_sticker: bool = False) -> str:
+def check_flood(user_id: int) -> str:
     global LAST_CLEANUP
     now = time.time()
     if now - LAST_CLEANUP > 600:
@@ -170,8 +170,6 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
         data["ts"] = []
 
     data["ts"].append(now)
-    if is_sticker:
-        data["ts"].append(now)
 
     data["ts"] = [t for t in data["ts"] if now - t < FLOOD_WINDOW]
 
@@ -186,9 +184,6 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
 
 conversation_memory = {}
 MAX_HISTORY_MESSAGES = 20
-
-SAFE_STICKER_PACKS = ["Sigma", "Cats", "Monkeys", "Peach", "Animals",
-                      "HonestStickers", "cute", "Memenny", "Dobby"]
 
 WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
@@ -359,7 +354,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user or not update.effective_chat: return
     if update.effective_user.is_bot: return
-    if not update.message.text and not update.message.sticker: return
+    # 👈 Stickers ka reply band kar diya, sirf text messages aage jayenge
+    if not update.message.text: return
 
     # ===== IGNORE OLD MESSAGES (Magic Logic) =====
     msg_date = update.message.date
@@ -373,16 +369,15 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user = update.effective_user
     chat = update.effective_chat
     user_id = user.id
-    is_sticker = bool(update.message.sticker and not update.message.text)
 
-    flood_status = check_flood(user_id, is_sticker=is_sticker)
+    flood_status = check_flood(user_id)
     if flood_status == "cooldown": return
     if flood_status == "flood":
         await safe_reply_text(update, "Ruko ruko baby! 😤 Itni jaldi kya hai? 2 minute baad aana!")
         return
 
     bot_username = context.bot.username
-    message_text = update.message.text or ""
+    message_text = update.message.text
 
     is_bot_mentioned = False
     if update.message.entities:
@@ -402,33 +397,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         orig = update.message.reply_to_message.from_user
         if orig and orig.is_bot and orig.username == bot_username:
             is_reply_to_bot = True
-
-    # ========== STICKER HANDLING ==========
-    if is_sticker:
-        try:
-            if random.random() < 0.7:
-                chosen_pack_name = random.choice(SAFE_STICKER_PACKS)
-                sticker_set = await context.bot.get_sticker_set(chosen_pack_name)
-                if sticker_set and sticker_set.stickers:
-                    await update.message.reply_sticker(random.choice(sticker_set.stickers).file_id)
-                    return
-        except Exception as e:
-            logger.warning(f"sticker pack fail: {e}")
-
-        try:
-            sticker_prompt = "User ne ek sticker bheja hai, is par mazedar Hinglish reaction do."
-            reply = await get_ai_reply(sticker_prompt, user_id, get_history(user.id))
-            update_history(user.id, sticker_prompt, reply)
-            user_mention = f"@{user.username}" if user.username else user.first_name
-            final_reply = f"{user_mention} {reply}"
-            
-            await realistic_typing_delay(context, chat.id, final_reply)
-            await safe_reply_text(update, final_reply)
-        except Exception as e:
-            logger.error(f"sticker AI fail: {e}")
-        return
-
-    if not update.message.text: return
 
     # ========== BIO LINK DETECTION ==========
     try:
@@ -507,7 +475,8 @@ async def main() -> None:
     )
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
-    application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
+    # 👈 Stickers ka filter hata diya, sirf TEXT messages handle honge
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
 
     port = int(os.environ.get("PORT", 8000))
