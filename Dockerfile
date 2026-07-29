@@ -1,24 +1,23 @@
-# Python 3.11 Slim Image (हल्की और तेज़)
+# Python 3.11 Slim Image (Light and Fast)
 FROM python:3.11-slim
 
 # Work Directory
 WORKDIR /app
 
-# Environment Variables (Render पर Set कर देंगे, यहाँ डिफॉल्ट)
+# Environment Variables
 ENV PYTHONUNBUFFERED=1
 
-# अपनी requirements.txt कॉपी करें
+# Copy requirements.txt
 COPY requirements.txt .
 
-# Python पैकेजेज़ इंस्टॉल करें
+# Install Python packages
 RUN pip install --no-cache-dir -r requirements.txt
 
-# पूरा Bot Code कॉपी करें (सिर्फ bot.py ही काफी है, लेकिन सारी .py फाइलें)
-COPY bot.py .
-COPY welcome.png .
+# 👇 YAHAN CHANGE KIYA HAI: Sabhi .py files aur welcome.png copy karne ke liye
+COPY . .
 
-# Port 8000 खोलें (Render Web Service के लिए)
+# Port 8000 expose karo (Render Web Service ke liye)
 EXPOSE 8000
 
-# Bot चलाएं
+# Bot Run karo
 CMD ["python", "bot.py"]
