@@ -241,7 +241,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             try:
                 # 👈 FIX 4: Await used here
                 await client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="llama-3.1-8b-instant",
                     messages=[{"role": "user", "content": "Say OK"}],
                     max_tokens=2, temperature=0)
                 ms = int((time.perf_counter() - t) * 1000)
@@ -287,7 +287,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         try:
             # 👈 FIX 5: Await used here & Timeout increased to 15.0
             response = await client.chat.completions.create(
-                model="llama-3.3-70b-versatile",  
+                model="llama-3.1-8b-instant",  
                 messages=messages, 
                 temperature=0.85,   
                 max_tokens=70,      
