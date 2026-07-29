@@ -9,9 +9,9 @@ import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import RetryAfter, TimedOut
-from groq import Groq
+from groq import AsyncGroq  # 👈 FIX 1: AsyncGroq imported
 from dotenv import load_dotenv
-from sticker_replies import get_random_sticker_reply  # 👈 NAYI FILE KA IMPORT
+from sticker_replies import get_random_sticker_reply  # Make sure this file exists on GitHub!
 
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -40,7 +40,8 @@ GROQ_API_KEYS = [key for key in GROQ_API_KEYS if key]
 if not BOT_TOKEN or not GROQ_API_KEYS:
     raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY set karna zaroori hai!")
 
-clients = [Groq(api_key=key) for key in GROQ_API_KEYS]
+# 👈 FIX 2: AsyncGroq clients
+clients = [AsyncGroq(api_key=key) for key in GROQ_API_KEYS]
 
 # ===== API KEY ROTATION WITH COOLDOWN (Smart Manager) =====
 _rr_index = 0
@@ -139,7 +140,8 @@ async def generate_summary(user_id: int, history: list):
         idx, _ = get_next_available_client()
         if idx is not None:
             try:
-                response = clients[idx].chat.completions.create(
+                # 👈 FIX 3: Await used here
+                response = await clients[idx].chat.completions.create(
                     model="llama-3.1-8b-instant", 
                     messages=messages, temperature=0.3, max_tokens=100)
                 new_summary = response.choices[0].message.content
@@ -237,7 +239,8 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             name = f"Server {i+1}"
             t = time.perf_counter()
             try:
-                client.chat.completions.create(
+                # 👈 FIX 4: Await used here
+                await client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": "Say OK"}],
                     max_tokens=2, temperature=0)
@@ -282,13 +285,14 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         
         client = clients[idx]
         try:
-            response = client.chat.completions.create(
+            # 👈 FIX 5: Await used here & Timeout increased to 15.0
+            response = await client.chat.completions.create(
                 model="llama-3.3-70b-versatile",  
                 messages=messages, 
                 temperature=0.85,   
                 max_tokens=70,      
                 top_p=0.9,
-                timeout=10.0        
+                timeout=15.0        # 👈 10.0 se badha kar 15.0 kiya
             )
             reply = response.choices[0].message.content
             logger.info(f"✅ Key {idx+1} se reply aaya!")
