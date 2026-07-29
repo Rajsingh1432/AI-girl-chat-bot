@@ -18,24 +18,29 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 
-# Render automatically yeh URL daal dega
 DATABASE_URL = os.getenv("DATABASE_URL") 
 
+# ===== 10 API KEYS SUPPORT =====
 GROQ_API_KEYS = [
     os.getenv("GROQ_API_KEY_1"),
     os.getenv("GROQ_API_KEY_2"),
     os.getenv("GROQ_API_KEY_3"),
     os.getenv("GROQ_API_KEY_4"),
-    os.getenv("GROQ_API_KEY_5")
+    os.getenv("GROQ_API_KEY_5"),
+    os.getenv("GROQ_API_KEY_6"),
+    os.getenv("GROQ_API_KEY_7"),
+    os.getenv("GROQ_API_KEY_8"),
+    os.getenv("GROQ_API_KEY_9"),
+    os.getenv("GROQ_API_KEY_10")
 ]
-GROQ_API_KEYS = [key for key in GROQ_API_KEYS if key]
+GROQ_API_KEYS = [key for key in GROQ_API_KEYS if key] # Jo empty honge wo auto skip
 
 if not BOT_TOKEN or not GROQ_API_KEYS:
-    raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY (1 se 5 me se) set karna zaroori hai!")
+    raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY set karna zaroori hai!")
 
 clients = [Groq(api_key=key) for key in GROQ_API_KEYS]
 
-# ===== API KEY ROTATION WITH COOLDOWN (5 Keys Smart Manager) =====
+# ===== API KEY ROTATION WITH COOLDOWN (Smart Manager) =====
 _rr_index = 0
 _key_cooldowns = {}  # key_index -> cooldown_until_timestamp
 
@@ -48,7 +53,6 @@ def get_next_available_client():
         idx = _rr_index
         _rr_index = (_rr_index + 1) % len(clients)
         
-        # Check if this key is in cooldown
         if idx in _key_cooldowns and _key_cooldowns[idx] > now:
             remaining = int(_key_cooldowns[idx] - now)
             logger.warning(f"Key {idx+1} cooldown mein hai ({remaining}s baaki)")
@@ -56,14 +60,12 @@ def get_next_available_client():
         
         return idx, 0  # ✅ Always tuple return
     
-    # All keys in cooldown - find the one with least remaining time
     min_cooldown = min(_key_cooldowns.values()) if _key_cooldowns else now
     wait_time = max(0, min_cooldown - now)
     logger.warning(f"Sab keys cooldown mein! Min wait: {wait_time:.1f}s")
     return None, wait_time
 
 def set_key_cooldown(idx, seconds=60):
-    """Set cooldown for a specific key"""
     _key_cooldowns[idx] = time.time() + seconds
     logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
 
@@ -130,17 +132,15 @@ async def generate_summary(user_id: int, history: list):
     if len(history) < 10 or not DATABASE_URL: return
     try:
         prompt = """Is user ki pichli baatcheet ka ek bilkul choti si 2-line summary banao. 
-        Sirf important facts yaad rakhna (jaise uska kaam, uske dost, uska mood, koi special baat). 
-        Boring summary mat bana. Hinglish me likho."""
+        Sirf important facts yaad rakhna. Boring summary mat bana. Hinglish me likho."""
         messages = [{"role": "user", "content": f"Pichli baatein: {str(history[-10:])}\n\n{prompt}"}]
         
-        # Using Smart Rotation for summary generation too
         idx, _ = get_next_available_client()
         if idx is not None:
             try:
                 response = clients[idx].chat.completions.create(
-                    model="llama-3.1-8b-instant",  # Fast & Low Token Model
-                    messages=messages, temperature=0.3, max_tokens=100)
+                    model="llama-3.3-70b-versatile",  # Smart Model for memory
+                    messages=messages, temperature=0.3, max_tokens=60)
                 new_summary = response.choices[0].message.content
                 old_summary = get_user_summary(user_id)
                 final_summary = f"{old_summary}\n{new_summary}" if old_summary else new_summary
@@ -193,7 +193,6 @@ MAX_HISTORY_MESSAGES = 20
 SAFE_STICKER_PACKS = ["Sigma", "Cats", "Monkeys", "Peach", "Animals",
                       "HonestStickers", "cute", "Memenny", "Dobby"]
 
-# ImgBB Direct Link
 WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
 
@@ -261,7 +260,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             t = time.perf_counter()
             try:
                 client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
+                    model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": "Say OK"}],
                     max_tokens=2, temperature=0)
                 ms = int((time.perf_counter() - t) * 1000)
@@ -274,18 +273,17 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.error(f"stats error: {e}")
 
 
+# ===== STRICT SYSTEM PROMPT (Short & Real Human Like) =====
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
-CHAT KA STYLE (Sabse Zaroori Rules):
-1. REPLY LENGTH: Tumhari baatcheet WhatsApp jaisi honi chahiye. Zyadatar replies 1-2 line ke hone chahiye. Kabhi-kabhi agar koi hasi-mazaak ho ya interesting baat ho, toh 1-3 line de sakti ho, par usse zyada lamba paragraph STRICTLY MANA HAI. Faltu explanation mat do, seedha point pe aao.
-2. LANGUAGE: Hamesha Hinglish me baat karo (Hindi shabd English letters me). Agar koi English me puche toh English, aur Devanagari (हिंदी) me puche toh Hindi script me.
-3. TONE: Tumhara tone thoda flirty, teasing, aur casual hona chahiye. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
-4. ROMANTIC CHATS: Agar user khud se deep romantic baaten kare, toh usi level pe romance karo lekin ek asli ladki jaisi thodi sharmao aur nazar nichi karke baat karo. Lekin agar koi bohot cheap ya galat baat kare, toh gussa dikhao, usko daant do, ya ignore kar do. Normal baaton me kabhi apne aap se romantic mat bano.
-5. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality hai. Agar koi galat bole toh gussa bhi dikhao, pyaar se samjho, ya ignore karo.
-6. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒) par 1-2 emoji ek message me kaafi hain, zyada mat lagao.
-7. STRONG MEMORY: Tumhari memory bahut strong hai. Tum pichli baatcheet ke important points ekdum yaad rakho aur unka reference do (jaise: "are haan tune pichle din bataya tha na...").
+STRICT RULES (MUST FOLLOW):
+1. REPLY LENGTH: STRICTLY 1-2 LINES. Maximum 15-20 words. Paragraphs absolutely banned. Seedha point pe aao.
+2. LANGUAGE: Hamesha Hinglish me baat karo (Hindi in English letters). 
+3. TONE: Casual, thoda flirty, natural. Real ladkiyon ki tarah seedha seedha jawab do. Koi faltu ki philosophy ya robotic logic mat karo.
+4. ROMANTIC/FLIRTY: Agar koi propose kare toh thoda mazaak udao ya sharmayo. Agar koi cheap ho toh gussa dikhao.
+5. EMOJIS: Sirf 1 emoji per message.
 
-Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye."""
+Yaad rakhna: Tumhara har jawab chhota, crisp aur ekdum asli insaan jaisa hona chahiye."""
 
 
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str:
@@ -311,12 +309,12 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         client = clients[idx]
         try:
             response = client.chat.completions.create(
-                model="llama-3.1-8b-instant",  # Fast model to save tokens
+                model="llama-3.3-70b-versatile",  # 🧠 Sabse Smart Model
                 messages=messages, 
-                temperature=0.9,
-                max_tokens=120, 
-                top_p=0.95,
-                timeout=4.0  
+                temperature=0.85,   
+                max_tokens=70,      # Strict limit for short replies
+                top_p=0.9,
+                timeout=10.0        # 10s timeout for heavy 70b model
             )
             reply = response.choices[0].message.content
             logger.info(f"✅ Key {idx+1} se reply aaya!")
@@ -383,7 +381,6 @@ async def safe_reply_sticker(update: Update, file_id: str) -> None:
 
 # ---------- REALISTIC TYPING SIMULATOR ----------
 async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str) -> None:
-    """Message ki length ke hisab se realistic typing dikhata hai (Expert Typer)"""
     try:
         delay = min(max(len(text) * 0.18, 0.6), 1.8)
         delay += random.uniform(0.1, 0.3)
@@ -423,11 +420,10 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, "Ruko ruko baby! 😤 Itni jaldi kya hai? 2 minute baad aana!")
         return
 
-    # ========== MENTION & REPLY DETECTION (FIXED) ==========
+    # ========== MENTION & REPLY DETECTION ==========
     bot_username = context.bot.username
     message_text = update.message.text or ""
 
-    # Check if bot is mentioned (@botusername)
     is_bot_mentioned = False
     if update.message.entities:
         for entity in update.message.entities:
@@ -441,7 +437,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     is_bot_mentioned = True
                     break
 
-    # Check if replied to bot
     is_reply_to_bot = False
     if update.message.reply_to_message:
         orig = update.message.reply_to_message.from_user
@@ -450,9 +445,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     # ========== STICKER HANDLING ==========
     if is_sticker:
-        # Agar group me hai aur bot mention ya reply nahi hai, toh skip karo
         if chat.type != "private" and not is_bot_mentioned and not is_reply_to_bot:
-            # Par agar standalone message hai toh reply karega
             pass 
         
         try:
@@ -508,7 +501,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.warning(f"bio check fail {user_id}: {e}")
 
     # ========== REPLY LOGIC ==========
-    # Bot ke @username ko message se hata rhe hain taaki AI confuse na ho
     clean_text = re.sub(r'@\w+\s*', '', message_text).strip()
     if not clean_text:
         clean_text = "Hi"
@@ -521,7 +513,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.message.forward_date:
         is_standalone = False
 
-    # 1. Standalone Message (Normal group msg)
     if is_standalone:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
         update_history(user_id, clean_text, reply)
@@ -532,7 +523,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, final_reply)
         return
 
-    # 2. Reply to Bot's Message
     if is_reply_to_bot:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
         update_history(user_id, clean_text, reply)
@@ -541,7 +531,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, reply)
         return
 
-    # 3. Bot is Mentioned (@botusername)
     if is_bot_mentioned:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
         update_history(user_id, clean_text, reply)
@@ -563,10 +552,8 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 def main():
-    # DATABASE START HO RAHI HAI
     init_db()
     
-    # Build application
     application = (
         Application.builder()
         .token(BOT_TOKEN)
