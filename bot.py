@@ -150,7 +150,7 @@ async def generate_summary(user_id: int, history: list):
     except Exception:
         pass
 
-def check_flood(user_id: int) -> str:
+def check_flood(user_id: int, is_sticker: bool = False) -> str:
     global LAST_CLEANUP
     now = time.time()
     if now - LAST_CLEANUP > 600:
@@ -170,6 +170,8 @@ def check_flood(user_id: int) -> str:
         data["ts"] = []
 
     data["ts"].append(now)
+    if is_sticker:
+        data["ts"].append(now)
 
     data["ts"] = [t for t in data["ts"] if now - t < FLOOD_WINDOW]
 
@@ -184,6 +186,39 @@ def check_flood(user_id: int) -> str:
 
 conversation_memory = {}
 MAX_HISTORY_MESSAGES = 20
+
+# ===== 50+ RANDOM STICKER REPLIES (No AI, No Repeat) =====
+STICKER_REPLIES = [
+    "Haha cute tha wo 😂", "Ye kya bheja tumne? 🤭", "Pagal ho kya tum? 😜",
+    "Mujhe stickers pasand nahi, text karo na 😒", "Aur bhejo na baby 😉",
+    "Ekdum mazaak chal raha hai kya? 😜", "Sticker se zyada baat karne me maza aata hai 💕",
+    "Kya point hai iska? 🙄", "Arre text me bolo na, samajh nahi aaya 😅",
+    "Mast sticker hai ye 🤩", "Hahaha, hasi aa rahi hai 🤣", "Mujhe ye pasand aaya 😊",
+    "Acha ji, sticker bomb? 💣", "Haa baba samajh gayi 😂", "Ye kya reel bhej rahi ho? 🤭",
+    "Uff itne stickers 😩", "Bas kar ab, text bolo! 😤", "Cute lag rahi ho 🥺",
+    "Thoda text me baat karo na 💬", "Mera mood thik ho gaya dekh ke 😄",
+    "Arey waah, sticker collection mast hai 🤩", "Stickers kam, baatein zyada karo 💕",
+    "Ok ok samajh gayi 😂", "Mast hai bilkul 👌", "Kya bakwas sticker hai ye 😂",
+    "Are waah, ekdum funny 🤣", "Bhai ye kya chal raha hai yahan 😂",
+    "Mujhe nahi pasand ye sticker 😒", "Kuch acha bhejo na 💕", "Hahaha ekdum 😂",
+    "Are ruk kya kar rahi ho 😂", "Ekdum sahi mein 😂", "Accha lag raha hai 😊",
+    "Nahi nahi, ye galat hai 😜", "Bas bhi kar ab 🙄", "Aur kya kya hai tumhare paas? 😉",
+    "Ekdum maza aagaya dekh ke 🤩", "Aww itna pyara 🥺", "Haha pagal insaan 😂",
+    "Thodi shanti se bhejo 😩", "Ye sticker dekhke hasi control nahi hui 🤣",
+    "Mazaak mat udao ab 😤", "Text karo na yaar 💬", "Samajh gayi tumhari baat 😂",
+    "Aur bhejo, acche lage 💕", "Bilkul perfect tha ye 😂", "Kya mazaak hai ye 😜",
+    "Tum ekdum pagal ho 🤭", "Mujhe accha nahi laga ye 😒", "Haha funny ho tum 😂"
+]
+
+_sticker_pool = []  # For unique randomization
+
+def get_unique_sticker_reply():
+    """Ensures replies don't repeat until the whole list is exhausted."""
+    global _sticker_pool
+    if not _sticker_pool or len(_sticker_pool) == 0:
+        _sticker_pool = STICKER_REPLIES.copy()
+        random.shuffle(_sticker_pool)
+    return _sticker_pool.pop()
 
 WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
@@ -257,7 +292,8 @@ STRICT RULES (MUST FOLLOW):
 
 Yaad rakhna: Tumhara har jawab chhota, crisp aur ekdum asli insaan jaisa hona chahiye."""
 
-async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str:
+# 👈 Yahan return type str | None kiya gaya hai
+async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
@@ -273,7 +309,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         idx, wait_time = get_next_available_client()
         
         if idx is None:
-            logger.warning(f"⏳ Sab keys cooldown mein! {wait_time:.1f}s wait...")
+            logger.warning(f"⏳ Sab keys cooldown mein! Bot chupchap wait kar raha hai...")
             await asyncio.sleep(max(wait_time, 5))
             continue
         
@@ -307,9 +343,11 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 set_key_cooldown(idx, seconds=15)
                 continue
                 
-    if last_error and ("429" in str(last_error) or "rate_limit" in str(last_error).lower()):
-        return "Arre yaar, meri saari chat limits full ho gayi hain abhi! 😭 1 minute ruk jao!"
-    return "Are, meri neend khul gayi! 😴 thoda sa gadbad ho gaya, fir se bolo na!"
+    # ⭐ SILENT MODE ACTIVE ⭐
+    # Agar saari keys fail ho gayi hain, toh bot koi error message nahi bhejega.
+    # Wo None return karega, jisse bot chupchap baith jayega.
+    logger.error("💀 Sab API keys fail/limit ho gayi hain! Silent mode active.")
+    return None
 
 def get_history(user_id: int) -> list:
     return conversation_memory.get(user_id, [])
@@ -354,8 +392,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_user or not update.effective_chat: return
     if update.effective_user.is_bot: return
-    # 👈 Stickers ka reply band kar diya, sirf text messages aage jayenge
-    if not update.message.text: return
+    if not update.message.text and not update.message.sticker: return
 
     # ===== IGNORE OLD MESSAGES (Magic Logic) =====
     msg_date = update.message.date
@@ -369,15 +406,16 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user = update.effective_user
     chat = update.effective_chat
     user_id = user.id
+    is_sticker = bool(update.message.sticker and not update.message.text)
 
-    flood_status = check_flood(user_id)
+    flood_status = check_flood(user_id, is_sticker=is_sticker)
     if flood_status == "cooldown": return
     if flood_status == "flood":
         await safe_reply_text(update, "Ruko ruko baby! 😤 Itni jaldi kya hai? 2 minute baad aana!")
         return
 
     bot_username = context.bot.username
-    message_text = update.message.text
+    message_text = update.message.text or ""
 
     is_bot_mentioned = False
     if update.message.entities:
@@ -397,6 +435,26 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         orig = update.message.reply_to_message.from_user
         if orig and orig.is_bot and orig.username == bot_username:
             is_reply_to_bot = True
+
+    # ========== STICKER HANDLING (Smart Strict Logic) ==========
+    if is_sticker:
+        # Check karo ki koi dusre insaan ko reply to nahi kar raha
+        is_reply_to_others = False
+        if update.message.reply_to_message:
+            orig = update.message.reply_to_message.from_user
+            # Agar reply kiya hai aur wo bot nahi hai, toh apas me baat ho rahi hai
+            if orig and (not orig.is_bot or orig.username != bot_username):
+                is_reply_to_others = True
+        
+        # Agar apas me baat nahi ho rahi, toh bot reply karega
+        if not is_reply_to_others:
+            final_reply = get_unique_sticker_reply()
+            await realistic_typing_delay(context, chat.id, final_reply)
+            await safe_reply_text(update, final_reply)
+        # Agar apas me baat ho rahi hai toh yahin return karke ignore kar dega
+        return
+
+    if not update.message.text: return
 
     # ========== BIO LINK DETECTION ==========
     try:
@@ -429,6 +487,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if is_standalone:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
+        if not reply: return  # 👈 Silent mode: Agar API fail ho, toh chupchap return
         update_history(user_id, clean_text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         final_reply = f"{user_mention} {reply}"
@@ -439,6 +498,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if is_reply_to_bot:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
+        if not reply: return  # 👈 Silent mode: Agar API fail ho, toh chupchap return
         update_history(user_id, clean_text, reply)
         
         await realistic_typing_delay(context, chat.id, reply)
@@ -447,6 +507,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if is_bot_mentioned:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
+        if not reply: return  # 👈 Silent mode: Agar API fail ho, toh chupchap return
         update_history(user_id, clean_text, reply)
         
         await realistic_typing_delay(context, chat.id, reply)
@@ -475,8 +536,7 @@ async def main() -> None:
     )
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
-    # 👈 Stickers ka filter hata diya, sirf TEXT messages handle honge
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
 
     port = int(os.environ.get("PORT", 8000))
