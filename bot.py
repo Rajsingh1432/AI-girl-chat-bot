@@ -47,25 +47,59 @@ clients = [AsyncGroq(api_key=key) for key in GROQ_API_KEYS]
 _rr_index = 0
 _key_cooldowns = {}  # key_index -> cooldown_until_timestamp
 
+# ---- PROACTIVE PER-KEY LOAD TRACKING ----
+# Har key ke liye last 60 sec ke andar kitne requests aur kitne tokens gaye
+# iska record rakhte hain, taaki agar concurrent messages ek saath aayein
+# (jaise busy group me), toh already-loaded key ko turant skip kar diya jaye
+# — 429 error aane ka wait nahi karna padega, isse saari keys ek saath
+# "surprise" me cooldown me nahi jaayengi.
+_key_usage = {i: [] for i in range(len(clients))}  # idx -> list of (timestamp, tokens_estimate)
+RPM_SAFE_LIMIT = 25       # 30 RPM se thoda kam rakha (safety buffer)
+TPM_SAFE_LIMIT = 10000    # 12000 TPM se thoda kam rakha (safety buffer)
+REQUEST_TOKEN_ESTIMATE = 600  # ek request ka rough token estimate (prompt+history+reply)
+
+def _clean_key_usage(idx, now):
+    _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
+
+def key_has_room(idx) -> bool:
+    """Check karta hai ki is key ne pichle 60 sec me apna RPM/TPM budget cross toh nahi kiya."""
+    now = time.time()
+    _clean_key_usage(idx, now)
+    entries = _key_usage[idx]
+    if len(entries) >= RPM_SAFE_LIMIT:
+        return False
+    total_tokens = sum(tok for _, tok in entries)
+    if total_tokens + REQUEST_TOKEN_ESTIMATE > TPM_SAFE_LIMIT:
+        return False
+    return True
+
+def record_key_usage(idx, tokens=REQUEST_TOKEN_ESTIMATE):
+    _key_usage[idx].append((time.time(), tokens))
+
 def get_next_available_client():
-    """Returns (idx, wait_time). wait_time=0 means key available."""
+    """Returns (idx, wait_time). wait_time=0 means key available.
+    Ab ye cooldown ke saath-saath proactive RPM/TPM load bhi check karta hai."""
     global _rr_index
     now = time.time()
-    
+
     for attempt in range(len(clients)):
         idx = _rr_index
         _rr_index = (_rr_index + 1) % len(clients)
-        
+
         if idx in _key_cooldowns and _key_cooldowns[idx] > now:
             remaining = int(_key_cooldowns[idx] - now)
             logger.warning(f"Key {idx+1} cooldown mein hai ({remaining}s baaki)")
             continue
-        
+
+        if not key_has_room(idx):
+            logger.warning(f"Key {idx+1} apna RPM/TPM budget bhar chuki hai is minute — skip.")
+            continue
+
         return idx, 0  # ✅ Always tuple return
-    
+
     min_cooldown = min(_key_cooldowns.values()) if _key_cooldowns else now
     wait_time = max(0, min_cooldown - now)
-    logger.warning(f"Sab keys cooldown mein! Min wait: {wait_time:.1f}s")
+    logger.warning(f"Sab keys busy/cooldown mein! Min wait: {wait_time:.1f}s")
     return None, wait_time
 
 def set_key_cooldown(idx, seconds=60):
@@ -188,7 +222,7 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
     return "ok"
 
 conversation_memory = {}
-MAX_HISTORY_MESSAGES = 12
+MAX_HISTORY_MESSAGES = 6
 
 WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
@@ -241,7 +275,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             try:
                 # 👈 FIX 4: Await used here
                 await client.chat.completions.create(
-                    model="llama-3.1-8b-instant",
+                    model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": "Say OK"}],
                     max_tokens=2, temperature=0)
                 ms = int((time.perf_counter() - t) * 1000)
@@ -288,14 +322,18 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         try:
             # 👈 FIX 5: Await used here & timeout tuned for fast Groq LPU response
             response = await client.chat.completions.create(
-                model="llama-3.1-8b-instant",  
+                model="llama-3.3-70b-versatile",  
                 messages=messages, 
                 temperature=0.7,   
-                max_tokens=90,      
+                max_tokens=60,      
                 top_p=0.9,
                 timeout=10.0        # 15.0 se ghata kar 10.0 kiya (jaldi next key try ho)
             )
             reply = response.choices[0].message.content
+            # Successful call ke baad is key ka usage record karo (proactive RPM/TPM tracking ke liye)
+            usage = getattr(response, "usage", None)
+            actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
+            record_key_usage(idx, actual_tokens)
             logger.info(f"✅ Key {idx+1} se reply aaya!")
             return reply
             
@@ -441,7 +479,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             except Exception: pass
             if not is_admin:
                 count = user_warning_count.get(user_id, 0)
-                if count < 3:
+                if count < 1:
                     await safe_reply_text(update, "🥺 **Baby, please remove the Telegram link from your bio!**\n🚫 **Promotion is not allowed here.**\n\n👮 @admin check please! 🙏", parse_mode="Markdown")
                     user_warning_count[user_id] = count + 1
                     return
