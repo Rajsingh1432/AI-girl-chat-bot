@@ -11,6 +11,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from telegram.error import RetryAfter, TimedOut
 from groq import Groq
 from dotenv import load_dotenv
+from sticker_replies import get_random_sticker_reply  # 👈 NAYI FILE KA IMPORT
 
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -187,39 +188,6 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
 conversation_memory = {}
 MAX_HISTORY_MESSAGES = 20
 
-# ===== 50+ RANDOM STICKER REPLIES (No AI, No Repeat) =====
-STICKER_REPLIES = [
-    "Haha cute tha wo 😂", "Ye kya bheja tumne? 🤭", "Pagal ho kya tum? 😜",
-    "Mujhe stickers pasand nahi, text karo na 😒", "Aur bhejo na baby 😉",
-    "Ekdum mazaak chal raha hai kya? 😜", "Sticker se zyada baat karne me maza aata hai 💕",
-    "Kya point hai iska? 🙄", "Arre text me bolo na, samajh nahi aaya 😅",
-    "Mast sticker hai ye 🤩", "Hahaha, hasi aa rahi hai 🤣", "Mujhe ye pasand aaya 😊",
-    "Acha ji, sticker bomb? 💣", "Haa baba samajh gayi 😂", "Ye kya reel bhej rahi ho? 🤭",
-    "Uff itne stickers 😩", "Bas kar ab, text bolo! 😤", "Cute lag rahi ho 🥺",
-    "Thoda text me baat karo na 💬", "Mera mood thik ho gaya dekh ke 😄",
-    "Arey waah, sticker collection mast hai 🤩", "Stickers kam, baatein zyada karo 💕",
-    "Ok ok samajh gayi 😂", "Mast hai bilkul 👌", "Kya bakwas sticker hai ye 😂",
-    "Are waah, ekdum funny 🤣", "Bhai ye kya chal raha hai yahan 😂",
-    "Mujhe nahi pasand ye sticker 😒", "Kuch acha bhejo na 💕", "Hahaha ekdum 😂",
-    "Are ruk kya kar rahi ho 😂", "Ekdum sahi mein 😂", "Accha lag raha hai 😊",
-    "Nahi nahi, ye galat hai 😜", "Bas bhi kar ab 🙄", "Aur kya kya hai tumhare paas? 😉",
-    "Ekdum maza aagaya dekh ke 🤩", "Aww itna pyara 🥺", "Haha pagal insaan 😂",
-    "Thodi shanti se bhejo 😩", "Ye sticker dekhke hasi control nahi hui 🤣",
-    "Mazaak mat udao ab 😤", "Text karo na yaar 💬", "Samajh gayi tumhari baat 😂",
-    "Aur bhejo, acche lage 💕", "Bilkul perfect tha ye 😂", "Kya mazaak hai ye 😜",
-    "Tum ekdum pagal ho 🤭", "Mujhe accha nahi laga ye 😒", "Haha funny ho tum 😂"
-]
-
-_sticker_pool = []  # For unique randomization
-
-def get_unique_sticker_reply():
-    """Ensures replies don't repeat until the whole list is exhausted."""
-    global _sticker_pool
-    if not _sticker_pool or len(_sticker_pool) == 0:
-        _sticker_pool = STICKER_REPLIES.copy()
-        random.shuffle(_sticker_pool)
-    return _sticker_pool.pop()
-
 WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
 def escape_md_v2(text: str) -> str:
@@ -292,7 +260,6 @@ STRICT RULES (MUST FOLLOW):
 
 Yaad rakhna: Tumhara har jawab chhota, crisp aur ekdum asli insaan jaisa hona chahiye."""
 
-# 👈 Yahan return type str | None kiya gaya hai
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
     memory_context = ""
@@ -448,7 +415,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         
         # Agar apas me baat nahi ho rahi, toh bot reply karega
         if not is_reply_to_others:
-            final_reply = get_unique_sticker_reply()
+            final_reply = get_random_sticker_reply()  # 👈 NAYI FILE SE AAYA
             await realistic_typing_delay(context, chat.id, final_reply)
             await safe_reply_text(update, final_reply)
         # Agar apas me baat ho rahi hai toh yahin return karke ignore kar dega
