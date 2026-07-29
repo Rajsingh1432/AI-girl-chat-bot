@@ -9,68 +9,51 @@ import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import RetryAfter, TimedOut
-from groq import AsyncGroq  # 👈 FIX 1: AsyncGroq imported
+from groq import AsyncGroq
 from dotenv import load_dotenv
-from sticker_replies import get_random_sticker_reply  # Make sure this file exists on GitHub!
+from sticker_replies import get_random_sticker_reply
 
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
-# httpx apne INFO logs me poora request URL print karta hai (jisme BOT TOKEN bhi hota hai) —
-# isliye ye WARNING pe rakha, taaki token logs me expose na ho.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
-
-DATABASE_URL = os.getenv("DATABASE_URL") 
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 # ===== 15 API KEYS SUPPORT =====
 GROQ_API_KEYS = [
-    os.getenv("GROQ_API_KEY_1"),
-    os.getenv("GROQ_API_KEY_2"),
-    os.getenv("GROQ_API_KEY_3"),
-    os.getenv("GROQ_API_KEY_4"),
-    os.getenv("GROQ_API_KEY_5"),
-    os.getenv("GROQ_API_KEY_6"),
-    os.getenv("GROQ_API_KEY_7"),
-    os.getenv("GROQ_API_KEY_8"),
-    os.getenv("GROQ_API_KEY_9"),
-    os.getenv("GROQ_API_KEY_10"),
-    os.getenv("GROQ_API_KEY_11"),
-    os.getenv("GROQ_API_KEY_12"),
-    os.getenv("GROQ_API_KEY_13"),
-    os.getenv("GROQ_API_KEY_14"),
-    os.getenv("GROQ_API_KEY_15")
+    os.getenv("GROQ_API_KEY_1"), os.getenv("GROQ_API_KEY_2"), os.getenv("GROQ_API_KEY_3"),
+    os.getenv("GROQ_API_KEY_4"), os.getenv("GROQ_API_KEY_5"), os.getenv("GROQ_API_KEY_6"),
+    os.getenv("GROQ_API_KEY_7"), os.getenv("GROQ_API_KEY_8"), os.getenv("GROQ_API_KEY_9"),
+    os.getenv("GROQ_API_KEY_10"), os.getenv("GROQ_API_KEY_11"), os.getenv("GROQ_API_KEY_12"),
+    os.getenv("GROQ_API_KEY_13"), os.getenv("GROQ_API_KEY_14"), os.getenv("GROQ_API_KEY_15")
 ]
 GROQ_API_KEYS = [key for key in GROQ_API_KEYS if key]
 
 if not BOT_TOKEN or not GROQ_API_KEYS:
     raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY set karna zaroori hai!")
 
-# 👈 FIX 2: AsyncGroq clients
+# AsyncGroq clients
 clients = [AsyncGroq(api_key=key) for key in GROQ_API_KEYS]
 
-# ===== API KEY ROTATION WITH COOLDOWN (Smart Manager) =====
+# ===== API KEY ROTATION WITH COOLDOWN & PER-KEY LOCK =====
 _rr_index = 0
-_key_cooldowns = {}  # key_index -> cooldown_until_timestamp
+_key_cooldowns = {}      # key_index -> cooldown_until_timestamp
+_key_locks = [asyncio.Lock() for _ in clients]   # ⭐ Per‑key Lock added
 
-# ---- PROACTIVE PER-KEY LOAD TRACKING ----
-# Har key ke liye last 60 sec ke andar kitne requests aur kitne tokens gaye
-# iska record rakhte hain, taaki agar concurrent messages ek saath aayein
-# (jaise busy group me), toh already-loaded key ko turant skip kar diya jaye
-# — 429 error aane ka wait nahi karna padega, isse saari keys ek saath
-# "surprise" me cooldown me nahi jaayengi.
+# ---- PROACTIVE PER-KEY LOAD TRACKING (safe inside lock) ----
 _key_usage = {i: [] for i in range(len(clients))}  # idx -> list of (timestamp, tokens_estimate)
-RPM_SAFE_LIMIT = 25       # 30 RPM se thoda kam rakha (safety buffer)
-TPM_SAFE_LIMIT = 10000    # 12000 TPM se thoda kam rakha (safety buffer)
-REQUEST_TOKEN_ESTIMATE = 600  # ek request ka rough token estimate (prompt+history+reply)
+RPM_SAFE_LIMIT = 20       # 30 RPM se safe buffer
+TPM_SAFE_LIMIT = 8000     # 12000 TPM se safe buffer
+REQUEST_TOKEN_ESTIMATE = 800  # ek request ka rough estimate
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
 
 def key_has_room(idx) -> bool:
-    """Check karta hai ki is key ne pichle 60 sec me apna RPM/TPM budget cross toh nahi kiya."""
+    """Check karta hai ki is key ka budget abhi available hai ya nahi."""
     now = time.time()
     _clean_key_usage(idx, now)
     entries = _key_usage[idx]
@@ -84,47 +67,23 @@ def key_has_room(idx) -> bool:
 def record_key_usage(idx, tokens=REQUEST_TOKEN_ESTIMATE):
     _key_usage[idx].append((time.time(), tokens))
 
-def get_next_available_client():
-    """Returns (idx, wait_time). wait_time=0 means key available.
-    Ab ye cooldown ke saath-saath proactive RPM/TPM load bhi check karta hai."""
-    global _rr_index
-    now = time.time()
-
-    for attempt in range(len(clients)):
-        idx = _rr_index
-        _rr_index = (_rr_index + 1) % len(clients)
-
-        if idx in _key_cooldowns and _key_cooldowns[idx] > now:
-            remaining = int(_key_cooldowns[idx] - now)
-            logger.warning(f"Key {idx+1} cooldown mein hai ({remaining}s baaki)")
-            continue
-
-        if not key_has_room(idx):
-            logger.warning(f"Key {idx+1} apna RPM/TPM budget bhar chuki hai is minute — skip.")
-            continue
-
-        return idx, 0  # ✅ Always tuple return
-
-    min_cooldown = min(_key_cooldowns.values()) if _key_cooldowns else now
-    wait_time = max(0, min_cooldown - now)
-    logger.warning(f"Sab keys busy/cooldown mein! Min wait: {wait_time:.1f}s")
-    return None, wait_time
-
 def set_key_cooldown(idx, seconds=60):
     _key_cooldowns[idx] = time.time() + seconds
     logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
 
-user_warning_count = {}
-bio_checked_users = set()  # Jo users ek baar bio-check ho chuke hain, unko dobara check nahi karenge
+# -------------- REST OF THE CODE (unchanged except get_ai_reply & generate_summary) --------------
 
-# ---------- ANTI-FLOOD PROTECTION ----------
+user_warning_count = {}
+bio_checked_users = set()
+
+# ---------- ANTI-FLOOD ----------
 user_flood_data = {}
 FLOOD_WINDOW = 4
 FLOOD_THRESHOLD = 6
 FLOOD_COOLDOWN = 120
 LAST_CLEANUP = 0.0
 
-# ---------- 100% PERMANENT MEMORY (POSTGRESQL) ----------
+# ---------- PERMANENT MEMORY (POSTGRESQL) ----------
 user_msg_counter = {}
 
 def get_db_conn():
@@ -189,10 +148,20 @@ NAYI BAATEIN:
 In dono ko milakar EK CHHOTI (max 3-4 line) UPDATED summary likho — purani important baatein (naam, kaam, pasand, special cheezein) mat bhulna, sirf nayi info add karo. Hinglish me likho. Sirf final summary do, extra explanation nahi."""
         messages = [{"role": "user", "content": prompt}]
 
-        idx, _ = get_next_available_client()
+        # For summary we keep old simple get_next_available_client (safer now because locks in main reply)
+        idx = None
+        now = time.time()
+        for attempt in range(len(clients)):
+            i = _rr_index
+            _rr_index = (_rr_index + 1) % len(clients)
+            if i in _key_cooldowns and _key_cooldowns[i] > now:
+                continue
+            if not key_has_room(i):
+                continue
+            idx = i
+            break
         if idx is not None:
             try:
-                # 👈 FIX 3: Await used here
                 response = await clients[idx].chat.completions.create(
                     model="llama-3.1-8b-instant", 
                     messages=messages, temperature=0.3, max_tokens=120)
@@ -289,7 +258,6 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             name = f"Server {i+1}"
             t = time.perf_counter()
             try:
-                # 👈 FIX 4: Await used here
                 await client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": "Say OK"}],
@@ -314,6 +282,7 @@ STRICT RULES (MUST FOLLOW):
 
 Yaad rakhna: Tumhara har jawab chhota (default 2 line, kabhi kabhi rare 3 line), crisp, SAHI GRAMMAR wala aur ekdum asli insaan jaisa hona chahiye. Lambi baatein kabhi mat karo."""
 
+# ⭐ ========== REVAMPED get_ai_reply WITH PER-KEY LOCKS ==========
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
     memory_context = ""
@@ -324,54 +293,61 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": user_message})
-    
-    last_error = None
-    for attempt in range(len(clients)):
-        idx, wait_time = get_next_available_client()
-        
-        if idx is None:
-            logger.warning(f"⏳ Sab keys cooldown mein! Bot chupchap wait kar raha hai...")
-            await asyncio.sleep(max(wait_time, 5))
+
+    global _rr_index
+    now = time.time()
+
+    for _ in range(len(clients)):
+        # Round‑robin index
+        idx = _rr_index
+        _rr_index = (_rr_index + 1) % len(clients)
+
+        # 1. Cooldown check
+        if idx in _key_cooldowns and _key_cooldowns[idx] > now:
             continue
-        
-        client = clients[idx]
-        try:
-            # 👈 FIX 5: Await used here & timeout tuned for fast Groq LPU response
-            response = await client.chat.completions.create(
-                model="llama-3.3-70b-versatile",  
-                messages=messages, 
-                temperature=0.7,   
-                max_tokens=60,      
-                top_p=0.9,
-                timeout=10.0        # 15.0 se ghata kar 10.0 kiya (jaldi next key try ho)
-            )
-            reply = response.choices[0].message.content
-            # Successful call ke baad is key ka usage record karo (proactive RPM/TPM tracking ke liye)
-            usage = getattr(response, "usage", None)
-            actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-            record_key_usage(idx, actual_tokens)
-            logger.info(f"✅ Key {idx+1} se reply aaya!")
-            return reply
-            
-        except Exception as e:
-            error_str = str(e).lower()
-            last_error = e
-            if "429" in error_str or "rate_limit" in error_str:
-                set_key_cooldown(idx, seconds=60)
-                logger.warning(f"🚫 Key {idx+1} rate limited (429)! 60s cooldown set.")
+
+        # 2. Agar lock busy hai toh skip (no waiting)
+        lock = _key_locks[idx]
+        if lock.locked():
+            continue
+
+        # 3. Lock acquire karo
+        async with lock:
+            # 4. Room check inside lock (accurate)
+            if not key_has_room(idx):
                 continue
-            elif "timeout" in error_str:
-                set_key_cooldown(idx, seconds=30)
-                logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
-                continue
-            else:
-                logger.error(f"❌ Key {idx+1} error: {e}")
-                set_key_cooldown(idx, seconds=15)
-                continue
-                
-    # ⭐ SILENT MODE ACTIVE ⭐
-    # Agar saari keys fail ho gayi hain, toh bot koi error message nahi bhejega.
-    # Wo None return karega, jisse bot chupchap baith jayega.
+
+            try:
+                response = await clients[idx].chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=60,
+                    top_p=0.9,
+                    timeout=10.0
+                )
+                reply = response.choices[0].message.content
+                # Record actual usage
+                usage = getattr(response, "usage", None)
+                actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
+                record_key_usage(idx, actual_tokens)
+                logger.info(f"✅ Key {idx+1} se reply aaya!")
+                return reply
+
+            except Exception as e:
+                error_str = str(e).lower()
+                if "429" in error_str or "rate_limit" in error_str:
+                    set_key_cooldown(idx, seconds=60)
+                    logger.warning(f"🚫 Key {idx+1} rate limited (429)! 60s cooldown set.")
+                elif "timeout" in error_str:
+                    set_key_cooldown(idx, seconds=30)
+                    logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
+                else:
+                    logger.error(f"❌ Key {idx+1} error: {e}")
+                    set_key_cooldown(idx, seconds=15)
+                # Loop continue to next key
+
+    # Sari keys fail → silent mode
     logger.error("💀 Sab API keys fail/limit ho gayi hain! Silent mode active.")
     return None
 
@@ -420,12 +396,16 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_user.is_bot: return
     if not update.message.text and not update.message.sticker: return
 
-    # ===== IGNORE OLD MESSAGES (Magic Logic) =====
+    # ===== IGNORE PRIVATE CHATS (DM) =====
+    if update.effective_chat.type not in ("group", "supergroup"):
+        return
+
+    # ===== IGNORE OLD MESSAGES =====
     msg_date = update.message.date
     if msg_date:
         msg_time = msg_date.timestamp()
         current_time = datetime.now(msg_date.tzinfo).timestamp()
-        if current_time - msg_time > 15:  # 👈 Agar message 15 sec purana hai, toh ignore karo
+        if current_time - msg_time > 15:
             logger.info("Ignored an old message to prevent spam.")
             return
 
@@ -433,6 +413,8 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     chat = update.effective_chat
     user_id = user.id
     is_sticker = bool(update.message.sticker and not update.message.text)
+
+    # ... (flood check, sticker handling, bio check, reply logic – sab waise hi)
 
     flood_status = check_flood(user_id, is_sticker=is_sticker)
     if flood_status == "cooldown": return
@@ -462,31 +444,20 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if orig and orig.is_bot and orig.username == bot_username:
             is_reply_to_bot = True
 
-    # ========== STICKER HANDLING (Smart Strict Logic) ==========
     if is_sticker:
-        # Check karo ki koi dusre insaan ko reply to nahi kar raha
         is_reply_to_others = False
         if update.message.reply_to_message:
             orig = update.message.reply_to_message.from_user
-            # Agar reply kiya hai aur wo bot nahi hai, toh apas me baat ho rahi hai
             if orig and (not orig.is_bot or orig.username != bot_username):
                 is_reply_to_others = True
-        
-        # Agar apas me baat nahi ho rahi, toh bot reply karega
         if not is_reply_to_others:
-            final_reply = get_random_sticker_reply()  # 👈 NAYI FILE SE AAYA
+            final_reply = get_random_sticker_reply()
             await realistic_typing_delay(context, chat.id, final_reply)
             await safe_reply_text(update, final_reply)
-        # Agar apas me baat ho rahi hai toh yahin return karke ignore kar dega
         return
 
     if not update.message.text: return
 
-    # ========== BIO LINK DETECTION (Ab sirf naye users ke liye — cached) ==========
-    # Pehle: har text message pe get_chat() call hoti thi (Telegram API pe extra load
-    # + har reply me thoda extra delay). Ab: ek user ek baar check hone ke baad
-    # dobara check nahi hoga (jab tak bot restart na ho) — isse Telegram calls kam
-    # hongi aur AI reply turant shuru ho sakta hai bina bio-check ka wait kiye.
     if user_id not in bio_checked_users:
         bio_checked_users.add(user_id)
         try:
@@ -508,7 +479,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         except Exception as e:
             logger.warning(f"bio check fail {user_id}: {e}")
 
-    # ========== REPLY LOGIC ==========
     clean_text = re.sub(r'@\w+\s*', '', message_text).strip()
     if not clean_text: clean_text = "Hi"
 
@@ -519,29 +489,26 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if is_standalone:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
-        if not reply: return  # 👈 Silent mode: Agar API fail ho, toh chupchap return
+        if not reply: return
         update_history(user_id, clean_text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         final_reply = f"{user_mention} {reply}"
-        
         await realistic_typing_delay(context, chat.id, final_reply)
         await safe_reply_text(update, final_reply)
         return
 
     if is_reply_to_bot:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
-        if not reply: return  # 👈 Silent mode: Agar API fail ho, toh chupchap return
+        if not reply: return
         update_history(user_id, clean_text, reply)
-        
         await realistic_typing_delay(context, chat.id, reply)
         await safe_reply_text(update, reply)
         return
 
     if is_bot_mentioned:
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
-        if not reply: return  # 👈 Silent mode: Agar API fail ho, toh chupchap return
+        if not reply: return
         update_history(user_id, clean_text, reply)
-        
         await realistic_typing_delay(context, chat.id, reply)
         await safe_reply_text(update, reply)
         return
