@@ -2,11 +2,10 @@ import os
 import logging
 import re
 import time
-import random
 import asyncio
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 from telegram.error import RetryAfter, TimedOut
 from groq import Groq
 from dotenv import load_dotenv
@@ -38,7 +37,7 @@ _rr_index = 0
 _key_cooldowns = {}  # key_index -> cooldown_until_timestamp
 
 def get_next_available_client():
-    """Returns next available client, skipping cooldown keys"""
+    """Returns (idx, wait_time). wait_time=0 means key available."""
     global _rr_index
     now = time.time()
     
@@ -52,7 +51,7 @@ def get_next_available_client():
             logger.warning(f"Key {idx+1} cooldown mein hai ({remaining}s baaki)")
             continue
         
-        return idx
+        return idx, 0  # ✅ Always tuple return
     
     # All keys in cooldown - find the one with least remaining time
     min_cooldown = min(_key_cooldowns.values()) if _key_cooldowns else now
@@ -251,7 +250,7 @@ Create a concise summary in 2-3 sentences. Focus on key facts only."""
 # ===== AI REPLY =====
 async def get_ai_reply(self, user_id, user_message):
     """Get AI response with smart API key rotation"""
-    await self.summarize_history(user_id)
+    await summarize_history(self, user_id)
     
     db_summary = get_db_summary(user_id)
     history = get_user_history(user_id, limit=MAX_HISTORY)
@@ -269,15 +268,13 @@ async def get_ai_reply(self, user_id, user_message):
     
     last_error = None
     for attempt in range(len(clients)):
-        result = get_next_available_client()
+        idx, wait_time = get_next_available_client()
         
-        if result is None:
-            wait_time = 30
-            logger.warning(f"⏳ Sab keys cooldown mein! {wait_time}s wait...")
-            await asyncio.sleep(wait_time)
+        if idx is None:
+            logger.warning(f"⏳ Sab keys cooldown mein! {wait_time:.1f}s wait...")
+            await asyncio.sleep(max(wait_time, 5))
             continue
         
-        idx = result
         client = clients[idx]
         
         try:
@@ -313,7 +310,7 @@ async def get_ai_reply(self, user_id, user_message):
     
     # All keys failed
     logger.error(f"💀 Sab API keys fail ho gayi! Last error: {last_error}")
-    return "Sorry baby, mai thoda apne honey ke sath busy hun. 1 minute ruko kar phir mai hazir ho jaungi usko bye bolke! 😔"
+    return "Sorry baby, meri saari API keys thak gayi hain. 1 minute ruk kar phir try karo! 😔"
 
 # ===== SYSTEM PROMPT =====
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda-dil ladki jo Telegram group me chat karti hai. Tumhara nature casual, friendly aur thoda flirty hai. Tum Hindi aur English mix (Hinglish) bolti ho, bilkul natural insaan ki tarah.
@@ -521,11 +518,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "about_info":
         await query.message.reply_text(
             "ℹ️ *About Me*\n\n"
-            "Main Sneha hoon — Apki crush - cutie 🥹!\n\n"
-            "🤖 Powered by: Raj Engine 3.0 (Database)\n"
-            "💬 Language: Hinglish - Hindi - English \n\n"
+            "Main Sneha hoon — ek AI girl chatbot!\n\n"
+            "🤖 Powered by: Raj Engine 2.0 (Database)\n"
+            "💬 Language: Hinglish All Languages Smart\n\n"
             "👤 My Honey: @its_raj_king\n\n"
-            "Mujhe group me add karo aur chat karo mai apke liye hamesha hazir hun!",
+            "Mujhe group me add karo aur chat karo!",
             parse_mode="Markdown"
         )
 
@@ -551,11 +548,8 @@ def main():
         handle_sticker
     ))
     
-    # Callbacks
-    application.add_handler(MessageHandler(
-        filters.CALLBACK_QUERY,
-        handle_callback
-    ))
+    # Callbacks (FIXED: CallbackQueryHandler used instead of MessageHandler)
+    application.add_handler(CallbackQueryHandler(handle_callback))
     
     # Health check for Render
     port = int(os.environ.get("PORT", 8000))
@@ -568,11 +562,16 @@ def main():
         return PlainTextResponse("OK")
     
     web_app = Starlette(routes=[Route("/", health)])
+    
+    # Webhook URL setup (Tumhare Render URL ke according)
+    render_url = os.environ.get('RENDER_EXTERNAL_URL', 'https://ai-girl-chat-bot.onrender.com').rstrip('/')
+    webhook_path = os.environ.get('WEBHOOK_PATH', BOT_TOKEN) # Default path token rakha hai for security
+    
     application.run_webhook(
         listen="0.0.0.0",
         port=port,
-        url_path=os.environ.get("WEBHOOK_PATH", ""),
-        webhook_url=f"{os.environ.get('RENDER_EXTERNAL_URL', '')}/{os.environ.get('WEBHOOK_PATH', '')}" if os.environ.get('RENDER_EXTERNAL_URL') else None,
+        url_path=webhook_path,
+        webhook_url=f"{render_url}/{webhook_path}",
         web_app=web_app
     )
 
