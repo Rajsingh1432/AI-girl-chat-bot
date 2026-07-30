@@ -22,15 +22,17 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# ===== 15 API KEYS SUPPORT =====
-GROQ_API_KEYS = [
-    os.getenv("GROQ_API_KEY_1"), os.getenv("GROQ_API_KEY_2"), os.getenv("GROQ_API_KEY_3"),
-    os.getenv("GROQ_API_KEY_4"), os.getenv("GROQ_API_KEY_5"), os.getenv("GROQ_API_KEY_6"),
-    os.getenv("GROQ_API_KEY_7"), os.getenv("GROQ_API_KEY_8"), os.getenv("GROQ_API_KEY_9"),
-    os.getenv("GROQ_API_KEY_10"), os.getenv("GROQ_API_KEY_11"), os.getenv("GROQ_API_KEY_12"),
-    os.getenv("GROQ_API_KEY_13"), os.getenv("GROQ_API_KEY_14"), os.getenv("GROQ_API_KEY_15")
-]
-GROQ_API_KEYS = [key for key in GROQ_API_KEYS if key]
+# ===== AUTO-DETECT ALL 100 GROQ API KEYS =====
+GROQ_API_KEYS = []
+for i in range(1, 101):  # 1 to 100 — future proof, khaali keys ignore ho jayengi
+    key = os.getenv(f"GROQ_API_KEY_{i}")
+    if key and key.strip():  # empty strings ya spaces ignore
+        GROQ_API_KEYS.append(key.strip())
+
+if not GROQ_API_KEYS:
+    raise ValueError("❌ Kam se kam ek GROQ_API_KEY set karna zaroori hai!")
+
+logger.info(f"✅ Total {len(GROQ_API_KEYS)} Groq API keys loaded hui!")
 
 if not BOT_TOKEN or not GROQ_API_KEYS:
     raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY set karna zaroori hai!")
