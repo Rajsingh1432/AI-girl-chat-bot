@@ -343,18 +343,54 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if update.effective_user.id != OWNER_ID: return
         await update.message.reply_text("⏳ Sabhi API Servers check ho rahe hain...")
         status_report = "📊 *API Keys Status Report:*\n\n"
+        now = time.time()
+
         for i, client in enumerate(clients):
             name = f"Server {i+1}"
+
+            # ---- Health Check (existing) ----
             t = time.perf_counter()
+            health_ok = False
             try:
                 await client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": "Say OK"}],
                     max_tokens=2, temperature=0)
                 ms = int((time.perf_counter() - t) * 1000)
-                status_report += f"✅ *{name}:* Working!\n⚡ {ms} ms\n\n"
+                health_ok = True
             except Exception as e:
-                status_report += f"❌ *{name}:* {str(e)[:50]}\n\n"
+                ms = 0
+
+            # ---- Current Usage ----
+            _clean_key_usage(i, now)
+            entries = _key_usage[i]
+            rpm_used = len(entries)
+            tpm_used = sum(tok for _, tok in entries)
+
+            # ---- Cooldown ----
+            cd = _key_cooldowns.get(i, 0)
+            if cd > now:
+                cd_remaining = int(cd - now)
+                cd_str = f"❄️ {cd_remaining}s"
+            else:
+                cd_str = "✅ Active"
+
+            # ---- Lock ----
+            lock_status = "🔒" if _key_locks[i].locked() else "🔓"
+
+            if health_ok:
+                status_report += (
+                    f"✅ *{name}:* Working! ({ms} ms)\n"
+                    f"   {lock_status} {cd_str}\n"
+                    f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n\n"
+                )
+            else:
+                status_report += (
+                    f"❌ *{name}:* Error\n"
+                    f"   {lock_status} {cd_str}\n"
+                    f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n\n"
+                )
+
         await update.message.reply_text(status_report, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"stats error: {e}")
