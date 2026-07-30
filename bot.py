@@ -457,6 +457,16 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(status_report, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"stats error: {e}")
+
+async def resetkeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    global _key_429_counts, _key_success_since_429, _key_cooldowns
+    _key_429_counts = [0] * len(clients)
+    _key_success_since_429 = [True] * len(clients)
+    _key_cooldowns.clear()
+    await update.message.reply_text("✅ Sab keys reset ho gayi! Midnight sleep hatayi.")
         
 # ⭐ ========== /memory COMMAND (OWNER ONLY) ==========
 async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -827,6 +837,7 @@ async def main() -> None:
     )
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("resetkeys", resetkeys_command))
     application.add_handler(CommandHandler("memory", memory_command))  # ⭐ /memory command added
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))  # ⭐ Welcome new members
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
