@@ -527,6 +527,24 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if orig and orig.is_bot and orig.username == bot_username:
             is_reply_to_bot = True
 
+    # ⭐ ===== NEW: IGNORE IF TAGGING SOMEONE ELSE (NOT BOT) =====
+    has_other_mentions = False
+    if update.message.entities:
+        for entity in update.message.entities:
+            if entity.type == "mention":
+                txt = message_text[entity.offset:entity.offset + entity.length]
+                if txt.lower() != f"@{bot_username.lower()}":
+                    has_other_mentions = True
+                    break
+            elif entity.type == "text_mention":
+                if entity.user and entity.user.username != bot_username:
+                    has_other_mentions = True
+                    break
+
+    if has_other_mentions and not is_bot_mentioned:
+        return   # kisi aur ko tag kiya, bot ko nahi — ignore
+    # ⭐ ===== END OF NEW BLOCK =====
+
     if is_sticker:
         is_reply_to_others = False
         if update.message.reply_to_message:
