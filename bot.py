@@ -45,9 +45,9 @@ _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
 # ⭐ 70B model limits ke hisaab se safe
-RPM_SAFE_LIMIT = 7        # Groq 70B free tier: 10 RPM
-TPM_SAFE_LIMIT = 4000     # Groq 70B free tier: 6000 TPM
-REQUEST_TOKEN_ESTIMATE = 500  # actual reply ~60 tokens, safe margin
+RPM_SAFE_LIMIT = 7
+TPM_SAFE_LIMIT = 9000
+REQUEST_TOKEN_ESTIMATE = 1500
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
