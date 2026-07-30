@@ -65,6 +65,11 @@ def key_has_room(idx) -> bool:
         return False
     return True
 
+# ---- DAILY TRACKING ----
+daily_requests = [0] * len(clients)
+daily_tokens = [0] * len(clients)
+last_reset_day = time.strftime("%Y%m%d")
+
 def reset_daily_if_new_day():
     global last_reset_day, daily_requests, daily_tokens
     today = time.strftime("%Y%m%d")
@@ -83,14 +88,36 @@ def record_key_usage(idx, tokens=REQUEST_TOKEN_ESTIMATE):
     _key_usage[idx].append((time.time(), tokens))
     record_daily(idx, tokens)   # ⭐ daily tracking
 
+# ---- DAILY LIMIT EXHAUSTION DETECTION ----
+_key_429_counts = [0] * len(clients)
+_key_success_since_429 = [True] * len(clients)
+
+def handle_429_error(idx):
+    """Intelligently decide cooldown: 120s for temporary, midnight for daily exhaustion."""
+    _key_429_counts[idx] += 1
+    _key_success_since_429[idx] = False
+    
+    if _key_429_counts[idx] >= 5:  # 5 consecutive 429s → daily quota pakka khatam
+        now = time.time()
+        tomorrow = (now // 86400 + 1) * 86400  # next UTC midnight
+        seconds = int(tomorrow - now)
+        set_key_cooldown(idx, seconds=seconds)
+        logger.warning(
+            f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! "
+            f"Sleeping until midnight UTC ({seconds}s / {seconds//3600}h {(seconds%3600)//60}m)"
+        )
+    else:
+        set_key_cooldown(idx, seconds=120)
+        logger.warning(f"🚫 Key {idx+1} rate limited (429)! 120s cooldown. (Attempt {_key_429_counts[idx]}/5)")
+
+def reset_key_429_streak(idx):
+    """Success ke baad 429 streak reset — temporary spike tha, daily limit nahi."""
+    _key_429_counts[idx] = 0
+    _key_success_since_429[idx] = True
+
 def set_key_cooldown(idx, seconds=60):
     _key_cooldowns[idx] = time.time() + seconds
     logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
-    
-    # ---- DAILY TRACKING ----
-daily_requests = [0] * len(clients)
-daily_tokens = [0] * len(clients)
-last_reset_day = time.strftime("%Y%m%d")
 
 user_warning_count = {}
 bio_checked_users = set()
@@ -192,9 +219,14 @@ Tera kaam:
                 )
                 final_summary = response.choices[0].message.content
                 save_user_summary(user_id, final_summary)
+                reset_key_429_streak(idx)  # ⭐ success → reset 429 streak
                 logger.info(f"📝 User {user_id} ki summary update: {final_summary[:80]}...")
             except Exception as e:
-                logger.error(f"❌ Summary generation failed for {user_id}: {e}")
+                error_str = str(e).lower()
+                if "429" in error_str or "rate_limit" in error_str:
+                    handle_429_error(idx)  # ⭐ intelligent 429 handling
+                else:
+                    logger.error(f"❌ Summary generation failed for {user_id}: {e}")
     except Exception as e:
         logger.error(f"🔥 Summary function crash for {user_id}: {e}")
 
@@ -244,9 +276,14 @@ REPLY:"""
                 )
                 reply = response.choices[0].message.content
                 record_key_usage(idx, 300)
+                reset_key_429_streak(idx)  # ⭐ success → reset 429 streak
                 return reply
             except Exception as e:
-                logger.warning(f"Greeting gen fail: {e}")
+                error_str = str(e).lower()
+                if "429" in error_str or "rate_limit" in error_str:
+                    handle_429_error(idx)  # ⭐ intelligent 429 handling
+                else:
+                    logger.warning(f"Greeting gen fail: {e}")
                 continue
     return None
 
@@ -513,14 +550,14 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 usage = getattr(response, "usage", None)
                 actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
                 record_key_usage(idx, actual_tokens)
+                reset_key_429_streak(idx)  # ⭐ success → reset 429 streak
                 logger.info(f"✅ Key {idx+1} se reply aaya!")
                 return reply
 
             except Exception as e:
                 error_str = str(e).lower()
                 if "429" in error_str or "rate_limit" in error_str:
-                    set_key_cooldown(idx, seconds=120)   # ⭐ 120s cooldown for 429
-                    logger.warning(f"🚫 Key {idx+1} rate limited (429)! 120s cooldown set.")
+                    handle_429_error(idx)   # ⭐ auto-decide 120s ya midnight
                 elif "timeout" in error_str:
                     set_key_cooldown(idx, seconds=30)
                     logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
