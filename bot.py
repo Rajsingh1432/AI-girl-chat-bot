@@ -44,9 +44,10 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-RPM_SAFE_LIMIT = 20
-TPM_SAFE_LIMIT = 8000
-REQUEST_TOKEN_ESTIMATE = 800
+# ⭐ 70B model limits ke hisaab se safe
+RPM_SAFE_LIMIT = 7        # Groq 70B free tier: 10 RPM
+TPM_SAFE_LIMIT = 4000     # Groq 70B free tier: 6000 TPM
+REQUEST_TOKEN_ESTIMATE = 500  # actual reply ~60 tokens, safe margin
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -127,10 +128,11 @@ def save_user_summary(user_id: int, summary: str):
     except Exception:
         pass
 
-# ⭐ ========== IMPROVED MEMORY GENERATION ==========
+# ⭐ ========== IMPROVED MEMORY GENERATION (FIXED) ==========
 async def generate_summary(user_id: int, history: list):
     if len(history) < 4 or not DATABASE_URL: return
     try:
+        global _rr_index  # ⭐ FIX: global declare karo
         old_summary = get_user_summary(user_id)
         prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
 
@@ -324,6 +326,35 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     except Exception as e:
         logger.error(f"stats error: {e}")
 
+# ⭐ ========== /memory COMMAND (OWNER ONLY) ==========
+async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner kisi bhi user ki memory dekh sakta hai. Usage: /memory [user_id|@username]"""
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+
+    args = context.args
+    if args:
+        target = args[0]
+        if target.startswith("@"):
+            target_username = target[1:]
+            try:
+                chat = await context.bot.get_chat(f"@{target_username}")
+                summary = get_user_summary(chat.id)
+                await update.message.reply_text(f"🧠 @{target_username} ki memory:\n{summary if summary else 'Khali hai.'}", parse_mode="Markdown")
+            except Exception:
+                await update.message.reply_text("❌ User nahi mila ya bot ko unki info nahi hai.")
+        else:
+            try:
+                target_id = int(target)
+                summary = get_user_summary(target_id)
+                await update.message.reply_text(f"🧠 User {target_id} ki memory:\n{summary if summary else 'Khali hai.'}", parse_mode="Markdown")
+            except ValueError:
+                await update.message.reply_text("❌ Galat format. /memory @username ya /memory 123456")
+    else:
+        summary = get_user_summary(update.effective_user.id)
+        await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}", parse_mode="Markdown")
+
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
 CHAT KA STYLE (Sabse Zaroori Rules):
@@ -386,8 +417,8 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
             except Exception as e:
                 error_str = str(e).lower()
                 if "429" in error_str or "rate_limit" in error_str:
-                    set_key_cooldown(idx, seconds=60)
-                    logger.warning(f"🚫 Key {idx+1} rate limited (429)! 60s cooldown set.")
+                    set_key_cooldown(idx, seconds=120)   # ⭐ 120s cooldown for 429
+                    logger.warning(f"🚫 Key {idx+1} rate limited (429)! 120s cooldown set.")
                 elif "timeout" in error_str:
                     set_key_cooldown(idx, seconds=30)
                     logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
@@ -594,6 +625,7 @@ async def main() -> None:
     )
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("memory", memory_command))  # ⭐ /memory command added
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
 
