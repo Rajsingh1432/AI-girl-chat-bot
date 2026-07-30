@@ -63,12 +63,32 @@ def key_has_room(idx) -> bool:
         return False
     return True
 
+def reset_daily_if_new_day():
+    global last_reset_day, daily_requests, daily_tokens
+    today = time.strftime("%Y%m%d")
+    if today != last_reset_day:
+        for i in range(len(clients)):
+            daily_requests[i] = 0
+            daily_tokens[i] = 0
+        last_reset_day = today
+
+def record_daily(idx, tokens):
+    reset_daily_if_new_day()
+    daily_requests[idx] += 1
+    daily_tokens[idx] += tokens
+
 def record_key_usage(idx, tokens=REQUEST_TOKEN_ESTIMATE):
     _key_usage[idx].append((time.time(), tokens))
+    record_daily(idx, tokens)   # ⭐ daily tracking
 
 def set_key_cooldown(idx, seconds=60):
     _key_cooldowns[idx] = time.time() + seconds
     logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
+    
+    # ---- DAILY TRACKING ----
+daily_requests = [0] * len(clients)
+daily_tokens = [0] * len(clients)
+last_reset_day = time.strftime("%Y%m%d")
 
 user_warning_count = {}
 bio_checked_users = set()
@@ -342,13 +362,14 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         if update.effective_user.id != OWNER_ID: return
         await update.message.reply_text("⏳ Sabhi API Servers check ho rahe hain...")
-        status_report = "📊 *API Keys Status Report:*\n\n"
         now = time.time()
+        reset_daily_if_new_day()  # ensure daily counters fresh
+        status_report = "📊 *API Keys Status Report:*\n\n"
 
         for i, client in enumerate(clients):
             name = f"Server {i+1}"
 
-            # ---- Health Check (existing) ----
+            # ---- Health Check ----
             t = time.perf_counter()
             health_ok = False
             try:
@@ -358,43 +379,46 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     max_tokens=2, temperature=0)
                 ms = int((time.perf_counter() - t) * 1000)
                 health_ok = True
-            except Exception as e:
+            except Exception:
                 ms = 0
 
-            # ---- Current Usage ----
+            # ---- Per-Minute Usage ----
             _clean_key_usage(i, now)
             entries = _key_usage[i]
             rpm_used = len(entries)
             tpm_used = sum(tok for _, tok in entries)
 
-            # ---- Cooldown ----
+            # ---- Daily Usage ----
+            daily_rpd = daily_requests[i]
+            daily_tpd = daily_tokens[i]
+
+            # ---- Cooldown & Lock ----
             cd = _key_cooldowns.get(i, 0)
             if cd > now:
-                cd_remaining = int(cd - now)
-                cd_str = f"❄️ {cd_remaining}s"
+                cd_str = f"❄️ {int(cd - now)}s"
             else:
                 cd_str = "✅ Active"
-
-            # ---- Lock ----
             lock_status = "🔒" if _key_locks[i].locked() else "🔓"
 
             if health_ok:
                 status_report += (
                     f"✅ *{name}:* Working! ({ms} ms)\n"
                     f"   {lock_status} {cd_str}\n"
-                    f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n\n"
+                    f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n"
+                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/100000 tok\n\n"
                 )
             else:
                 status_report += (
                     f"❌ *{name}:* Error\n"
                     f"   {lock_status} {cd_str}\n"
-                    f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n\n"
+                    f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n"
+                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/100000 tok\n\n"
                 )
 
         await update.message.reply_text(status_report, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"stats error: {e}")
-
+        
 # ⭐ ========== /memory COMMAND (OWNER ONLY) ==========
 async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Owner kisi bhi user ki memory dekh sakta hai. Usage: /memory [user_id|@username]"""
