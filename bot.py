@@ -273,27 +273,27 @@ WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 # aa jayega. Ye Groq API call NAHI karta — instant reply hota hai.
 WELCOME_MESSAGES = [
     "{name} hello welcome hai aapka! Kaise ho? 😊",
-    "{name} welcome dude! Kya haal chaal hain? 👋 kaise ho ?",
-    "Woow {name} aa gaye, swagat hai aapka! kaise ho ?🎉",
-    "{name} arey aap aa gaye! Welcome to the group 💕 kaise ho ?",
-    "Hii {name}! Group me swagat hai tumhara 🥳 kaise ho ?",
-    "{name} welcome welcome! Mazaa aayega ab yahan 😄 kaise ho ?",
-    "Oye {name} aa gaye! Kaise hain aap? 👋",
-    "{name} ji aapka hardik swagat hai group me! kaise ho ap ?🌸",
-    "Naya member! {name} welcome to the family kaise ho ap ?🎊",
+    "{name} welcome dude! Kya haal chaal hain? 👋",
+    "Woow {name} aa gaye, swagat hai aapka! 🎉",
+    "{name} arey aap aa gaye! Welcome to the group 💕",
+    "Hii {name}! Group me swagat hai tumhara 🥳",
+    "{name} welcome welcome! Mazaa aayega ab yahan 😄",
+    "Oye {name} aa gaya! Kaisa hai tu? 👋",
+    "{name} ji aapka hardik swagat hai group me! 🌸",
+    "Naya member! {name} welcome to the family 🎊",
     "{name} hey! Kaise ho, sab badhiya? 😊",
-    "Welcome {name}! Ab masti shuru hogi 😜 kya haal chal ?",
-    "{name} aa gaye aap! Group me maza aayega ab 🔥 kaise ho yarr ?",
-    "Hello {name}! Group join karne ke liye shukriya 💫 kaise ho ap ?",
-    "{name} welcome! Sabse mil lo, sab friendly hain yahan 🤗 kaise ho ?",
-    "Are wah {name}! Swagat hai tumhara yahan 🌟 kaise ho ?",
-    "{name} kaise ho? Welcome to our group! 👋 kaise ho ?",
-    "Yayy {name} aa gaye! Ab group aur mazedaar 🎈 kaise ho ?",
-    "{name} welcome dost! Enjoy karo yahan 💛 kaise ho ?",
-    "Hey {name}! Naye member ka swagat hai 🙌 kaise ho ?",
-    "{name} aapka is group me dil se swagat hai! 💖 kaise ho ?",
-    "Salaam {name}! Group me aane ke liye welcome 🌺 kaise ho ?",
-    "{name} welcome yaar! Kaisa chal raha hai sab? 😎 kaise ho ?",
+    "Welcome {name}! Ab masti shuru hogi 😜",
+    "{name} aa gaye aap! Group me maza aayega ab 🔥",
+    "Hello {name}! Group join karne ke liye shukriya 💫",
+    "{name} welcome! Sabse mil lo, sab friendly hain yahan 🤗",
+    "Are wah {name}! Swagat hai tumhara yahan 🌟",
+    "{name} kaise ho? Welcome to our group! 👋",
+    "Yayy {name} aa gaye! Ab group aur mazedaar 🎈",
+    "{name} welcome dost! Enjoy karo yahan 💛",
+    "Hey {name}! Naye member ka swagat hai 🙌",
+    "{name} aapka is group me dil se swagat hai! 💖",
+    "Salaam {name}! Group me aane ke liye welcome 🌺",
+    "{name} welcome yaar! Kaisa chal raha hai sab? 😎",
 ]
 
 def get_welcome_message(name: str) -> str:
@@ -671,17 +671,12 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if new_user.is_bot:
                 continue  # koi doosra bot join kare toh usko welcome mat karo
 
-            # ⭐ Agar naya "member" khud OWNER hai (bot ka apna owner_id) ya group ka
-            # admin/creator hai, toh welcome skip karo — sirf genuine naye normal
-            # members ka hi welcome hona chahiye.
+            # ⭐ Sirf bot ke apne OWNER ko skip karo (agar wo khud kabhi naye
+            # group me add ho). Baaki koi bhi genuine naya joining member —
+            # chahe wo kisi aur group ka admin ho ya na ho — use welcome
+            # milna chahiye, kyunki wo IS group me genuinely naya hai.
             if new_user.id == OWNER_ID:
                 continue
-            try:
-                member = await context.bot.get_chat_member(chat.id, new_user.id)
-                if member.status in ("administrator", "creator"):
-                    continue
-            except Exception:
-                pass  # status check fail ho toh bhi normal flow chalne do (fail-safe)
 
             # ⭐ Username ho toh @username use karo, warna Telegram ka proper
             # "text_mention" entity banate hain (first_name pe clickable link) —
