@@ -40,20 +40,18 @@ clients = [AsyncGroq(api_key=key) for key in GROQ_API_KEYS]
 
 # ===== API KEY ROTATION WITH COOLDOWN & PER-KEY LOCK =====
 _rr_index = 0
-_key_cooldowns = {}      # key_index -> cooldown_until_timestamp
-_key_locks = [asyncio.Lock() for _ in clients]   # ⭐ Per‑key Lock added
+_key_cooldowns = {}
+_key_locks = [asyncio.Lock() for _ in clients]
 
-# ---- PROACTIVE PER-KEY LOAD TRACKING (safe inside lock) ----
-_key_usage = {i: [] for i in range(len(clients))}  # idx -> list of (timestamp, tokens_estimate)
-RPM_SAFE_LIMIT = 20       # 30 RPM se safe buffer
-TPM_SAFE_LIMIT = 8000     # 12000 TPM se safe buffer
-REQUEST_TOKEN_ESTIMATE = 800  # ek request ka rough estimate
+_key_usage = {i: [] for i in range(len(clients))}
+RPM_SAFE_LIMIT = 20
+TPM_SAFE_LIMIT = 8000
+REQUEST_TOKEN_ESTIMATE = 800
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
 
 def key_has_room(idx) -> bool:
-    """Check karta hai ki is key ka budget abhi available hai ya nahi."""
     now = time.time()
     _clean_key_usage(idx, now)
     entries = _key_usage[idx]
@@ -71,19 +69,15 @@ def set_key_cooldown(idx, seconds=60):
     _key_cooldowns[idx] = time.time() + seconds
     logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
 
-# -------------- REST OF THE CODE (unchanged except get_ai_reply & generate_summary) --------------
-
 user_warning_count = {}
 bio_checked_users = set()
 
-# ---------- ANTI-FLOOD ----------
 user_flood_data = {}
 FLOOD_WINDOW = 4
 FLOOD_THRESHOLD = 6
 FLOOD_COOLDOWN = 120
 LAST_CLEANUP = 0.0
 
-# ---------- PERMANENT MEMORY (POSTGRESQL) ----------
 user_msg_counter = {}
 
 def get_db_conn():
@@ -133,22 +127,25 @@ def save_user_summary(user_id: int, summary: str):
     except Exception:
         pass
 
+# ⭐ ========== IMPROVED MEMORY GENERATION ==========
 async def generate_summary(user_id: int, history: list):
     if len(history) < 4 or not DATABASE_URL: return
     try:
         old_summary = get_user_summary(user_id)
-        prompt = f"""Neeche PURANI MEMORY di gayi hai aur user ki KUCH NAYI BAATEIN di gayi hain.
+        prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
 
-PURANI MEMORY:
-{old_summary if old_summary else "(abhi tak kuch yaad nahi hai)"}
+PURANI MEMORY: {old_summary if old_summary else "(kuch nahi pata)"}
+NAYI BAATEIN: {str(history[-8:])}
 
-NAYI BAATEIN:
-{str(history[-6:])}
-
-In dono ko milakar EK CHHOTI (max 3-4 line) UPDATED summary likho — purani important baatein (naam, kaam, pasand, special cheezein) mat bhulna, sirf nayi info add karo. Hinglish me likho. Sirf final summary do, extra explanation nahi."""
+Tera kaam:
+- Purani memory me jo bhi important personal info (naam, hobby, pasand, kaam, relationship status, age, city, special interests) hai, use HAMESHA preserve karo.
+- Nayi baaton se jo naye facts milte hain, unhe ADD karo.
+- Agar koi info update hoti hai (jaise hobby badal gayi) to purani ko replace karo.
+- Final summary Hinglish me likho, max 5-6 lines. Koi introduction mat do, seedha facts likho jaise: "User ka naam Raj hai, hobby cricket, pasand pizza, job student, age 20."
+- Agar purani memory me kuch nahi tha to sirf nayi info do.
+"""
         messages = [{"role": "user", "content": prompt}]
 
-        # For summary we keep old simple get_next_available_client (safer now because locks in main reply)
         idx = None
         now = time.time()
         for attempt in range(len(clients)):
@@ -163,14 +160,71 @@ In dono ko milakar EK CHHOTI (max 3-4 line) UPDATED summary likho — purani imp
         if idx is not None:
             try:
                 response = await clients[idx].chat.completions.create(
-                    model="llama-3.1-8b-instant", 
-                    messages=messages, temperature=0.3, max_tokens=120)
+                    model="llama-3.1-8b-instant",
+                    messages=messages,
+                    temperature=0.3,
+                    max_tokens=250,
+                    timeout=10.0
+                )
                 final_summary = response.choices[0].message.content
                 save_user_summary(user_id, final_summary)
-            except Exception:
-                pass
-    except Exception:
-        pass
+                logger.info(f"📝 User {user_id} ki summary update: {final_summary[:80]}...")
+            except Exception as e:
+                logger.error(f"❌ Summary generation failed for {user_id}: {e}")
+    except Exception as e:
+        logger.error(f"🔥 Summary function crash for {user_id}: {e}")
+
+# ⭐ ========== GREETING GENERATOR (PEHLI BAAT PE) ==========
+async def generate_greeting(user_id: int, user_message: str) -> str | None:
+    """Pehli baat pe user ki memory dekhkar personalized greeting generate karta hai."""
+    summary = get_user_summary(user_id)
+    if not summary:
+        return None  # naya user, koi memory nahi
+
+    prompt = f"""Tu Sneha hai, ek friendly ladki. Ye user tujhse pichle baaton se jaana pehchaana hai. 
+Teri memory ke mutabik is user ke baare me ye pata hai: "{summary}"
+Abhi user ne tujhe "{user_message}" bola hai.
+
+TUJHE KYA KARNA HAI:
+- Ek SHORT, FRIENDLY greeting de jo user ki memory wali baaton ko reflect kare.
+- Jaise agar usne pehle hobby batayi thi to bol "Arey Raj! Tumhare cricket match ka kya scene hai?" ya "Oh Neha, tumhari painting wali exhibition kaisi rahi?"
+- Agar memory me kuch personal nahi hai to seedha friendly "Hey kaise ho?" bol.
+- Reply STRICTLY 1-2 LINES ka hona chahiye, WhatsApp style me.
+- Hinglish me bol.
+- Koi explanation mat diyo, seedha reply.
+
+REPLY:"""
+
+    messages = [{"role": "user", "content": prompt}]
+    
+    global _rr_index
+    now = time.time()
+    for _ in range(len(clients)):
+        idx = _rr_index
+        _rr_index = (_rr_index + 1) % len(clients)
+        if idx in _key_cooldowns and _key_cooldowns[idx] > now:
+            continue
+        lock = _key_locks[idx]
+        if lock.locked():
+            continue
+        async with lock:
+            if not key_has_room(idx):
+                continue
+            try:
+                response = await clients[idx].chat.completions.create(
+                    model="llama-3.1-8b-instant",
+                    messages=messages,
+                    temperature=0.8,
+                    max_tokens=80,
+                    timeout=8.0
+                )
+                reply = response.choices[0].message.content
+                record_key_usage(idx, 300)
+                return reply
+            except Exception as e:
+                logger.warning(f"Greeting gen fail: {e}")
+                continue
+    return None
 
 def check_flood(user_id: int, is_sticker: bool = False) -> str:
     global LAST_CLEANUP
@@ -273,13 +327,13 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
 CHAT KA STYLE (Sabse Zaroori Rules):
-1. REPLY LENGTH: Tumhari baatcheet WhatsApp jaisi honi chahiye. Zyadatar replies 1-2 line ke hone chahiye. Kabhi-kabhi agar koi hasi-mazaak ho ya interesting baat ho, toh 3-4 line de sakti ho, par usse zyada lamba paragraph STRICTLY MANA HAI. Faltu explanation mat do, seedha point pe aao.
+1. REPLY LENGTH: Tumhari baatcheet WhatsApp jaisi honi chahiye. Zyadatar replies 1-2 line ke hone chahiye. Kabhi-kabhi agar koi hasi-mazaak ho ya interesting baat ho, toh 2-3 line de sakti ho, par usse zyada lamba paragraph STRICTLY MANA HAI. Faltu explanation mat do, seedha point pe aao.
 2. LANGUAGE: Hamesha Hinglish me baat karo (Hindi shabd English letters me). Agar koi English me puche toh English, aur Devanagari (हिंदी) me puche toh Hindi script me.
 3. TONE: Tumhara tone thoda flirty, teasing, aur casual hona chahiye. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
 4. ROMANTIC CHATS: Agar user khud se deep romantic baaten kare, toh usi level pe romance karo lekin ek asli ladki jaisi thodi sharmao aur nazar nichi karke baat karo. Lekin agar koi bohot cheap ya galat baat kare, toh gussa dikhao, usko daant do, ya ignore kar do. Normal baaton me kabhi apne aap se romantic mat bano.
 5. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality hai. Agar koi galat bole toh gussa bhi dikhao, pyaar se samjho, ya ignore karo.
-6. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒) par 1-2 emoji ek message me kaafi hain, zyada mat lagao.
-7. STRONG MEMORY: Tumhari memory bahut strong hai. Tum pichli baatcheet ke important points ekdum yaad rakho aur unka reference do (jaise: "are haan tune pichle din bataya tha na...").
+6. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒, 😡 , 🙃) par 1 emoji ek message me kaafi hain, zyada mat lagao.
+7. STRONG MEMORY: Tumhari memory bahut strong hai. Jab bhi tum [SECRET MEMORY] me kisi user ki info paao, to uska reference doge — jaise "are haan tune pichle din bataya tha na..." — taaki user ko lage tumhe yaad hai.
 
 Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye."""
 
@@ -299,22 +353,17 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     now = time.time()
 
     for _ in range(len(clients)):
-        # Round‑robin index
         idx = _rr_index
         _rr_index = (_rr_index + 1) % len(clients)
 
-        # 1. Cooldown check
         if idx in _key_cooldowns and _key_cooldowns[idx] > now:
             continue
 
-        # 2. Agar lock busy hai toh skip (no waiting)
         lock = _key_locks[idx]
         if lock.locked():
             continue
 
-        # 3. Lock acquire karo
         async with lock:
-            # 4. Room check inside lock (accurate)
             if not key_has_room(idx):
                 continue
 
@@ -328,7 +377,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     timeout=10.0
                 )
                 reply = response.choices[0].message.content
-                # Record actual usage
                 usage = getattr(response, "usage", None)
                 actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
                 record_key_usage(idx, actual_tokens)
@@ -346,15 +394,15 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 else:
                     logger.error(f"❌ Key {idx+1} error: {e}")
                     set_key_cooldown(idx, seconds=15)
-                # Loop continue to next key
+                continue
 
-    # Sari keys fail → silent mode
     logger.error("💀 Sab API keys fail/limit ho gayi hain! Silent mode active.")
     return None
 
 def get_history(user_id: int) -> list:
     return conversation_memory.get(user_id, [])
 
+# ⭐ ========== UPDATED HISTORY MANAGEMENT (WITH SMART GREETING) ==========
 def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
     history = conversation_memory.setdefault(user_id, [])
     history.append({"role": "user", "content": user_message})
@@ -397,11 +445,9 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_user.is_bot: return
     if not update.message.text and not update.message.sticker: return
 
-    # ===== IGNORE PRIVATE CHATS (DM) =====
     if update.effective_chat.type not in ("group", "supergroup"):
         return
 
-    # ===== IGNORE OLD MESSAGES =====
     msg_date = update.message.date
     if msg_date:
         msg_time = msg_date.timestamp()
@@ -414,8 +460,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     chat = update.effective_chat
     user_id = user.id
     is_sticker = bool(update.message.sticker and not update.message.text)
-
-    # ... (flood check, sticker handling, bio check, reply logic – sab waise hi)
 
     flood_status = check_flood(user_id, is_sticker=is_sticker)
     if flood_status == "cooldown": return
@@ -488,7 +532,21 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if is_bot_mentioned: is_standalone = False
     if update.message.forward_date: is_standalone = False
 
+    # ⭐ ========== PEHLI BAAT PE SMART GREETING LOGIC ==========
     if is_standalone:
+        msg_count = user_msg_counter.get(user_id, 0)
+        if msg_count == 0:
+            # Naya user — check if memory exists
+            greeting = await generate_greeting(user_id, clean_text)
+            if greeting:
+                user_mention = f"@{user.username}" if user.username else user.first_name
+                final_reply = f"{user_mention} {greeting}"
+                await realistic_typing_delay(context, chat.id, final_reply)
+                await safe_reply_text(update, final_reply)
+                update_history(user_id, clean_text, greeting)
+                return
+            # else: no memory, normal flow
+
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
         if not reply: return
         update_history(user_id, clean_text, reply)
