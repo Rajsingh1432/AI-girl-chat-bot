@@ -6,7 +6,7 @@ import random
 import asyncio
 from datetime import datetime
 import psycopg2
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from telegram.error import RetryAfter, TimedOut
 from groq import AsyncGroq
@@ -44,46 +44,10 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ Groq 70B free tier ASLI limits: 30 RPM, 1000 RPD, 12,000 TPM, 100,000 TPD
-# Thoda safety buffer rakha (poora 30/12000 use nahi kiya) taaki burst traffic me
-# bhi 429 na aaye, lekin pehle wale (7 RPM / 4000 TPM) bahut zyada conservative
-# the — unse 12 keys ka bada hissa capacity waste ho raha tha.
-RPM_SAFE_LIMIT = 25       # 30 RPM ka ~83% — safe margin ke saath
-TPM_SAFE_LIMIT = 10000    # 12000 TPM ka ~83% — safe margin ke saath
+# ⭐ 70B model limits ke hisaab se safe
+RPM_SAFE_LIMIT = 7        # Groq 70B free tier: 10 RPM
+TPM_SAFE_LIMIT = 4000     # Groq 70B free tier: 6000 TPM
 REQUEST_TOKEN_ESTIMATE = 500  # actual reply ~60 tokens, safe margin
-
-# ⭐ ===== DAILY TRACKING (RPD / TPD) =====
-# RPM/TPM sirf per-minute dekhte hain — agar koi key apna DAILY quota
-# (1000 RPD / 100,000 TPD) khatam kar de, toh Groq baar-baar 429 dega
-# chahe per-minute limit free ho. Bina daily tracking ke, bot us key ko
-# baar-baar try karega -> 429 -> cooldown -> wapas try -> 429 (wasteful loop).
-# Isse bachne ke liye har key ka apna daily counter rakha hai, jo
-# IST midnight (ya UTC — Groq ka reset UTC pe hota hai) pe reset hota hai.
-_key_daily = {i: {"date": None, "requests": 0, "tokens": 0} for i in range(len(clients))}
-RPD_SAFE_LIMIT = 900      # 1000 RPD ka 90% — safe margin
-TPD_SAFE_LIMIT = 90000    # 100,000 TPD ka 90% — safe margin
-
-def _get_utc_date_str():
-    return datetime.utcnow().strftime("%Y-%m-%d")  # Groq daily limits UTC pe reset hote hain
-
-def _reset_daily_if_needed(idx):
-    today = _get_utc_date_str()
-    if _key_daily[idx]["date"] != today:
-        _key_daily[idx] = {"date": today, "requests": 0, "tokens": 0}
-
-def key_has_daily_room(idx) -> bool:
-    _reset_daily_if_needed(idx)
-    d = _key_daily[idx]
-    if d["requests"] >= RPD_SAFE_LIMIT:
-        return False
-    if d["tokens"] + REQUEST_TOKEN_ESTIMATE > TPD_SAFE_LIMIT:
-        return False
-    return True
-
-def record_key_daily_usage(idx, tokens):
-    _reset_daily_if_needed(idx)
-    _key_daily[idx]["requests"] += 1
-    _key_daily[idx]["tokens"] += tokens
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -97,13 +61,10 @@ def key_has_room(idx) -> bool:
     total_tokens = sum(tok for _, tok in entries)
     if total_tokens + REQUEST_TOKEN_ESTIMATE > TPM_SAFE_LIMIT:
         return False
-    if not key_has_daily_room(idx):
-        return False
     return True
 
 def record_key_usage(idx, tokens=REQUEST_TOKEN_ESTIMATE):
     _key_usage[idx].append((time.time(), tokens))
-    record_key_daily_usage(idx, tokens)
 
 def set_key_cooldown(idx, seconds=60):
     _key_cooldowns[idx] = time.time() + seconds
@@ -306,6 +267,39 @@ MAX_HISTORY_MESSAGES = 6
 
 WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
+# ⭐ ===== NEW MEMBER WELCOME MESSAGES (NO API CALL — instant, random) =====
+# Naye member ke group join karte hi in templates me se ek random pick hoke
+# bheja jata hai. {name} ki jagah automatically uska @username ya first_name
+# aa jayega. Ye Groq API call NAHI karta — instant reply hota hai.
+WELCOME_MESSAGES = [
+    "{name} hello welcome hai aapka! Kaise ho? 😊",
+    "{name} welcome dude! Kya haal chaal hain? 👋 kaise ho ?",
+    "Woow {name} aa gaye, swagat hai aapka! kaise ho ?🎉",
+    "{name} arey aap aa gaye! Welcome to the group 💕 kaise ho ?",
+    "Hii {name}! Group me swagat hai tumhara 🥳 kaise ho ?",
+    "{name} welcome welcome! Mazaa aayega ab yahan 😄 kaise ho ?",
+    "Oye {name} aa gaye! Kaise hain aap? 👋",
+    "{name} ji aapka hardik swagat hai group me! kaise ho ap ?🌸",
+    "Naya member! {name} welcome to the family kaise ho ap ?🎊",
+    "{name} hey! Kaise ho, sab badhiya? 😊",
+    "Welcome {name}! Ab masti shuru hogi 😜 kya haal chal ?",
+    "{name} aa gaye aap! Group me maza aayega ab 🔥 kaise ho yarr ?",
+    "Hello {name}! Group join karne ke liye shukriya 💫 kaise ho ap ?",
+    "{name} welcome! Sabse mil lo, sab friendly hain yahan 🤗 kaise ho ?",
+    "Are wah {name}! Swagat hai tumhara yahan 🌟 kaise ho ?",
+    "{name} kaise ho? Welcome to our group! 👋 kaise ho ?",
+    "Yayy {name} aa gaye! Ab group aur mazedaar 🎈 kaise ho ?",
+    "{name} welcome dost! Enjoy karo yahan 💛 kaise ho ?",
+    "Hey {name}! Naye member ka swagat hai 🙌 kaise ho ?",
+    "{name} aapka is group me dil se swagat hai! 💖 kaise ho ?",
+    "Salaam {name}! Group me aane ke liye welcome 🌺 kaise ho ?",
+    "{name} welcome yaar! Kaisa chal raha hai sab? 😎 kaise ho ?",
+]
+
+def get_welcome_message(name: str) -> str:
+    template = random.choice(WELCOME_MESSAGES)
+    return template.format(name=name)
+
 def escape_md_v2(text: str) -> str:
     specials = r'_*[]()~`>#+-=|{}.!'
     return "".join(f"\\{ch}" if ch in specials else ch for ch in text)
@@ -348,8 +342,9 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         if update.effective_user.id != OWNER_ID: return
         await update.message.reply_text("⏳ Sabhi API Servers check ho rahe hain...")
-
-        async def check_one(i, client):
+        status_report = "📊 *API Keys Status Report:*\n\n"
+        for i, client in enumerate(clients):
+            name = f"Server {i+1}"
             t = time.perf_counter()
             try:
                 await client.chat.completions.create(
@@ -357,15 +352,9 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     messages=[{"role": "user", "content": "Say OK"}],
                     max_tokens=2, temperature=0)
                 ms = int((time.perf_counter() - t) * 1000)
-                _reset_daily_if_needed(i)
-                d = _key_daily[i]
-                return f"✅ *Server {i+1}:* Working! ⚡{ms}ms\n📅 {d['requests']}/{RPD_SAFE_LIMIT} RPD | {d['tokens']}/{TPD_SAFE_LIMIT} TPD\n\n"
+                status_report += f"✅ *{name}:* Working!\n⚡ {ms} ms\n\n"
             except Exception as e:
-                return f"❌ *Server {i+1}:* {str(e)[:50]}\n\n"
-
-        # Saari keys ek saath (parallel) check hoti hain — sequential se kaafi tez
-        results = await asyncio.gather(*[check_one(i, c) for i, c in enumerate(clients)])
-        status_report = "📊 *API Keys Status Report:*\n\n" + "".join(results)
+                status_report += f"❌ *{name}:* {str(e)[:50]}\n\n"
         await update.message.reply_text(status_report, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"stats error: {e}")
@@ -468,20 +457,8 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
             except Exception as e:
                 error_str = str(e).lower()
                 if "429" in error_str or "rate_limit" in error_str:
-                    # Groq ke error message me daily limit (RPD/TPD) hit hone par
-                    # usually "per day" / "daily" / "tpd" / "rpd" jaisa keyword hota hai.
-                    # Agar daily limit hi khatam ho gayi hai, toh 120s cooldown bekar hai
-                    # (key kal tak wapas nahi aayegi) — isliye us key ko poore din ke
-                    # liye seedha "no room" maar do, taaki bot baar-baar retry na kare.
-                    if any(k in error_str for k in ["per day", "daily", "tpd", "rpd"]):
-                        _key_daily[idx]["requests"] = RPD_SAFE_LIMIT  # is din ke liye maxed-out maano
-                        _key_daily[idx]["tokens"] = TPD_SAFE_LIMIT
-                        _key_daily[idx]["date"] = _get_utc_date_str()
-                        set_key_cooldown(idx, seconds=3600)  # 1 ghante baad phir check karega (safety)
-                        logger.warning(f"📅 Key {idx+1} ka DAILY limit khatam! Aaj ke liye skip.")
-                    else:
-                        set_key_cooldown(idx, seconds=120)   # ⭐ 120s cooldown for per-minute 429
-                        logger.warning(f"🚫 Key {idx+1} rate limited (429)! 120s cooldown set.")
+                    set_key_cooldown(idx, seconds=120)   # ⭐ 120s cooldown for 429
+                    logger.warning(f"🚫 Key {idx+1} rate limited (429)! 120s cooldown set.")
                 elif "timeout" in error_str:
                     set_key_cooldown(idx, seconds=30)
                     logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
@@ -684,6 +661,56 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, reply)
         return
 
+# ⭐ ===== NEW MEMBER WELCOME HANDLER (No AI/Groq call — instant) =====
+async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        if not update.message or not update.message.new_chat_members:
+            return
+        chat = update.effective_chat
+        for new_user in update.message.new_chat_members:
+            if new_user.is_bot:
+                continue  # koi doosra bot join kare toh usko welcome mat karo
+
+            # ⭐ Agar naya "member" khud OWNER hai (bot ka apna owner_id) ya group ka
+            # admin/creator hai, toh welcome skip karo — sirf genuine naye normal
+            # members ka hi welcome hona chahiye.
+            if new_user.id == OWNER_ID:
+                continue
+            try:
+                member = await context.bot.get_chat_member(chat.id, new_user.id)
+                if member.status in ("administrator", "creator"):
+                    continue
+            except Exception:
+                pass  # status check fail ho toh bhi normal flow chalne do (fail-safe)
+
+            # ⭐ Username ho toh @username use karo, warna Telegram ka proper
+            # "text_mention" entity banate hain (first_name pe clickable link) —
+            # isse bina username wale user ko bhi asli mention milta hai, sirf
+            # plain text nahi jo click na ho sake.
+            if new_user.username:
+                name = f"@{new_user.username}"
+                welcome_text = get_welcome_message(name)
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+                await update.message.reply_text(welcome_text)
+            else:
+                display_name = new_user.first_name or "Dost"
+                welcome_text = get_welcome_message(display_name)
+                # display_name ke exact position ko clickable mention banate hain
+                mention_offset = welcome_text.find(display_name)
+                await asyncio.sleep(random.uniform(0.5, 1.5))
+                if mention_offset != -1:
+                    entities = [MessageEntity(
+                        type=MessageEntity.TEXT_MENTION,
+                        offset=mention_offset,
+                        length=len(display_name),
+                        user=new_user
+                    )]
+                    await update.message.reply_text(welcome_text, entities=entities)
+                else:
+                    await update.message.reply_text(welcome_text)
+    except Exception as e:
+        logger.warning(f"new_member_welcome error: {e}")
+
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     error = context.error
     if isinstance(error, RetryAfter):
@@ -707,6 +734,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("memory", memory_command))  # ⭐ /memory command added
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))  # ⭐ Welcome new members
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
 
