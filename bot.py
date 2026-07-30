@@ -341,19 +341,26 @@ async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             try:
                 chat = await context.bot.get_chat(f"@{target_username}")
                 summary = get_user_summary(chat.id)
-                await update.message.reply_text(f"🧠 @{target_username} ki memory:\n{summary if summary else 'Khali hai.'}", parse_mode="Markdown")
+                # ⭐ parse_mode hata diya – plain text safe hai
+                await update.message.reply_text(
+                    f"🧠 @{target_username} ki memory:\n{summary if summary else 'Khali hai.'}"
+                )
             except Exception:
                 await update.message.reply_text("❌ User nahi mila ya bot ko unki info nahi hai.")
         else:
             try:
                 target_id = int(target)
                 summary = get_user_summary(target_id)
-                await update.message.reply_text(f"🧠 User {target_id} ki memory:\n{summary if summary else 'Khali hai.'}", parse_mode="Markdown")
+                await update.message.reply_text(
+                    f"🧠 User {target_id} ki memory:\n{summary if summary else 'Khali hai.'}"
+                )
             except ValueError:
                 await update.message.reply_text("❌ Galat format. /memory @username ya /memory 123456")
     else:
         summary = get_user_summary(update.effective_user.id)
-        await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}", parse_mode="Markdown")
+        await update.message.reply_text(
+            f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}"
+        )
 
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
