@@ -44,10 +44,46 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ 70B model limits ke hisaab se safe
-RPM_SAFE_LIMIT = 7        # Groq 70B free tier: 10 RPM
-TPM_SAFE_LIMIT = 4000     # Groq 70B free tier: 6000 TPM
+# ⭐ Groq 70B free tier ASLI limits: 30 RPM, 1000 RPD, 12,000 TPM, 100,000 TPD
+# Thoda safety buffer rakha (poora 30/12000 use nahi kiya) taaki burst traffic me
+# bhi 429 na aaye, lekin pehle wale (7 RPM / 4000 TPM) bahut zyada conservative
+# the — unse 12 keys ka bada hissa capacity waste ho raha tha.
+RPM_SAFE_LIMIT = 25       # 30 RPM ka ~83% — safe margin ke saath
+TPM_SAFE_LIMIT = 10000    # 12000 TPM ka ~83% — safe margin ke saath
 REQUEST_TOKEN_ESTIMATE = 500  # actual reply ~60 tokens, safe margin
+
+# ⭐ ===== DAILY TRACKING (RPD / TPD) =====
+# RPM/TPM sirf per-minute dekhte hain — agar koi key apna DAILY quota
+# (1000 RPD / 100,000 TPD) khatam kar de, toh Groq baar-baar 429 dega
+# chahe per-minute limit free ho. Bina daily tracking ke, bot us key ko
+# baar-baar try karega -> 429 -> cooldown -> wapas try -> 429 (wasteful loop).
+# Isse bachne ke liye har key ka apna daily counter rakha hai, jo
+# IST midnight (ya UTC — Groq ka reset UTC pe hota hai) pe reset hota hai.
+_key_daily = {i: {"date": None, "requests": 0, "tokens": 0} for i in range(len(clients))}
+RPD_SAFE_LIMIT = 900      # 1000 RPD ka 90% — safe margin
+TPD_SAFE_LIMIT = 90000    # 100,000 TPD ka 90% — safe margin
+
+def _get_utc_date_str():
+    return datetime.utcnow().strftime("%Y-%m-%d")  # Groq daily limits UTC pe reset hote hain
+
+def _reset_daily_if_needed(idx):
+    today = _get_utc_date_str()
+    if _key_daily[idx]["date"] != today:
+        _key_daily[idx] = {"date": today, "requests": 0, "tokens": 0}
+
+def key_has_daily_room(idx) -> bool:
+    _reset_daily_if_needed(idx)
+    d = _key_daily[idx]
+    if d["requests"] >= RPD_SAFE_LIMIT:
+        return False
+    if d["tokens"] + REQUEST_TOKEN_ESTIMATE > TPD_SAFE_LIMIT:
+        return False
+    return True
+
+def record_key_daily_usage(idx, tokens):
+    _reset_daily_if_needed(idx)
+    _key_daily[idx]["requests"] += 1
+    _key_daily[idx]["tokens"] += tokens
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -61,10 +97,13 @@ def key_has_room(idx) -> bool:
     total_tokens = sum(tok for _, tok in entries)
     if total_tokens + REQUEST_TOKEN_ESTIMATE > TPM_SAFE_LIMIT:
         return False
+    if not key_has_daily_room(idx):
+        return False
     return True
 
 def record_key_usage(idx, tokens=REQUEST_TOKEN_ESTIMATE):
     _key_usage[idx].append((time.time(), tokens))
+    record_key_daily_usage(idx, tokens)
 
 def set_key_cooldown(idx, seconds=60):
     _key_cooldowns[idx] = time.time() + seconds
@@ -309,9 +348,8 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     try:
         if update.effective_user.id != OWNER_ID: return
         await update.message.reply_text("⏳ Sabhi API Servers check ho rahe hain...")
-        status_report = "📊 *API Keys Status Report:*\n\n"
-        for i, client in enumerate(clients):
-            name = f"Server {i+1}"
+
+        async def check_one(i, client):
             t = time.perf_counter()
             try:
                 await client.chat.completions.create(
@@ -319,9 +357,15 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     messages=[{"role": "user", "content": "Say OK"}],
                     max_tokens=2, temperature=0)
                 ms = int((time.perf_counter() - t) * 1000)
-                status_report += f"✅ *{name}:* Working!\n⚡ {ms} ms\n\n"
+                _reset_daily_if_needed(i)
+                d = _key_daily[i]
+                return f"✅ *Server {i+1}:* Working! ⚡{ms}ms\n📅 {d['requests']}/{RPD_SAFE_LIMIT} RPD | {d['tokens']}/{TPD_SAFE_LIMIT} TPD\n\n"
             except Exception as e:
-                status_report += f"❌ *{name}:* {str(e)[:50]}\n\n"
+                return f"❌ *Server {i+1}:* {str(e)[:50]}\n\n"
+
+        # Saari keys ek saath (parallel) check hoti hain — sequential se kaafi tez
+        results = await asyncio.gather(*[check_one(i, c) for i, c in enumerate(clients)])
+        status_report = "📊 *API Keys Status Report:*\n\n" + "".join(results)
         await update.message.reply_text(status_report, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"stats error: {e}")
@@ -424,8 +468,20 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
             except Exception as e:
                 error_str = str(e).lower()
                 if "429" in error_str or "rate_limit" in error_str:
-                    set_key_cooldown(idx, seconds=120)   # ⭐ 120s cooldown for 429
-                    logger.warning(f"🚫 Key {idx+1} rate limited (429)! 120s cooldown set.")
+                    # Groq ke error message me daily limit (RPD/TPD) hit hone par
+                    # usually "per day" / "daily" / "tpd" / "rpd" jaisa keyword hota hai.
+                    # Agar daily limit hi khatam ho gayi hai, toh 120s cooldown bekar hai
+                    # (key kal tak wapas nahi aayegi) — isliye us key ko poore din ke
+                    # liye seedha "no room" maar do, taaki bot baar-baar retry na kare.
+                    if any(k in error_str for k in ["per day", "daily", "tpd", "rpd"]):
+                        _key_daily[idx]["requests"] = RPD_SAFE_LIMIT  # is din ke liye maxed-out maano
+                        _key_daily[idx]["tokens"] = TPD_SAFE_LIMIT
+                        _key_daily[idx]["date"] = _get_utc_date_str()
+                        set_key_cooldown(idx, seconds=3600)  # 1 ghante baad phir check karega (safety)
+                        logger.warning(f"📅 Key {idx+1} ka DAILY limit khatam! Aaj ke liye skip.")
+                    else:
+                        set_key_cooldown(idx, seconds=120)   # ⭐ 120s cooldown for per-minute 429
+                        logger.warning(f"🚫 Key {idx+1} rate limited (429)! 120s cooldown set.")
                 elif "timeout" in error_str:
                     set_key_cooldown(idx, seconds=30)
                     logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
