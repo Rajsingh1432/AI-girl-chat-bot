@@ -47,9 +47,9 @@ _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
 # ⭐ 70B model limits ke hisaab se safe
-RPM_SAFE_LIMIT = 7
-TPM_SAFE_LIMIT = 9000
-REQUEST_TOKEN_ESTIMATE = 1500
+RPM_SAFE_LIMIT = 5          # 5 requests per minute
+TPM_SAFE_LIMIT = 6500       # 8000 TPM se safe margin (81% usage)
+REQUEST_TOKEN_ESTIMATE = 1200  # Qwen ke replies compact hote hain
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -100,7 +100,7 @@ def handle_429_error(idx):
     # Check daily usage – 90% of limit (100K tokens or 1000 requests)
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
-    is_daily_near_exhausted = (daily_tok >= 90000 or daily_req >= 900)
+    is_daily_near_exhausted = (daily_tok >= 180000 or daily_req >= 900)
 
     if _key_429_counts[idx] >= 5:
         if is_daily_near_exhausted:
@@ -428,7 +428,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             health_ok = False
             try:
                 await client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="qwen/qwen3.6-27b",
                     messages=[{"role": "user", "content": "Say OK"}],
                     max_tokens=2, temperature=0)
                 ms = int((time.perf_counter() - t) * 1000)
