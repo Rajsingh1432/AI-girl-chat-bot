@@ -54,6 +54,37 @@ def remove_broadcast_user(user_id: int):
         pass
 
 
+async def broadcast_stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner ke liye: DB me save hue total broadcast users check karne ka quick command."""
+    user = update.effective_user
+    if not user or user.id != OWNER_ID:
+        await update.message.reply_text("🚫 Ye command sirf owner use kar sakta hai.")
+        return
+
+    if not DATABASE_URL:
+        await update.message.reply_text("⚠️ DATABASE_URL set nahi hai — DB connect hi nahi hai.")
+        return
+
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM broadcast_users")
+        count = c.fetchone()[0]
+        c.execute("SELECT user_id, started_at FROM broadcast_users ORDER BY started_at DESC LIMIT 5")
+        recent = c.fetchall()
+        c.close()
+        conn.close()
+
+        recent_text = "\n".join([f"• `{uid}`" for uid, _ in recent]) if recent else "(koi nahi)"
+        await update.message.reply_text(
+            f"📊 Total saved users: {count}\n\n"
+            f"🕓 Last 5 users:\n{recent_text}",
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ DB check fail: {e}")
+
+
 async def broadcast_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Usage: /broadcast <message>
