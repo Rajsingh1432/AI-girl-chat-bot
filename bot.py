@@ -459,20 +459,20 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     f"✅ *{name}:* Working! ({ms} ms)\n"
                     f"   {lock_status} {cd_str}\n"
                     f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n"
-                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/100000 tok\n\n"
+                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/200000 tok\n\n"
                 )
             else:
                 status_report += (
                     f"❌ *{name}:* Error\n"
                     f"   {lock_status} {cd_str}\n"
                     f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n"
-                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/100000 tok\n\n"
+                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/200000 tok\n\n"
                 )
 
         await update.message.reply_text(status_report, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"stats error: {e}")
-
+        
 async def resetkeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
