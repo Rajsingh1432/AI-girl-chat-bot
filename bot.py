@@ -93,19 +93,34 @@ _key_429_counts = [0] * len(clients)
 _key_success_since_429 = [True] * len(clients)
 
 def handle_429_error(idx):
-    """Intelligently decide cooldown: 120s for temporary, midnight for daily exhaustion."""
+    """429 aane par call karo. Daily usage check karta hai, genuine exhaustion pe hi midnight sleep."""
     _key_429_counts[idx] += 1
     _key_success_since_429[idx] = False
-    
-    if _key_429_counts[idx] >= 5:  # 5 consecutive 429s → daily quota pakka khatam
-        now = time.time()
-        tomorrow = (now // 86400 + 1) * 86400  # next UTC midnight
-        seconds = int(tomorrow - now)
-        set_key_cooldown(idx, seconds=seconds)
-        logger.warning(
-            f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! "
-            f"Sleeping until midnight UTC ({seconds}s / {seconds//3600}h {(seconds%3600)//60}m)"
-        )
+
+    # Check daily usage – 90% of limit (100K tokens or 1000 requests)
+    daily_tok = daily_tokens[idx]
+    daily_req = daily_requests[idx]
+    is_daily_near_exhausted = (daily_tok >= 90000 or daily_req >= 900)
+
+    if _key_429_counts[idx] >= 5:
+        if is_daily_near_exhausted:
+            # Genuine daily limit exhausted
+            now = time.time()
+            tomorrow = (now // 86400 + 1) * 86400
+            seconds = int(tomorrow - now)
+            set_key_cooldown(idx, seconds=seconds)
+            logger.warning(
+                f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! "
+                f"Sleeping until midnight UTC ({seconds}s / {seconds//3600}h {(seconds%3600)//60}m)"
+            )
+        else:
+            # False alarm – just temporary 429 burst, reset streak
+            set_key_cooldown(idx, seconds=120)
+            logger.warning(
+                f"🚫 Key {idx+1} temporary 429 burst! 120s cooldown. "
+                f"(Attempt {_key_429_counts[idx]}/5, daily usage: {daily_tok}/100000 tok)"
+            )
+            _key_429_counts[idx] = 0  # reset counter so it doesn't keep climbing
     else:
         set_key_cooldown(idx, seconds=120)
         logger.warning(f"🚫 Key {idx+1} rate limited (429)! 120s cooldown. (Attempt {_key_429_counts[idx]}/5)")
