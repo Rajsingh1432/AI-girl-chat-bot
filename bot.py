@@ -143,7 +143,7 @@ user_msg_counter = {}
 
 # ⭐ Personal DM me /start chhorke kuchh bhi msg aane par random reply (bina API)
 DM_ONLY_REPLIES = [
-    "☃︎ *Mai sirf chating groups me baat karti hun*\n\n🌿 *Personal Dm Mat kro*\n\nᴥ︎︎︎ *Mujhse Baat Karna Hai To Mujhe Apne Chating Group Me Add Kardo*\n\n⌨︎ *Aur han mai sab new members ka name mention karke wecome karungi aur unse baten bhi karungi*\n\n✍︎ *Admin Dena Mat Bhoolna*\n\n\n➪ *𝐉𝐚𝐥𝐝𝐢 𝐒𝐞 𝐍𝐞𝐞𝐜𝐡𝐞 𝐁𝐮𝐭𝐭𝐨𝐧 𝐃𝐚𝐛𝐚𝐨 𝐀𝐮𝐫 𝐀𝐝𝐝 𝐊𝐚𝐫𝐥𝐨 𝐌𝐮𝐣𝐡𝐞* 👇",
+    "☃︎ 𝗠𝗮𝗶 𝗦𝗶𝗿𝗳 𝗖𝗵𝗮𝘁𝗶𝗻𝗴 𝗚𝗿𝗼𝘂𝗽𝘀 𝗠𝗲 𝗕𝗮𝘁𝗲𝗻 𝗞𝗮𝗿𝘁𝗶 𝗛𝘂𝗻\n\n🌿 𝗣𝗲𝗿𝘀𝗼𝗻𝗮𝗹 𝗠𝗮𝘀𝘀𝗲𝗴𝗲 𝗠𝗮𝘁 𝗞𝗮𝗿𝗼\n\nᴥ︎︎︎ 𝗠𝘂𝗷𝗵𝘀𝗲 𝗙𝗹𝗶𝗿𝘁,𝗙𝘂𝗻,𝗥𝗼𝗺𝗮𝗻𝘁𝗶𝗰,𝗔𝗻𝗴𝗿𝘆,𝗘𝗺𝗼𝘁𝗶𝗼𝗻𝗮𝗹 𝗕𝗮𝘁𝗲𝗻 𝗞𝗮𝗿𝗻𝗮 𝗵𝗮𝗶 𝘁𝗼 𝗮𝗽𝗻𝗲 𝗴𝗿𝗼𝘂𝗽 𝗺𝗲 𝗮𝗱𝗱 𝗸𝗮𝗿𝗱𝗼\n\n⌨︎ 𝗔𝘂𝗿 𝗠𝗮𝗶 𝗔𝗽𝗸𝗲 𝗖𝗵𝗮𝘁𝗶𝗻𝗴 𝗚𝗿𝗼𝘂𝗽 𝗞𝗼 𝗔𝗰𝘁𝗶𝘃𝗲 𝗥𝗮𝗸𝗵𝘂𝗻𝗴𝗶 𝗦𝗮𝗯𝗵𝗶 𝗡𝗲𝘄 𝗠𝗲𝗺𝗯𝗲𝗿𝘀 𝗔𝗻𝗱 𝗢𝗹𝗱 𝗠𝗲𝗺𝗯𝗲𝗿𝘀 𝗦𝗲 𝗙𝘂𝗻 𝗞𝗮𝗿𝘁𝗶 𝗥𝗮𝗵𝘂𝗻𝗴𝗶\n\n✍︎ 𝗔𝗱𝗺𝗶𝗻 𝗗𝗲𝗻𝗮 𝗠𝗮𝘁 𝗕𝗵𝗼𝗼𝗹𝗻𝗮\n\n\n➪ 𝗡𝗲𝗲𝗰𝗵𝗲 𝗕𝘂𝘁𝘁𝗼𝗻 𝗛𝗮𝗶 𝗡𝗮 𝗕𝗮𝗯𝘆 𝗗𝗮𝗯𝗮𝗼 𝗔𝘂𝗿 𝗠𝘂𝗷𝗵𝗲 𝗞𝗶𝗱𝗻𝗮𝗽 𝗞𝗮𝗿𝗹𝗼 👇",
 ]
 
 # ⭐ track kiya hua users jinko already welcome mil chuka (duplicate welcome rokne ke liye)
