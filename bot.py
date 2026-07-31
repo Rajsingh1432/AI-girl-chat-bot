@@ -563,13 +563,12 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     temperature=0.7,
                     max_tokens=60,
                     top_p=0.9,
-                    timeout=10.0,
-                    extra_body={"thinking": {"type": "disabled"}}
+                    timeout=10.0
                 )
                 reply = response.choices[0].message.content
 
-                # Double safety: agar fir bhi thinking block aaya to regex se hatao
-                reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.DOTALL).strip()
+                # ⭐ Qwen kabhi‑kabhi internal <think> block output karta hai — use hatao
+                reply = re.sub(r"<think.*?>.*?</think>", "", reply, flags=re.DOTALL | re.IGNORECASE).strip()
                 if not reply:
                     continue
 
