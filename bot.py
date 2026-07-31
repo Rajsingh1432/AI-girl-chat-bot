@@ -44,9 +44,9 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-RPM_SAFE_LIMIT = 5
-TPM_SAFE_LIMIT = 6500
-REQUEST_TOKEN_ESTIMATE = 1200
+RPM_SAFE_LIMIT = 4
+TPM_SAFE_LIMIT = 7000
+REQUEST_TOKEN_ESTIMATE = 1600
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -561,15 +561,16 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     model="qwen/qwen3.6-27b",
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=120,
+                    max_tokens=200,         # ⭐ 200 — ab poora reply + thinking aayega
                     top_p=0.9,
                     timeout=10.0
                 )
                 reply = response.choices[0].message.content
 
-                # ⭐ Qwen ke <think> block ki watt lagao — chahe complete ho ya incomplete
-                reply = re.sub(r"<think\b[^>]*>.*?</think>", "", reply, flags=re.DOTALL | re.IGNORECASE)
-                reply = re.sub(r"<think\b[^>]*>.*", "", reply, flags=re.DOTALL | re.IGNORECASE).strip()
+                # ⭐ Thinking block poora hatao — bhale hi multiline ho
+                reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
+                # ⭐ Agar </think> nahi mila (adhoora), to <think> se aagey sab hatao
+                reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                 if not reply:
                     continue
 
@@ -594,7 +595,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
     logger.error("💀 Sab API keys fail/limit ho gayi hain! Silent mode active.")
     return None
-
 def get_history(user_id: int) -> list:
     return conversation_memory.get(user_id, [])
 
