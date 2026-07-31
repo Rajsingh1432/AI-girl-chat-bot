@@ -44,9 +44,10 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-RPM_SAFE_LIMIT = 7          # 7 × 1500 = 10500 TPM (safe < 12000)
-TPM_SAFE_LIMIT = 9000       # 12000 se safe margin
-REQUEST_TOKEN_ESTIMATE = 1500
+# ⭐ Llama-3.3-70B limits ke hisaab se safe settings
+RPM_SAFE_LIMIT = 7          # 7 RPM (7×1500=10500 TPM, safe < 12000)
+TPM_SAFE_LIMIT = 9000       # 12000 TPM se safe margin
+REQUEST_TOKEN_ESTIMATE = 1500  # realistic estimate for 70B
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -93,6 +94,7 @@ def handle_429_error(idx):
 
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
+    # ⭐ 70B ke liye daily limit 100K tokens, 90% = 90000
     is_daily_near_exhausted = (daily_tok >= 90000 or daily_req >= 900)
 
     if _key_429_counts[idx] >= 5:
@@ -430,11 +432,11 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             t = time.perf_counter()
             health_ok = False
             try:
-                # stats_command ke andar health check line:
-            await client.chat.completions.create(
-                  model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": "Say OK"}],
-                  max_tokens=5, temperature=0)
+                # ⭐ 70B model se health check
+                await client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": "Say OK"}],
+                    max_tokens=5, temperature=0)
                 ms = int((time.perf_counter() - t) * 1000)
                 health_ok = True
             except Exception:
@@ -459,14 +461,14 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     f"✅ *{name}:* Working! ({ms} ms)\n"
                     f"   {lock_status} {cd_str}\n"
                     f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n"
-                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/200000 tok\n\n"
+                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/100000 tok\n\n"
                 )
             else:
                 status_report += (
                     f"❌ *{name}:* Error\n"
                     f"   {lock_status} {cd_str}\n"
                     f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n"
-                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/200000 tok\n\n"
+                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/100000 tok\n\n"
                 )
 
         await update.message.reply_text(status_report, parse_mode="Markdown")
@@ -529,7 +531,6 @@ CHAT KA STYLE (Sabse Zaroori Rules):
 Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye."""
 
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
-async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
@@ -559,19 +560,20 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 continue
 
             try:
+                # ⭐ Stable 70B model — no <think> nonsense
                 response = await clients[idx].chat.completions.create(
-                    model="llama-3.3-70b-versatile",   # ⭐ Old faithful
+                    model="llama-3.3-70b-versatile",
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=60,                     # 70B ke liye 60 kaafi hai
+                    max_tokens=60,
                     top_p=0.9,
                     timeout=10.0
                 )
                 reply = response.choices[0].message.content
 
-                # ⭐ Safety regex hatao (70B <think> nahi deta, par optional rakh sakte ho)
-                # reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
-                # reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
+                # Optional safety regex (70B normally doesn't output <think>)
+                reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
+                reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                 if not reply:
                     continue
 
@@ -596,7 +598,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
     logger.error("💀 Sab API keys fail/limit ho gayi hain! Silent mode active.")
     return None
-    
+
 def get_history(user_id: int) -> list:
     return conversation_memory.get(user_id, [])
 
