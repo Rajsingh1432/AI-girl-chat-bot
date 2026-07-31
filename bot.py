@@ -141,6 +141,11 @@ admin_need_reply_cooldown = {}
 
 user_msg_counter = {}
 
+# ⭐ Personal DM me /start chhorke kuchh bhi msg aane par random reply (bina API)
+DM_ONLY_REPLIES = [
+    "🌿 Mai sirf chating groups me baat karti hun\n🌿 Personal Dm Mat kro\n🌿 Mujhse Baat Karna Hai To Mujhe Apne Chating Group Me Add Kardo",
+]
+
 # ⭐ track kiya hua users jinko already welcome mil chuka (duplicate welcome rokne ke liye)
 _welcomed_users = {}  # chat_id -> set(user_id)
 
@@ -646,6 +651,17 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_user.is_bot: return
     if not update.message.text and not update.message.sticker: return
 
+    # ⭐ Personal DM handling — /start chhorke koi bhi normal msg ho to bina API random reply
+    if update.effective_chat.type == "private":
+        bot_username = context.bot.username
+        dm_text = random.choice(DM_ONLY_REPLIES)
+        keyboard = [
+            [InlineKeyboardButton("➕ Add To Group ➕", url=f"https://t.me/{bot_username}?startgroup=start")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await safe_reply_text(update, dm_text, reply_markup=reply_markup)
+        return
+
     if update.effective_chat.type not in ("group", "supergroup"):
         return
 
@@ -716,7 +732,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 if now_ts >= last:
                     admin_need_reply_cooldown[chat.id] = now_ts + 300
                     admin_msg = (
-                        "🔒 *Admin Rights Needed Baby 🥹\\!* 🔒\n\n"
+                        "🔒 *Admin Rights Needed\\!* 🔒\n\n"
                         "Mujhe admin do tabhi main naye members ka welcome kar paungi, "
                         "aur aapke group ko fun\\, flirty \\& alive banaungi\\! 😊\n\n"
                         "_Admin banao aur magic dekho\\!_ ✨"
