@@ -143,7 +143,7 @@ user_msg_counter = {}
 
 # ⭐ Personal DM me /start chhorke kuchh bhi msg aane par random reply (bina API)
 DM_ONLY_REPLIES = [
-    "🌿 Mai sirf chating groups me baat karti hun\n🌿 Personal Dm Mat kro\n🌿 Mujhse Baat Karna Hai To Mujhe Apne Chating Group Me Add Kardo\n🌿 Aur han mai sab new members ka @username mention karke wecome karung\n\n\n 𝐍𝐨𝐭𝐞 𒊹︎︎︎𝐀𝐝𝐦𝐢𝐧 𝐃𝐞𝐧𝐚 𝐙𝐚𝐫𝐮𝐫𝐢 𝐇𝐚𝐢 𝐅𝐫𝐞𝐞 𝐌𝐞 𝐌𝐞𝐡𝐧𝐚𝐭 𝐍𝐡𝐢 𝐊𝐚𝐫𝐭𝐢 𝐌𝐚𝐢 𝐀𝐛 𝐉𝐚𝐥𝐝𝐢 𝐒𝐞 𝐍𝐞𝐞𝐜𝐡𝐞 𝐁𝐮𝐭𝐭𝐨𝐧 𝐃𝐚𝐛𝐚𝐨 𝐀𝐮𝐫 𝐀𝐝𝐝 𝐊𝐚𝐫𝐥𝐨 𝐌𝐮𝐣𝐡𝐞 👇",
+    "☃︎ Mai sirf chating groups me baat karti hun\n🌿 Personal Dm Mat kro\nᴥ︎︎︎ Mujhse Baat Karna Hai To Mujhe Apne Chating Group Me Add Kardo\n⌨︎ Aur han mai sab new members ka name mention karke wecome karungi\n✍︎ Admin Dena Mat Bhoolna\n\n\n➪ 𝐉𝐚𝐥𝐝𝐢 𝐒𝐞 𝐍𝐞𝐞𝐜𝐡𝐞 𝐁𝐮𝐭𝐭𝐨𝐧 𝐃𝐚𝐛𝐚𝐨 𝐀𝐮𝐫 𝐀𝐝𝐝 𝐊𝐚𝐫𝐥𝐨 𝐌𝐮𝐣𝐡𝐞 👇",
 ]
 
 # ⭐ track kiya hua users jinko already welcome mil chuka (duplicate welcome rokne ke liye)
@@ -656,7 +656,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         bot_username = context.bot.username
         dm_text = random.choice(DM_ONLY_REPLIES)
         keyboard = [
-            [InlineKeyboardButton("➕ Add To Group ➕", url=f"https://t.me/{bot_username}?startgroup=start")]
+            [InlineKeyboardButton("♧︎︎︎ Add To Group ☘︎", url=f"https://t.me/{bot_username}?startgroup=start")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await safe_reply_text(update, dm_text, reply_markup=reply_markup)
