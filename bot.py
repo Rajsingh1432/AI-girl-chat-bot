@@ -7,7 +7,7 @@ import asyncio
 from datetime import datetime
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, ChatMemberHandler, filters, ContextTypes
 from telegram.error import RetryAfter, TimedOut
 from groq import AsyncGroq
 from dotenv import load_dotenv
@@ -140,6 +140,9 @@ chat_admin_cache = {}
 admin_need_reply_cooldown = {}
 
 user_msg_counter = {}
+
+# ⭐ track kiya hua users jinko already welcome mil chuka (duplicate welcome rokne ke liye)
+_welcomed_users = {}  # chat_id -> set(user_id)
 
 # ---------- DATABASE ----------
 def get_db_conn():
@@ -713,7 +716,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 if now_ts >= last:
                     admin_need_reply_cooldown[chat.id] = now_ts + 300
                     admin_msg = (
-                        "🔒 *Admin Rights Needed\\!* 🔒\n\n"
+                        "🔒 *Admin Rights Needed Baby 🥹\\!* 🔒\n\n"
                         "Mujhe admin do tabhi main naye members ka welcome kar paungi, "
                         "aur aapke group ko fun\\, flirty \\& alive banaungi\\! 😊\n\n"
                         "_Admin banao aur magic dekho\\!_ ✨"
@@ -812,11 +815,15 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
         # ⭐ Admin nahi to welcome mat do
         if not await is_bot_admin(context, chat.id):
             return
+        welcomed_set = _welcomed_users.setdefault(chat.id, set())
         for new_user in update.message.new_chat_members:
             if new_user.is_bot:
                 continue
             if new_user.id == OWNER_ID:
                 continue
+            if new_user.id in welcomed_set:
+                continue
+            welcomed_set.add(new_user.id)
 
             if new_user.username:
                 name = f"@{new_user.username}"
@@ -840,6 +847,68 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
                     await update.message.reply_text(welcome_text)
     except Exception as e:
         logger.warning(f"new_member_welcome error: {e}")
+
+async def chat_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Ye handler tab fire hota hai jab kisi user ka status change hokar
+    'member' banta hai bina normal new_chat_members event ke —
+    jaise: admin ne private group/private link ka join request approve kiya.
+    new_chat_members waala case yahin duplicate na ho iske liye
+    _welcomed_users set check karte hain.
+    """
+    try:
+        result = update.chat_member
+        if not result:
+            return
+        chat = update.effective_chat
+        if not chat or chat.type not in ("group", "supergroup"):
+            return
+
+        old_status = result.old_chat_member.status
+        new_status = result.new_chat_member.status
+        new_user = result.new_chat_member.user
+
+        # sirf tab jab pehle member nahi tha aur ab member/admin ban gaya
+        if old_status in ("member", "administrator", "creator"):
+            return
+        if new_status not in ("member", "administrator"):
+            return
+
+        if new_user.is_bot:
+            return
+        if new_user.id == OWNER_ID:
+            return
+
+        if not await is_bot_admin(context, chat.id):
+            return
+
+        welcomed_set = _welcomed_users.setdefault(chat.id, set())
+        if new_user.id in welcomed_set:
+            return
+        welcomed_set.add(new_user.id)
+
+        if new_user.username:
+            name = f"@{new_user.username}"
+            welcome_text = get_welcome_message(name)
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            await context.bot.send_message(chat_id=chat.id, text=welcome_text)
+        else:
+            display_name = new_user.first_name or "Dost"
+            welcome_text = get_welcome_message(display_name)
+            mention_offset = welcome_text.find(display_name)
+            await asyncio.sleep(random.uniform(0.5, 1.5))
+            if mention_offset != -1:
+                entities = [MessageEntity(
+                    type=MessageEntity.TEXT_MENTION,
+                    offset=mention_offset,
+                    length=len(display_name),
+                    user=new_user
+                )]
+                await context.bot.send_message(chat_id=chat.id, text=welcome_text, entities=entities)
+            else:
+                await context.bot.send_message(chat_id=chat.id, text=welcome_text)
+    except Exception as e:
+        logger.warning(f"chat_member_welcome error: {e}")
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     error = context.error
@@ -865,6 +934,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("resetkeys", resetkeys_command))
     application.add_handler(CommandHandler("memory", memory_command))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
+    application.add_handler(ChatMemberHandler(chat_member_welcome, ChatMemberHandler.CHAT_MEMBER))
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
 
@@ -893,7 +963,10 @@ async def main() -> None:
         ])
         await application.initialize()
         await application.start()
-        await application.bot.set_webhook(url=f"{webhook_url}/webhook")
+        await application.bot.set_webhook(
+            url=f"{webhook_url}/webhook",
+            allowed_updates=Update.ALL_TYPES
+        )
         await uvicorn.Server(
             uvicorn.Config(app=app, host="0.0.0.0", port=port, log_level="info")
         ).serve()
@@ -901,7 +974,10 @@ async def main() -> None:
         logger.info("POLLING mode")
         await application.initialize()
         await application.start()
-        await application.updater.start_polling(drop_pending_updates=True)
+        await application.updater.start_polling(
+            drop_pending_updates=True,
+            allowed_updates=Update.ALL_TYPES
+        )
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
