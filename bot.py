@@ -12,6 +12,7 @@ from telegram.error import RetryAfter, TimedOut
 from groq import AsyncGroq
 from dotenv import load_dotenv
 from sticker_replies import get_random_sticker_reply
+from broadcast import broadcast_command
 
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -163,6 +164,8 @@ def init_db():
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS user_memory
                      (user_id BIGINT PRIMARY KEY, summary TEXT, updated_at REAL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS broadcast_users
+                     (user_id BIGINT PRIMARY KEY, started_at REAL)''')
         conn.commit()
         c.close()
         conn.close()
@@ -191,6 +194,20 @@ def save_user_summary(user_id: int, summary: str):
         c.execute("INSERT INTO user_memory (user_id, summary, updated_at) VALUES (%s, %s, %s) "
                   "ON CONFLICT (user_id) DO UPDATE SET summary=%s, updated_at=%s",
                   (user_id, summary, time.time(), summary, time.time()))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception:
+        pass
+
+def save_broadcast_user(user_id: int):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("INSERT INTO broadcast_users (user_id, started_at) VALUES (%s, %s) "
+                  "ON CONFLICT (user_id) DO NOTHING",
+                  (user_id, time.time()))
         conn.commit()
         c.close()
         conn.close()
@@ -396,6 +413,7 @@ def escape_md_v2(text: str) -> str:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         user = update.effective_user
+        save_broadcast_user(user.id)
         user_name = escape_md_v2(user.first_name or "Buddy")
         bot_username = context.bot.username
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
@@ -949,6 +967,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("resetkeys", resetkeys_command))
     application.add_handler(CommandHandler("memory", memory_command))
+    application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
     application.add_handler(ChatMemberHandler(chat_member_welcome, ChatMemberHandler.CHAT_MEMBER))
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
