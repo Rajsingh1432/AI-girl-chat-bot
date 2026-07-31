@@ -24,9 +24,9 @@ DATABASE_URL = os.getenv("DATABASE_URL")
 
 # ===== AUTO-DETECT ALL 100 GROQ API KEYS =====
 GROQ_API_KEYS = []
-for i in range(1, 101):  # 1 to 100 — future proof, khaali keys ignore ho jayengi
+for i in range(1, 101):
     key = os.getenv(f"GROQ_API_KEY_{i}")
-    if key and key.strip():  # empty strings ya spaces ignore
+    if key and key.strip():
         GROQ_API_KEYS.append(key.strip())
 
 if not GROQ_API_KEYS:
@@ -37,19 +37,16 @@ logger.info(f"✅ Total {len(GROQ_API_KEYS)} Groq API keys loaded hui!")
 if not BOT_TOKEN or not GROQ_API_KEYS:
     raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY set karna zaroori hai!")
 
-# AsyncGroq clients
 clients = [AsyncGroq(api_key=key) for key in GROQ_API_KEYS]
 
-# ===== API KEY ROTATION WITH COOLDOWN & PER-KEY LOCK =====
 _rr_index = 0
 _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ 70B model limits ke hisaab se safe
-RPM_SAFE_LIMIT = 5          # 5 requests per minute
-TPM_SAFE_LIMIT = 6500       # 8000 TPM se safe margin (81% usage)
-REQUEST_TOKEN_ESTIMATE = 1200  # Qwen ke replies compact hote hain
+RPM_SAFE_LIMIT = 5
+TPM_SAFE_LIMIT = 6500
+REQUEST_TOKEN_ESTIMATE = 1200
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -65,7 +62,6 @@ def key_has_room(idx) -> bool:
         return False
     return True
 
-# ---- DAILY TRACKING ----
 daily_requests = [0] * len(clients)
 daily_tokens = [0] * len(clients)
 last_reset_day = time.strftime("%Y%m%d")
@@ -86,25 +82,21 @@ def record_daily(idx, tokens):
 
 def record_key_usage(idx, tokens=REQUEST_TOKEN_ESTIMATE):
     _key_usage[idx].append((time.time(), tokens))
-    record_daily(idx, tokens)   # ⭐ daily tracking
+    record_daily(idx, tokens)
 
-# ---- DAILY LIMIT EXHAUSTION DETECTION ----
 _key_429_counts = [0] * len(clients)
 _key_success_since_429 = [True] * len(clients)
 
 def handle_429_error(idx):
-    """429 aane par call karo. Daily usage check karta hai, genuine exhaustion pe hi midnight sleep."""
     _key_429_counts[idx] += 1
     _key_success_since_429[idx] = False
 
-    # Check daily usage – 90% of limit (100K tokens or 1000 requests)
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
     is_daily_near_exhausted = (daily_tok >= 180000 or daily_req >= 900)
 
     if _key_429_counts[idx] >= 5:
         if is_daily_near_exhausted:
-            # Genuine daily limit exhausted
             now = time.time()
             tomorrow = (now // 86400 + 1) * 86400
             seconds = int(tomorrow - now)
@@ -114,19 +106,17 @@ def handle_429_error(idx):
                 f"Sleeping until midnight UTC ({seconds}s / {seconds//3600}h {(seconds%3600)//60}m)"
             )
         else:
-            # False alarm – just temporary 429 burst, reset streak
             set_key_cooldown(idx, seconds=120)
             logger.warning(
                 f"🚫 Key {idx+1} temporary 429 burst! 120s cooldown. "
                 f"(Attempt {_key_429_counts[idx]}/5, daily usage: {daily_tok}/100000 tok)"
             )
-            _key_429_counts[idx] = 0  # reset counter so it doesn't keep climbing
+            _key_429_counts[idx] = 0
     else:
         set_key_cooldown(idx, seconds=120)
         logger.warning(f"🚫 Key {idx+1} rate limited (429)! 120s cooldown. (Attempt {_key_429_counts[idx]}/5)")
 
 def reset_key_429_streak(idx):
-    """Success ke baad 429 streak reset — temporary spike tha, daily limit nahi."""
     _key_429_counts[idx] = 0
     _key_success_since_429[idx] = True
 
@@ -143,8 +133,13 @@ FLOOD_THRESHOLD = 6
 FLOOD_COOLDOWN = 120
 LAST_CLEANUP = 0.0
 
+# ⭐ Admin check cache (2 min) & stylish message cooldown (5 min)
+chat_admin_cache = {}
+admin_need_reply_cooldown = {}
+
 user_msg_counter = {}
 
+# ---------- DATABASE ----------
 def get_db_conn():
     if not DATABASE_URL: return None
     return psycopg2.connect(DATABASE_URL)
@@ -192,11 +187,11 @@ def save_user_summary(user_id: int, summary: str):
     except Exception:
         pass
 
-# ⭐ ========== IMPROVED MEMORY GENERATION (FIXED) ==========
+# ⭐ ========== IMPROVED MEMORY GENERATION ==========
 async def generate_summary(user_id: int, history: list):
     if len(history) < 4 or not DATABASE_URL: return
     try:
-        global _rr_index  # ⭐ FIX: global declare karo
+        global _rr_index
         old_summary = get_user_summary(user_id)
         prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
 
@@ -234,23 +229,22 @@ Tera kaam:
                 )
                 final_summary = response.choices[0].message.content
                 save_user_summary(user_id, final_summary)
-                reset_key_429_streak(idx)  # ⭐ success → reset 429 streak
+                reset_key_429_streak(idx)
                 logger.info(f"📝 User {user_id} ki summary update: {final_summary[:80]}...")
             except Exception as e:
                 error_str = str(e).lower()
                 if "429" in error_str or "rate_limit" in error_str:
-                    handle_429_error(idx)  # ⭐ intelligent 429 handling
+                    handle_429_error(idx)
                 else:
                     logger.error(f"❌ Summary generation failed for {user_id}: {e}")
     except Exception as e:
         logger.error(f"🔥 Summary function crash for {user_id}: {e}")
 
-# ⭐ ========== GREETING GENERATOR (PEHLI BAAT PE) ==========
+# ⭐ ========== GREETING GENERATOR ==========
 async def generate_greeting(user_id: int, user_message: str) -> str | None:
-    """Pehli baat pe user ki memory dekhkar personalized greeting generate karta hai."""
     summary = get_user_summary(user_id)
     if not summary:
-        return None  # naya user, koi memory nahi
+        return None
 
     prompt = f"""Tu Sneha hai, ek friendly ladki. Ye user tujhse pichle baaton se jaana pehchaana hai. 
 Teri memory ke mutabik is user ke baare me ye pata hai: "{summary}"
@@ -291,16 +285,30 @@ REPLY:"""
                 )
                 reply = response.choices[0].message.content
                 record_key_usage(idx, 300)
-                reset_key_429_streak(idx)  # ⭐ success → reset 429 streak
+                reset_key_429_streak(idx)
                 return reply
             except Exception as e:
                 error_str = str(e).lower()
                 if "429" in error_str or "rate_limit" in error_str:
-                    handle_429_error(idx)  # ⭐ intelligent 429 handling
+                    handle_429_error(idx)
                 else:
                     logger.warning(f"Greeting gen fail: {e}")
                 continue
     return None
+
+# ⭐ ========== ADMIN CHECK HELPER ==========
+async def is_bot_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> bool:
+    now = time.time()
+    cached = chat_admin_cache.get(chat_id)
+    if cached and (now - cached[0]) < 120:
+        return cached[1]
+    try:
+        member = await context.bot.get_chat_member(chat_id, context.bot.id)
+        is_admin = member.status in ["administrator", "creator"]
+    except Exception:
+        is_admin = False
+    chat_admin_cache[chat_id] = (now, is_admin)
+    return is_admin
 
 def check_flood(user_id: int, is_sticker: bool = False) -> str:
     global LAST_CLEANUP
@@ -341,10 +349,6 @@ MAX_HISTORY_MESSAGES = 6
 
 WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
 
-# ⭐ ===== NEW MEMBER WELCOME MESSAGES (NO API CALL — instant, random) =====
-# Naye member ke group join karte hi in templates me se ek random pick hoke
-# bheja jata hai. {name} ki jagah automatically uska @username ya first_name
-# aa jayega. Ye Groq API call NAHI karta — instant reply hota hai.
 WELCOME_MESSAGES = [
     "{name} hello welcome hai aapka! Kaise ho? 😊",
     "{name} welcome dude! Kya haal chaal hain? 👋",
@@ -378,6 +382,7 @@ def escape_md_v2(text: str) -> str:
     specials = r'_*[]()~`>#+-=|{}.!'
     return "".join(f"\\{ch}" if ch in specials else ch for ch in text)
 
+# ===== COMMANDS =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         user = update.effective_user
@@ -417,13 +422,11 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if update.effective_user.id != OWNER_ID: return
         await update.message.reply_text("⏳ Sabhi API Servers check ho rahe hain...")
         now = time.time()
-        reset_daily_if_new_day()  # ensure daily counters fresh
+        reset_daily_if_new_day()
         status_report = "📊 *API Keys Status Report:*\n\n"
 
         for i, client in enumerate(clients):
             name = f"Server {i+1}"
-
-            # ---- Health Check ----
             t = time.perf_counter()
             health_ok = False
             try:
@@ -436,17 +439,13 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             except Exception:
                 ms = 0
 
-            # ---- Per-Minute Usage ----
             _clean_key_usage(i, now)
             entries = _key_usage[i]
             rpm_used = len(entries)
             tpm_used = sum(tok for _, tok in entries)
-
-            # ---- Daily Usage ----
             daily_rpd = daily_requests[i]
             daily_tpd = daily_tokens[i]
 
-            # ---- Cooldown & Lock ----
             cd = _key_cooldowns.get(i, 0)
             if cd > now:
                 cd_str = f"❄️ {int(cd - now)}s"
@@ -472,7 +471,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(status_report, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"stats error: {e}")
-        
+
 async def resetkeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -482,14 +481,11 @@ async def resetkeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     _key_success_since_429 = [True] * len(clients)
     _key_cooldowns.clear()
     await update.message.reply_text("✅ Sab keys reset ho gayi! Midnight sleep hatayi.")
-        
-# ⭐ ========== /memory COMMAND (OWNER ONLY) ==========
+
 async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Owner kisi bhi user ki memory dekh sakta hai. Usage: /memory [user_id|@username]"""
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
         return
-
     args = context.args
     if args:
         target = args[0]
@@ -498,7 +494,6 @@ async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             try:
                 chat = await context.bot.get_chat(f"@{target_username}")
                 summary = get_user_summary(chat.id)
-                # ⭐ parse_mode hata diya – plain text safe hai
                 await update.message.reply_text(
                     f"🧠 @{target_username} ki memory:\n{summary if summary else 'Khali hai.'}"
                 )
@@ -532,7 +527,6 @@ CHAT KA STYLE (Sabse Zaroori Rules):
 
 Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye."""
 
-# ⭐ ========== REVAMPED get_ai_reply WITH PER-KEY LOCKS ==========
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
     memory_context = ""
@@ -564,7 +558,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
             try:
                 response = await clients[idx].chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="qwen/qwen3.6-27b",
                     messages=messages,
                     temperature=0.7,
                     max_tokens=60,
@@ -575,14 +569,14 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 usage = getattr(response, "usage", None)
                 actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
                 record_key_usage(idx, actual_tokens)
-                reset_key_429_streak(idx)  # ⭐ success → reset 429 streak
+                reset_key_429_streak(idx)
                 logger.info(f"✅ Key {idx+1} se reply aaya!")
                 return reply
 
             except Exception as e:
                 error_str = str(e).lower()
                 if "429" in error_str or "rate_limit" in error_str:
-                    handle_429_error(idx)   # ⭐ auto-decide 120s ya midnight
+                    handle_429_error(idx)
                 elif "timeout" in error_str:
                     set_key_cooldown(idx, seconds=30)
                     logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
@@ -597,14 +591,12 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 def get_history(user_id: int) -> list:
     return conversation_memory.get(user_id, [])
 
-# ⭐ ========== UPDATED HISTORY MANAGEMENT (WITH SMART GREETING) ==========
 def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
     history = conversation_memory.setdefault(user_id, [])
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": bot_reply})
     if len(history) > MAX_HISTORY_MESSAGES:
         conversation_memory[user_id] = history[-MAX_HISTORY_MESSAGES:]
-    
     count = user_msg_counter.get(user_id, 0) + 1
     user_msg_counter[user_id] = count
     if count % 15 == 0:
@@ -684,7 +676,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         if orig and orig.is_bot and orig.username == bot_username:
             is_reply_to_bot = True
 
-    # ⭐ ===== NEW: IGNORE IF TAGGING SOMEONE ELSE (NOT BOT) =====
     has_other_mentions = False
     if update.message.entities:
         for entity in update.message.entities:
@@ -699,9 +690,29 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     break
 
     if has_other_mentions and not is_bot_mentioned:
-        return   # kisi aur ko tag kiya, bot ko nahi — ignore
-    # ⭐ ===== END OF NEW BLOCK =====
+        return
 
+    # ⭐ ADMIN CHECK – non‑admin groups me sirf stylish message (mention/reply pe)
+    if chat.type in ("group", "supergroup"):
+        if not await is_bot_admin(context, chat.id):
+            # Bot admin nahi hai
+            if is_bot_mentioned or is_reply_to_bot:
+                now_ts = time.time()
+                last = admin_need_reply_cooldown.get(chat.id, 0)
+                if now_ts >= last:
+                    admin_need_reply_cooldown[chat.id] = now_ts + 300
+                    admin_msg = (
+                        "🔒 *Admin Rights Needed\\!* 🔒\n\n"
+                        "Mujhe admin do tabhi main naye members ka welcome kar paungi, "
+                        "aur aapke group ko fun\\, flirty \\& alive banaungi\\! 😊\n\n"
+                        "_Admin banao aur magic dekho\\!_ ✨"
+                    )
+                    await safe_reply_text(update, admin_msg, parse_mode="MarkdownV2")
+                # fir bhi return – aagey AI call nahi
+            # admin nahi to poora silent
+            return
+
+    # Sticker handling (admin hone ke baad hi aayega)
     if is_sticker:
         is_reply_to_others = False
         if update.message.reply_to_message:
@@ -745,11 +756,9 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if is_bot_mentioned: is_standalone = False
     if update.message.forward_date: is_standalone = False
 
-    # ⭐ ========== PEHLI BAAT PE SMART GREETING LOGIC ==========
     if is_standalone:
         msg_count = user_msg_counter.get(user_id, 0)
         if msg_count == 0:
-            # Naya user — check if memory exists
             greeting = await generate_greeting(user_id, clean_text)
             if greeting:
                 user_mention = f"@{user.username}" if user.username else user.first_name
@@ -758,7 +767,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 await safe_reply_text(update, final_reply)
                 update_history(user_id, clean_text, greeting)
                 return
-            # else: no memory, normal flow
 
         reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
         if not reply: return
@@ -785,27 +793,20 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, reply)
         return
 
-# ⭐ ===== NEW MEMBER WELCOME HANDLER (No AI/Groq call — instant) =====
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if not update.message or not update.message.new_chat_members:
             return
         chat = update.effective_chat
+        # ⭐ Admin nahi to welcome mat do
+        if not await is_bot_admin(context, chat.id):
+            return
         for new_user in update.message.new_chat_members:
             if new_user.is_bot:
-                continue  # koi doosra bot join kare toh usko welcome mat karo
-
-            # ⭐ Sirf bot ke apne OWNER ko skip karo (agar wo khud kabhi naye
-            # group me add ho). Baaki koi bhi genuine naya joining member —
-            # chahe wo kisi aur group ka admin ho ya na ho — use welcome
-            # milna chahiye, kyunki wo IS group me genuinely naya hai.
+                continue
             if new_user.id == OWNER_ID:
                 continue
 
-            # ⭐ Username ho toh @username use karo, warna Telegram ka proper
-            # "text_mention" entity banate hain (first_name pe clickable link) —
-            # isse bina username wale user ko bhi asli mention milta hai, sirf
-            # plain text nahi jo click na ho sake.
             if new_user.username:
                 name = f"@{new_user.username}"
                 welcome_text = get_welcome_message(name)
@@ -814,7 +815,6 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
             else:
                 display_name = new_user.first_name or "Dost"
                 welcome_text = get_welcome_message(display_name)
-                # display_name ke exact position ko clickable mention banate hain
                 mention_offset = welcome_text.find(display_name)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
                 if mention_offset != -1:
@@ -842,7 +842,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def main() -> None:
     init_db()
-    
     application = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -853,8 +852,8 @@ async def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("resetkeys", resetkeys_command))
-    application.add_handler(CommandHandler("memory", memory_command))  # ⭐ /memory command added
-    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))  # ⭐ Welcome new members
+    application.add_handler(CommandHandler("memory", memory_command))
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
 
