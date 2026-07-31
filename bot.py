@@ -567,8 +567,11 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 )
                 reply = response.choices[0].message.content
 
-                # ⭐ Qwen kabhi‑kabhi internal <think> block output karta hai — use hatao
-                reply = re.sub(r"<think.*?>.*?</think>", "", reply, flags=re.DOTALL | re.IGNORECASE).strip()
+                # ⭐ Qwen ke <think> block ki watt lagao — chahe complete ho ya incomplete
+                # Step 1: Poora block hatane ki koshish
+                reply = re.sub(r"<think\b[^>]*>.*?</think>", "", reply, flags=re.DOTALL | re.IGNORECASE)
+                # Step 2: Agar incomplete block hai (</think> nahi hai), to <think> se aagey ka sab kuch hatao
+                reply = re.sub(r"<think\b[^>]*>.*", "", reply, flags=re.DOTALL | re.IGNORECASE).strip()
                 if not reply:
                     continue
 
@@ -593,7 +596,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
     logger.error("💀 Sab API keys fail/limit ho gayi hain! Silent mode active.")
     return None
-
 def get_history(user_id: int) -> list:
     return conversation_memory.get(user_id, [])
 
