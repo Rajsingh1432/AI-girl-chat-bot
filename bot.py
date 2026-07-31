@@ -633,8 +633,8 @@ async def safe_reply_text(update: Update, text: str, **kwargs) -> None:
 
 async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str) -> None:
     try:
-        delay = min(max(len(text) * 0.18, 0.6), 1.8)
-        delay += random.uniform(0.1, 0.3)
+        delay = min(max(len(text) * 0.045, 0.5), 3.5)
+        delay += random.uniform(0.2, 0.5)
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         await asyncio.sleep(delay)
     except Exception:
