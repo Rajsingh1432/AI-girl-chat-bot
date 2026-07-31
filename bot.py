@@ -566,6 +566,13 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     timeout=10.0
                 )
                 reply = response.choices[0].message.content
+
+                # ⭐ Qwen model kabhi‑kabhi internal <think> block bhi output karta hai — use hatao
+                reply = re.sub(r"<think>.*?</think>", "", reply, flags=re.DOTALL).strip()
+                if not reply:
+                    # agar poori reply sirf thinking thi to is key ko skip karo
+                    continue
+
                 usage = getattr(response, "usage", None)
                 actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
                 record_key_usage(idx, actual_tokens)
