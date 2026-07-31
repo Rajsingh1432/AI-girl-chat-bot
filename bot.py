@@ -433,7 +433,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 await client.chat.completions.create(
                     model="qwen/qwen3.6-27b",
                     messages=[{"role": "user", "content": "Say OK"}],
-                    max_tokens=2, temperature=0)
+                    max_tokens=5, temperature=0)
                 ms = int((time.perf_counter() - t) * 1000)
                 health_ok = True
             except Exception:
@@ -561,16 +561,14 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     model="qwen/qwen3.6-27b",
                     messages=messages,
                     temperature=0.7,
-                    max_tokens=60,
+                    max_tokens=120,
                     top_p=0.9,
                     timeout=10.0
                 )
                 reply = response.choices[0].message.content
 
                 # ⭐ Qwen ke <think> block ki watt lagao — chahe complete ho ya incomplete
-                # Step 1: Poora block hatane ki koshish
                 reply = re.sub(r"<think\b[^>]*>.*?</think>", "", reply, flags=re.DOTALL | re.IGNORECASE)
-                # Step 2: Agar incomplete block hai (</think> nahi hai), to <think> se aagey ka sab kuch hatao
                 reply = re.sub(r"<think\b[^>]*>.*", "", reply, flags=re.DOTALL | re.IGNORECASE).strip()
                 if not reply:
                     continue
@@ -596,6 +594,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
     logger.error("💀 Sab API keys fail/limit ho gayi hain! Silent mode active.")
     return None
+
 def get_history(user_id: int) -> list:
     return conversation_memory.get(user_id, [])
 
