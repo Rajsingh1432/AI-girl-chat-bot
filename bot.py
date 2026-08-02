@@ -402,7 +402,7 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
 conversation_memory = {}
 MAX_HISTORY_MESSAGES = 6
 
-WELCOME_IMAGE_URL = "https://ibb.co/Tq2Rb2Nz"
+WELCOME_IMAGE_URL = "https://ibb.co/jkt7ZNKB"
 
 WELCOME_MESSAGES = [
     "{name} hello welcome hai aapka! Kaise ho? 😊",
@@ -447,21 +447,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
 
         welcome_text = (
-            f"🌟 *ᴡᴇʟᴄᴏᴍᴇ ᴛᴏ {bot_name}, {user_name}\\!* 🌟\n\n"
-            f"💖 ɪ'ᴍ ʏᴏᴜʀ *ғᴜɴ, ғʟɪʀᴛʏ ᴀɴᴅ ғʀɪᴇɴᴅʟʏ* ᴄʜᴀᴛ ᴄᴏᴍᴘᴀɴɪᴏɴ ʙᴏᴛ\\.\n"
-            f"ɪ'ʟʟ ᴋᴇᴇᴘ ʏᴏᴜʀ ᴛᴇʟᴇɢʀᴀᴍ ɢʀᴏᴜᴘ *ᴀʟɪᴠᴇ & ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ* 🎉\n\n"
-            f"👉 ᴊᴜsᴛ ᴀᴅᴅ ᴍᴇ ɪɴ ʏᴏᴜʀ ɢʀᴏᴜᴘ ᴀɴᴅ ᴍᴀᴋᴇ ᴍᴇ ᴀᴅᴍɪɴ –\n"
-            f"ɪ'ʟʟ  ʀᴇᴘʟʏ ᴛᴏ *ᴇᴠᴇʀʏ ᴍᴇssᴀɢᴇ* ᴀᴜᴛᴏᴍᴀᴛɪᴄᴀʟʟʏ\\! 😉\n\n"
-            f"⚡ ᴘᴏᴡᴇʀᴇᴅ ʙʏ *Rᴀᴊ Aɪ* – ʟɪɢʜᴛɴɪɴɢ ғᴀsᴛ & ᴄᴏᴏʟ\\!\n\n"
-            f"🌿 ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ ᴏᴜʀ ᴏᴡɴᴇʀ [@its\\_raj\\_king](https://t.me/its_raj_king)\n\n"
-            f"👇 ᴛᴀᴘ ᴀ ʙᴇʟʟᴏᴡ ʙᴜᴛᴛᴏɴ ᴀɴᴅ ᴜsᴇ ᴍᴇ \\!"
-        )
+    f"✨ *ᴏʜ ʜᴇʟʟᴏ {user_name}, ᴀᴀᴋʜɪʀᴋᴀʀ ᴀᴀ ʜɪ ɢᴀʏᴇ ᴛᴜᴍ\\!* ✨\n\n"
+    f"ᴍᴀɪɴ *{bot_name}* ʜᴜɴ — ᴛᴜᴍʜᴀʀɪ wo ᴅᴏsᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏᴜᴘs ᴋᴏ *ᴢɪɴᴅᴀ* ᴋᴀʀ ᴅᴇᴛɪ ʜᴀɪ 💃\n"
+    f"ᴛʜᴏᴅᴀ *ғʟɪʀᴛʏ*, ᴛʜᴏᴅᴀ *sᴀᴠᴀɢᴇ*, ᴀᴜʀ ᴘᴜʀᴀ *ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ* — ʏᴇʜ ʜᴀɪ ᴍᴇʀᴀ ᴠᴀᴀᴅᴀ 😉\n\n"
+    f"🎯 *ᴋᴀɪsᴇ ᴜsᴇ ᴋᴀʀᴜɴ?*\n"
+    f"ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ *ᴀᴅᴅ* ᴋᴀʀᴏ, *ᴀᴅᴍɪɴ* ʙᴀɴᴀᴏ,\n"
+    f"ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ *ʜᴀʀ ᴍᴇssᴀɢᴇ* ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ 🔥\n\n"
+    f"⚡ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ* — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ 🎭\n"
+    f"⚡ *ᴄʀᴇᴀᴛᴇᴅ ʙʏ* [@its\\_raj\\_king](https://t.me/its_raj_king)\n\n"
+    f"👇 ᴀʙ ᴅᴇʀ ᴋɪs ʙᴀᴀᴛ ᴋɪ? ᴛᴀᴘ ᴋᴀʀᴏ ᴀᴜʀ ᴍᴀᴢᴀ ʟᴏ\\!"
+)
 
         keyboard = [
     [InlineKeyboardButton("𖤍 ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ 𖤍", url=f"https://t.me/{bot_username}?startgroup=start")],
     [
-        InlineKeyboardButton("👨‍💻 ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ༄", url="https://t.me/its_raj_king"),
-        InlineKeyboardButton("🌿 sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ ✍︎", url="https://t.me/KnowRajpapa")
+        InlineKeyboardButton("༄ ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ༄", url="https://t.me/its_raj_king"),
+        InlineKeyboardButton("༄ sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ ༄", url="https://t.me/KnowRajpapa")
     ],
     [InlineKeyboardButton("☞︎︎︎ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ ☜︎︎", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
 ]
