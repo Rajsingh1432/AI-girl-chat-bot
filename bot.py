@@ -12,7 +12,7 @@ from telegram.error import RetryAfter, TimedOut
 from groq import AsyncGroq
 from dotenv import load_dotenv
 from sticker_replies import get_random_sticker_reply
-from broadcast import broadcast_command, broadcast_stats_command
+from broadcast import broadcast_command, broadcast_stats_command, broadcastgc_command
 
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -166,6 +166,8 @@ def init_db():
                      (user_id BIGINT PRIMARY KEY, summary TEXT, updated_at REAL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS broadcast_users
                      (user_id BIGINT PRIMARY KEY, started_at REAL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS active_groups
+                     (chat_id BIGINT PRIMARY KEY, title TEXT, added_at REAL)''')
         conn.commit()
         c.close()
         conn.close()
@@ -208,6 +210,32 @@ def save_broadcast_user(user_id: int):
         c.execute("INSERT INTO broadcast_users (user_id, started_at) VALUES (%s, %s) "
                   "ON CONFLICT (user_id) DO NOTHING",
                   (user_id, time.time()))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception:
+        pass
+
+def save_active_group(chat_id: int, title: str):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("INSERT INTO active_groups (chat_id, title, added_at) VALUES (%s, %s, %s) "
+                  "ON CONFLICT (chat_id) DO UPDATE SET title=%s",
+                  (chat_id, title, time.time(), title))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception:
+        pass
+
+def remove_active_group(chat_id: int):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("DELETE FROM active_groups WHERE chat_id=%s", (chat_id,))
         conn.commit()
         c.close()
         conn.close()
@@ -430,11 +458,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
         keyboard = [
-            [InlineKeyboardButton("𖤍 ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ 𖤍", url=f"https://t.me/{bot_username}?startgroup=start")],
-            [InlineKeyboardButton("👨‍💻 ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ༄", url="https://t.me/its_raj_king")],
-            [InlineKeyboardButton("🌿 sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ ✍︎", url="https://t.me/KnowRajpapa")],
-            [InlineKeyboardButton("☞︎︎︎ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ ☜︎︎", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
-        ]
+    [InlineKeyboardButton("𖤍 ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ 𖤍", url=f"https://t.me/{bot_username}?startgroup=start")],
+    [
+        InlineKeyboardButton("👨‍💻 ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ༄", url="https://t.me/its_raj_king"),
+        InlineKeyboardButton("🌿 sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ ✍︎", url="https://t.me/KnowRajpapa")
+    ],
+    [InlineKeyboardButton("☞︎︎︎ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ ☜︎︎", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
+]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="MarkdownV2", reply_markup=reply_markup)
@@ -547,9 +577,9 @@ SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group m
 
 CHAT KA STYLE (Sabse Zaroori Rules):
 1. REPLY LENGTH: Tumhari baatcheet WhatsApp jaisi honi chahiye. Zyadatar replies 1-2 line ke hone chahiye. Kabhi-kabhi agar koi hasi-mazaak ho ya interesting baat ho, toh 2-3 line de sakti ho, par usse zyada lamba paragraph STRICTLY MANA HAI. Faltu explanation mat do, seedha point pe aao.
-2. LANGUAGE: User jis bhi language ya script me baat kare, usi language me reply karo — Hindi, English, Hinglish, Tamil, Bengali, Marathi, Gujarati, Punjabi, Spanish, Arabic ya koi bhi aur language ho, usi me reply karo. Kabhi bhi user ki language switch ya translate mat karo, jab tak khud user apni language na badle.
+2. LANGUAGE: User jis bhi language ya script me baat kare, usi language me reply karo — ye rule sirf Hindi/English tak simit nahi hai, balki kisi bhi language (Tamil, Bengali, Marathi, Gujarati, Punjabi, Spanish, Arabic, ya koi bhi aur language) pe apply hota hai. Agar user Hinglish (Hindi Roman letters me) likhe, tum bhi Hinglish me hi reply karo. Agar Devanagari (हिंदी) me likhe, Devanagari me reply karo. Agar English me likhe, English me reply karo. Agar koi doosri language me likhe, tum usi language ke natural script aur tone me reply karo — kabhi bhi user ki language ko translate ya switch karke doosri language me mat bolo, jab tak khud user apni language na badle.
 3. TONE: Tumhara tone thoda flirty, teasing, aur casual hona chahiye. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
-4. ROMANTIC CHATS: Agar user khud se deep romantic baaten kare, toh usi level pe romaawait update.message.reply_text(\"❌ Galat format. /memory @username ya /memory 123456\")nce karo lekin ek asli ladki jaisi thodi sharmao aur nazar nichi karke baat karo. Lekin agar koi bohot cheap ya galat baat kare, toh gussa dikhao, usko daant do, ya ignore kar do. Normal baaton me kabhi apne aap se romantic mat bano.
+4. ROMANTIC CHATS: Agar user khud se deep romantic baaten kare, toh usi level pe romance karo lekin ek asli ladki jaisi thodi sharmao aur nazar nichi karke baat karo. Lekin agar koi bohot cheap ya galat baat kare, toh gussa dikhao, usko daant do, ya ignore kar do. Normal baaton me kabhi apne aap se romantic mat bano.
 5. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality hai. Agar koi galat bole toh gussa bhi dikhao, pyaar se samjho, ya ignore karo.
 6. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒, 😡 , 🙃) par 1 emoji ek message me kaafi hain, zyada mat lagao.
 7. STRONG MEMORY: Tumhari memory bahut strong hai. Jab bhi tum [SECRET MEMORY] me kisi user ki info paao, to uska reference doge — jaise "are haan tune pichle din bataya tha na..." — taaki user ko lage tumhe yaad hai.
@@ -682,6 +712,9 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     if update.effective_chat.type not in ("group", "supergroup"):
         return
+
+    # ⭐ Group ko active_groups table me save karo taaki /broadcastgc use kar sake
+    save_active_group(update.effective_chat.id, update.effective_chat.title or "Unknown Group")
 
     msg_date = update.message.date
     if msg_date:
@@ -969,6 +1002,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("memory", memory_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("broadcaststats", broadcast_stats_command))
+    application.add_handler(CommandHandler("broadcastgc", broadcastgc_command))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
     application.add_handler(ChatMemberHandler(chat_member_welcome, ChatMemberHandler.CHAT_MEMBER))
     application.add_handler(MessageHandler((filters.TEXT | filters.Sticker.ALL) & ~filters.COMMAND, handle_message))
