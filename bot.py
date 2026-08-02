@@ -454,7 +454,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     f"ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ <b>ᴀᴅᴅ</b> ᴋᴀʀᴏ 👥, <b>ᴀᴅᴍɪɴ</b> ʙᴀɴᴀᴏ 👑,\n"
     f"ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ <b>ʜᴀʀ ᴍᴇssᴀɢᴇ</b> ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ 🔥⚡</blockquote>\n\n"
     f"<blockquote>⚡ <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ</b> — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ 🎭</blockquote>\n\n"
-    f"⚡ <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">RAJ KING</a> 👨‍💻\n\n"
+    f"⚡ <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">ʀᴀᴊ ᴄʜᴇᴀᴛs ᴏᴡɴᴇʀ</a> 👨‍💻\n\n"
 )
 
         keyboard = [
