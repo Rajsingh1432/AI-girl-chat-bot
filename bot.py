@@ -447,28 +447,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
 
         welcome_text = (
-    f"✨ *ᴏʜ ʜᴇʟʟᴏ {user_name}, ᴀᴀᴋʜɪʀᴋᴀʀ ᴀᴀ ʜɪ ɢᴀʏᴇ ᴛᴜᴍ\\!* ✨\n\n"
-    f"ᴍᴀɪɴ *{bot_name}* ʜᴜɴ — ᴛᴜᴍʜᴀʀɪ wo ᴅᴏsᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏᴜᴘs ᴋᴏ *ᴢɪɴᴅᴀ* ᴋᴀʀ ᴅᴇᴛɪ ʜᴀɪ 💃\n"
-    f"ᴛʜᴏᴅᴀ *ғʟɪʀᴛʏ*, ᴛʜᴏᴅᴀ *sᴀᴠᴀɢᴇ*, ᴀᴜʀ ᴘᴜʀᴀ *ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ* — ʏᴇʜ ʜᴀɪ ᴍᴇʀᴀ ᴠᴀᴀᴅᴀ 😉\n\n"
-    f"🎯 *ᴋᴀɪsᴇ ᴜsᴇ ᴋᴀʀᴜɴ?*\n"
-    f"ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ *ᴀᴅᴅ* ᴋᴀʀᴏ, *ᴀᴅᴍɪɴ* ʙᴀɴᴀᴏ,\n"
-    f"ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ *ʜᴀʀ ᴍᴇssᴀɢᴇ* ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ 🔥\n\n"
-    f"⚡ *ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ* — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ 🎭\n"
-    f"⚡ *ᴄʀᴇᴀᴛᴇᴅ ʙʏ* [@its\\_raj\\_king](https://t.me/its_raj_king)\n\n"
-    f"👇 ᴀʙ ᴅᴇʀ ᴋɪs ʙᴀᴀᴛ ᴋɪ? ᴛᴀᴘ ᴋᴀʀᴏ ᴀᴜʀ ᴍᴀᴢᴀ ʟᴏ\\!"
-)
+            f"<blockquote>✨ <b>ᴏʜ ʜᴇʟʟᴏ {user_name}, ᴀᴀᴋʜɪʀᴋᴀʀ ᴀᴀ ʜɪ ɢᴀʏᴇ ᴛᴜᴍ!</b> ✨</blockquote>\n\n"
+            f"<blockquote>ᴍᴀɪɴ <b>{bot_name}</b> ʜᴜɴ — ᴛᴜᴍʜᴀʀɪ ᴡᴏ ᴅᴏsᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏᴜᴘs ᴋᴏ <b>ᴢɪɴᴅᴀ</b> ᴋᴀʀ ᴅᴇᴛɪ ʜᴀɪ 💃🌸\n"
+            f"ᴛʜᴏᴅᴀ <b>ғʟɪʀᴛʏ</b> 😘, ᴛʜᴏᴅᴀ <b>sᴀᴠᴀɢᴇ</b> 😈, ᴀᴜʀ ᴘᴜʀᴀ <b>ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ</b> 🎉 — ʏᴇʜ ʜᴀɪ ᴍᴇʀᴀ ᴠᴀᴀᴅᴀ ✨</blockquote>\n\n"
+            f"🎯 <b>ᴋᴀɪsᴇ ᴜsᴇ ᴋᴀʀᴜɴ?</b>\n"
+            f"ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ <b>ᴀᴅᴅ</b> ᴋᴀʀᴏ 👥, <b>ᴀᴅᴍɪɴ</b> ʙᴀɴᴀᴏ 👑,\n"
+            f"ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ <b>ʜᴀʀ ᴍᴇssᴀɢᴇ</b> ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ 🔥⚡\n\n"
+            f"⚡ <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ</b> — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ 🎭\n\n"
+            f"⚡ <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">RAJ KING</a> 👨‍💻\n\n"
+            f"👇 ᴀʙ ᴅᴇʀ ᴋɪs ʙᴀᴀᴛ ᴋɪ? ɴᴇᴇᴄʜᴇ ʙᴜᴛᴛᴏɴ ᴅᴀʙᴀᴏ, ᴀᴅᴅ ᴋᴀʀᴏ ᴀᴜʀ ᴍᴀᴢᴀ ʟᴏ! 🎊"
+        )
 
         keyboard = [
-    [InlineKeyboardButton("𖤍 ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ 𖤍", url=f"https://t.me/{bot_username}?startgroup=start")],
-    [
-        InlineKeyboardButton("༄ ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ ༄", url="https://t.me/its_raj_king"),
-        InlineKeyboardButton("༄ sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ ༄", url="https://t.me/KnowRajpapa")
-    ],
-    [InlineKeyboardButton("☞︎︎︎ sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ ☜︎︎", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
-]
+            [InlineKeyboardButton("ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ", url=f"https://t.me/{bot_username}?startgroup=start")],
+            [
+                InlineKeyboardButton("ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king"),
+                InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ", url="https://t.me/KnowRajpapa")
+            ],
+            [InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="MarkdownV2", reply_markup=reply_markup)
+        await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="HTML", reply_markup=reply_markup)
     except Exception as e:
         logger.error(f"start error: {e}")
         try:
