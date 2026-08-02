@@ -448,12 +448,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         welcome_text = (
     f"<blockquote>✨ <b>ᴏʜ ʜᴇʟʟᴏ {user_name}, ᴀᴀᴋʜɪʀᴋᴀʀ ᴀᴀ ʜɪ ɢᴀʏᴇ ᴛᴜᴍ!</b> ✨</blockquote>\n\n"
-    f"<blockquote>ᴍᴀɪɴ <b>{bot_name}</b> ʜᴜɴ — ᴛᴜᴍʜᴀʀɪ ᴡᴏ ᴅᴏsᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏᴜᴘs ᴋᴏ <b>ᴢɪɴᴅᴀ</b> ᴋᴀʀ ᴅᴇᴛɪ ʜᴀɪ 💃🌸\n"
-    f"ᴛʜᴏᴅᴀ <b>ғʟɪʀᴛʏ</b> 😘, ᴛʜᴏᴅᴀ <b>sᴀᴠᴀɢᴇ</b> 😈, ᴀᴜʀ ᴘᴜʀᴀ <b>ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ</b> 🎉 — ʏᴇʜ ʜᴀɪ ᴍᴇʀᴀ ᴠᴀᴀᴅᴀ ✨</blockquote>\n\n"
-    f"<blockquote>🎯 <b>ᴋᴀɪsᴇ ᴜsᴇ ᴋᴀʀᴜɴ?</b>\n"
-    f"ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ <b>ᴀᴅᴅ</b> ᴋᴀʀᴏ 👥, <b>ᴀᴅᴍɪɴ</b> ʙᴀɴᴀᴏ 👑,\n"
-    f"ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ <b>ʜᴀʀ ᴍᴇssᴀɢᴇ</b> ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ 🔥⚡</blockquote>\n\n"
-    f"<blockquote>⚡ <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ</b> — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ 🎭</blockquote>\n\n"
+    f"<blockquote><b>ᴍᴀɪɴ {bot_name} ʜᴜɴ — ᴛᴜᴍʜᴀʀɪ ᴡᴏ ᴅᴏsᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏᴜᴘs ᴋᴏ ᴢɪɴᴅᴀ ᴋᴀʀ ᴅᴇᴛɪ ʜᴀɪ</b> 💃🌸\n"
+    f"<b>ᴛʜᴏᴅᴀ ғʟɪʀᴛʏ 😘, ᴛʜᴏᴅᴀ sᴀᴠᴀɢᴇ 😈, ᴀᴜʀ ᴘᴜʀᴀ ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ 🎉 — ʏᴇʜ ʜᴀɪ ᴍᴇʀᴀ ᴠᴀᴀᴅᴀ</b> ✨</blockquote>\n\n"
+    f"🎯 <b>ᴋᴀɪsᴇ ᴜsᴇ ᴋᴀʀᴏɢᴇ sɪᴍᴘʟᴇ 👇</b>\n"
+    f"<blockquote><b>ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ ᴀᴅᴅ ᴋᴀʀᴏ 👥, ᴀᴅᴍɪɴ ʙᴀɴᴀᴏ 👑</b>\n"
+    f"<b>ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ ʜᴀʀ ᴍᴇssᴀɢᴇ ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ</b> 🔥⚡</blockquote>\n\n"
+    f"<blockquote>⚡ <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ</b> 🎭</blockquote>\n\n"
     f"⚡ <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">ʀᴀᴊ ᴄʜᴇᴀᴛs ᴏᴡɴᴇʀ</a> 👨‍💻\n\n"
 )
 
