@@ -450,12 +450,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<blockquote>✨ <b>ᴏʜ ʜᴇʟʟᴏ {user_name}, ᴀᴀᴋʜɪʀᴋᴀʀ ᴀᴀ ʜɪ ɢᴀʏᴇ ᴛᴜᴍ!</b> ✨</blockquote>\n\n"
             f"<blockquote>ᴍᴀɪɴ <b>{bot_name}</b> ʜᴜɴ — ᴛᴜᴍʜᴀʀɪ ᴡᴏ ᴅᴏsᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏᴜᴘs ᴋᴏ <b>ᴢɪɴᴅᴀ</b> ᴋᴀʀ ᴅᴇᴛɪ ʜᴀɪ 💃🌸\n"
             f"ᴛʜᴏᴅᴀ <b>ғʟɪʀᴛʏ</b> 😘, ᴛʜᴏᴅᴀ <b>sᴀᴠᴀɢᴇ</b> 😈, ᴀᴜʀ ᴘᴜʀᴀ <b>ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ</b> 🎉 — ʏᴇʜ ʜᴀɪ ᴍᴇʀᴀ ᴠᴀᴀᴅᴀ ✨</blockquote>\n\n"
-            f"🎯 <b>ᴋᴀɪsᴇ ᴜsᴇ ᴋᴀʀᴜɴ?</b>\n"
+            f"<blockquote>🎯 <b>ᴋᴀɪsᴇ ᴜsᴇ ᴋᴀʀᴜɴ?</b>\n"
             f"ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ <b>ᴀᴅᴅ</b> ᴋᴀʀᴏ 👥, <b>ᴀᴅᴍɪɴ</b> ʙᴀɴᴀᴏ 👑,\n"
-            f"ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ <b>ʜᴀʀ ᴍᴇssᴀɢᴇ</b> ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ 🔥⚡\n\n"
-            f"⚡ <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ</b> — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ 🎭\n\n"
-            f"⚡ <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">RAJ KING</a> 👨‍💻\n\n"
-            f"👇 ᴀʙ ᴅᴇʀ ᴋɪs ʙᴀᴀᴛ ᴋɪ? ɴᴇᴇᴄʜᴇ ʙᴜᴛᴛᴏɴ ᴅᴀʙᴀᴏ, ᴀᴅᴅ ᴋᴀʀᴏ ᴀᴜʀ ᴍᴀᴢᴀ ʟᴏ! 🎊"
+            f"ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ <b>ʜᴀʀ ᴍᴇssᴀɢᴇ</b> ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ 🔥⚡<blockquote>\n\n"
+            f"<blockquote>⚡ <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ</b> — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ 🎭<blockquote>\n\n"
+            f"⚡ <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">[ʀᴀᴊ ᴋɪɴɢ]</a> 👨‍💻\n\n"
         )
 
         keyboard = [
