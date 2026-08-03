@@ -248,7 +248,7 @@ async def generate_summary(user_id: int, history: list):
     try:
         global _rr_index
         old_summary = get_user_summary(user_id)
-        prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
+        #prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
 
         prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
 
