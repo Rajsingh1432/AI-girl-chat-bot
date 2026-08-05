@@ -304,7 +304,7 @@ async def generate_greeting(user_id: int, user_message: str) -> str | None:
     if not summary:
         return None
 
-        prompt = f"""Tu Sneha hai, ek smart aur cool ladki. Ye user tujhse pichle baaton se jaana pehchaana hai. 
+    prompt = f"""Tu Sneha hai, ek smart aur cool ladki. Ye user tujhse pichle baaton se jaana pehchaana hai. 
 Teri memory ke mutabiq is user ke baare me ye pata hai: "{summary}"
 Abhi user ne tujhe "{user_message}" bola hai.
 
