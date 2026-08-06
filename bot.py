@@ -627,6 +627,8 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
                 reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                 reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
+                # quotes hatao (single, double, triple)
+                reply = reply.strip().strip('"').strip("'").strip('`')
                 if not reply:
                     continue
 
