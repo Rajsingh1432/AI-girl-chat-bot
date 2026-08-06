@@ -45,10 +45,10 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ Llama-3.3-70B limits ke hisaab se safe settings
-RPM_SAFE_LIMIT = 7          # 7 RPM (7×1500=10500 TPM, safe < 12000)
-TPM_SAFE_LIMIT = 9000       # 12000 TPM se safe margin
-REQUEST_TOKEN_ESTIMATE = 1500  # realistic estimate for 70B
+# ⭐ Llama-3.3-70B limits ke hisaab se safe settings (36 keys के लिए optimal)
+RPM_SAFE_LIMIT = 5          # 5 RPM (5×2000=10000 TPM, safe < 12000)
+TPM_SAFE_LIMIT = 10000      # 12000 TPM se safe margin
+REQUEST_TOKEN_ESTIMATE = 2000  # realistic estimate (system prompt + history + memory + reply)
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -136,19 +136,16 @@ FLOOD_THRESHOLD = 6
 FLOOD_COOLDOWN = 120
 LAST_CLEANUP = 0.0
 
-# ⭐ Admin check cache (2 min) & stylish message cooldown (5 min)
 chat_admin_cache = {}
 admin_need_reply_cooldown = {}
 
 user_msg_counter = {}
 
-# ⭐ Personal DM me /start chhorke kuchh bhi msg aane par random reply (bina API)
 DM_ONLY_REPLIES = [
     "☃︎ 𝗠𝗮𝗶 𝗦𝗶𝗿𝗳 𝗖𝗵𝗮𝘁𝗶𝗻𝗴 𝗚𝗿𝗼𝘂𝗽𝘀 𝗠𝗲 𝗕𝗮𝘁𝗲𝗻 𝗞𝗮𝗿𝘁𝗶 𝗛𝘂𝗻\n\n🌿 𝗣𝗲𝗿𝘀𝗼𝗻𝗮𝗹 𝗠𝗮𝘀𝘀𝗲𝗴𝗲 𝗠𝗮𝘁 𝗞𝗮𝗿𝗼\n\nᴥ︎︎︎ 𝗠𝘂𝗷𝗵𝘀𝗲 𝗙𝗹𝗶𝗿𝘁,𝗙𝘂𝗻,𝗥𝗼𝗺𝗮𝗻𝘁𝗶𝗰,𝗔𝗻𝗴𝗿𝘆,𝗘𝗺𝗼𝘁𝗶𝗼𝗻𝗮𝗹 𝗕𝗮𝘁𝗲𝗻 𝗞𝗮𝗿𝗻𝗮 𝗵𝗮𝗶 𝘁𝗼 𝗮𝗽𝗻𝗲 𝗴𝗿𝗼𝘂𝗽 𝗺𝗲 𝗮𝗱𝗱 𝗸𝗮𝗿𝗱𝗼\n\n⌨︎ 𝗔𝘂𝗿 𝗠𝗮𝗶 𝗔𝗽𝗸𝗲 𝗖𝗵𝗮𝘁𝗶𝗻𝗴 𝗚𝗿𝗼𝘂𝗽 𝗞𝗼 𝗔𝗰𝘁𝗶𝘃𝗲 𝗥𝗮𝗸𝗵𝘂𝗻𝗴𝗶 𝗦𝗮𝗯𝗵𝗶 𝗡𝗲𝘄 𝗠𝗲𝗺𝗯𝗲𝗿𝘀 𝗔𝗻𝗱 𝗢𝗹𝗱 𝗠𝗲𝗺𝗯𝗲𝗿𝘀 𝗦𝗲 𝗙𝘂𝗻 𝗞𝗮𝗿𝘁𝗶 𝗥𝗮𝗵𝘂𝗻𝗴𝗶\n\n✍︎ 𝗔𝗱𝗺𝗶𝗻 𝗗𝗲𝗻𝗮 𝗠𝗮𝘁 𝗕𝗵𝗼𝗼𝗹𝗻𝗮\n\n\n➪ 𝗡𝗲𝗲𝗰𝗵𝗲 𝗕𝘂𝘁𝘁𝗼𝗻 𝗛𝗮𝗶 𝗡𝗮 𝗕𝗮𝗯𝘆 𝗗𝗮𝗯𝗮𝗼 𝗔𝘂𝗿 𝗠𝘂𝗷𝗵𝗲 𝗞𝗶𝗱𝗻𝗮𝗽 𝗞𝗮𝗿𝗹𝗼 👇",
 ]
 
-# ⭐ track kiya hua users jinko already welcome mil chuka (duplicate welcome rokne ke liye)
-_welcomed_users = {}  # chat_id -> set(user_id)
+_welcomed_users = {}
 
 # ---------- DATABASE ----------
 def get_db_conn():
@@ -248,7 +245,6 @@ async def generate_summary(user_id: int, history: list):
     try:
         global _rr_index
         old_summary = get_user_summary(user_id)
-        #prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
 
         prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
 
@@ -492,7 +488,6 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             t = time.perf_counter()
             health_ok = False
             try:
-                # ⭐ 70B model se health check
                 await client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=[{"role": "user", "content": "Say OK"}],
@@ -620,7 +615,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 continue
 
             try:
-                # ⭐ Stable 70B model — no <think> nonsense
                 response = await clients[idx].chat.completions.create(
                     model="llama-3.3-70b-versatile",
                     messages=messages,
@@ -631,7 +625,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 )
                 reply = response.choices[0].message.content
 
-                # Optional safety regex (70B normally doesn't output <think>)
                 reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                 reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                 if not reply:
@@ -703,7 +696,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_user.is_bot: return
     if not update.message.text and not update.message.sticker: return
 
-    # ⭐ Personal DM handling — /start chhorke koi bhi normal msg ho to bina API random reply
     if update.effective_chat.type == "private":
         bot_username = context.bot.username
         dm_text = random.choice(DM_ONLY_REPLIES)
@@ -717,7 +709,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_chat.type not in ("group", "supergroup"):
         return
 
-    # ⭐ Group ko active_groups table me save karo taaki /broadcastgc use kar sake
     save_active_group(update.effective_chat.id, update.effective_chat.title or "Unknown Group")
 
     msg_date = update.message.date
@@ -777,10 +768,8 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if has_other_mentions and not is_bot_mentioned:
         return
 
-    # ⭐ ADMIN CHECK – non‑admin groups me sirf stylish message (mention/reply pe)
     if chat.type in ("group", "supergroup"):
         if not await is_bot_admin(context, chat.id):
-            # Bot admin nahi hai
             if is_bot_mentioned or is_reply_to_bot:
                 now_ts = time.time()
                 last = admin_need_reply_cooldown.get(chat.id, 0)
@@ -793,11 +782,9 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                         "_Admin banao aur magic dekho\\!_ ✨"
                     )
                     await safe_reply_text(update, admin_msg, parse_mode="MarkdownV2")
-                # fir bhi return – aagey AI call nahi
-            # admin nahi to poora silent
+                return
             return
 
-    # Sticker handling (admin hone ke baad hi aayega)
     if is_sticker:
         is_reply_to_others = False
         if update.message.reply_to_message:
@@ -883,7 +870,6 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if not update.message or not update.message.new_chat_members:
             return
         chat = update.effective_chat
-        # ⭐ Admin nahi to welcome mat do
         if not await is_bot_admin(context, chat.id):
             return
         welcomed_set = _welcomed_users.setdefault(chat.id, set())
@@ -920,13 +906,6 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
         logger.warning(f"new_member_welcome error: {e}")
 
 async def chat_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Ye handler tab fire hota hai jab kisi user ka status change hokar
-    'member' banta hai bina normal new_chat_members event ke —
-    jaise: admin ne private group/private link ka join request approve kiya.
-    new_chat_members waala case yahin duplicate na ho iske liye
-    _welcomed_users set check karte hain.
-    """
     try:
         result = update.chat_member
         if not result:
@@ -939,7 +918,6 @@ async def chat_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE
         new_status = result.new_chat_member.status
         new_user = result.new_chat_member.user
 
-        # sirf tab jab pehle member nahi tha aur ab member/admin ban gaya
         if old_status in ("member", "administrator", "creator"):
             return
         if new_status not in ("member", "administrator"):
