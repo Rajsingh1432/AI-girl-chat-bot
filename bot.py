@@ -46,9 +46,9 @@ _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
 # ⭐ Llama-3.3-70B limits ke hisaab se safe settings (36 keys के लिए optimal)
-RPM_SAFE_LIMIT = 5          # 5 RPM (5×2000=10000 TPM, safe < 12000)
-TPM_SAFE_LIMIT = 10000      # 12000 TPM se safe margin
-REQUEST_TOKEN_ESTIMATE = 2000  # realistic estimate (system prompt + history + memory + reply)
+RPM_SAFE_LIMIT = 4          # 4 RPM (4×3000=12000 TPM ke aas‑paas, but safe check roke)
+TPM_SAFE_LIMIT = 11000      # 12000 TPM se safe margin (4×2500=10000, safe)
+REQUEST_TOKEN_ESTIMATE = 3000  # worst‑case realistic token usage
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
