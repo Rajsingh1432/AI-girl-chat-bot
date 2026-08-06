@@ -464,10 +464,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         keyboard = [
             [InlineKeyboardButton("ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ", url=f"https://t.me/{bot_username}?startgroup=start")],
             [
-                InlineKeyboardButton("ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king"),
-                InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ", url="https://t.me/KnowRajpapa")
+                InlineKeyboardButton("ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://telegram.me/mahi_2026mk"),
+                InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ", url="https://telegram.me/+kH8EmJ0Jo6liMDU1")
             ],
-            [InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
+            [InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://telegram.me/+IDS7k8FbendiMTJl")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
