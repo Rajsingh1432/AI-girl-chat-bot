@@ -4,6 +4,7 @@ import re
 import time
 import random
 import asyncio
+import html   # ⭐ वेलकम मैसेज में HTML मेंशन के लिए (UTF‑16 एरर फिक्स)
 from datetime import datetime
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
@@ -41,7 +42,7 @@ if not BOT_TOKEN or not GROQ_API_KEYS:
 # ⭐ max_retries=0 agar Groq library khud retry na kare (beban tambahan)
 clients = [AsyncGroq(api_key=key, max_retries=0) for key in GROQ_API_KEYS]
 
-_rr_index = 0  # tidak lagi digunakan setelah pick_best_key, tapi dibiarkan untuk referensi
+_rr_index = 0
 _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
@@ -536,66 +537,38 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception:
             pass
 
+# ⭐ ========== NEW /stats COMMAND (COMPACT SUMMARY) ==========
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if update.effective_user.id != OWNER_ID: return
-        do_live_check = bool(context.args and context.args[0].lower() == "live")
-        if do_live_check:
-            await update.message.reply_text("⏳ Sabhi API Servers check ho rahe hain (live ping)...")
         now = time.time()
         reset_daily_if_new_day()
-        status_report = "📊 *API Keys Status Report:*\n\n"
-        status_report += f"⚙️ In-flight slots: {MAX_CONCURRENT_REQUESTS - _concurrency_semaphore._value}/{MAX_CONCURRENT_REQUESTS}\n"
-        if not do_live_check:
-            status_report += "_(local counters — live ping ke liye /stats live use karo)_\n\n"
 
-        for i, client in enumerate(clients):
-            name = f"Server {i+1}"
-            health_ok = True
-            ms = 0
-            if do_live_check:
-                t = time.perf_counter()
-                health_ok = False
-                try:
-                    await client.chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=[{"role": "user", "content": "Say OK"}],
-                        max_tokens=5, temperature=0)
-                    ms = int((time.perf_counter() - t) * 1000)
-                    health_ok = True
-                except Exception:
-                    ms = 0
+        total_keys = len(clients)
+        sum_req = sum(daily_requests)
+        sum_tok = sum(daily_tokens)
+        max_req = total_keys * 1000
+        max_tok = total_keys * 100000
 
-            _clean_key_usage(i, now)
-            entries = _key_usage[i]
-            rpm_used = len(entries)
-            tpm_used = sum(tok for _, tok in entries)
-            daily_rpd = daily_requests[i]
-            daily_tpd = daily_tokens[i]
-
+        active = 0
+        cooldown_count = 0
+        for i in range(total_keys):
             cd = _key_cooldowns.get(i, 0)
             if cd > now:
-                cd_str = f"❄️ {int(cd - now)}s"
+                cooldown_count += 1
             else:
-                cd_str = "✅ Active"
-            lock_status = "🔒" if _key_locks[i].locked() else "🔓"
+                active += 1
 
-            if health_ok:
-                status_report += (
-                    f"✅ *{name}:* Working! ({ms} ms)\n"
-                    f"   {lock_status} {cd_str}\n"
-                    f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n"
-                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/100000 tok\n\n"
-                )
-            else:
-                status_report += (
-                    f"❌ *{name}:* Error\n"
-                    f"   {lock_status} {cd_str}\n"
-                    f"   RPM: {rpm_used}/{RPM_SAFE_LIMIT}  TPM: {tpm_used}/{TPM_SAFE_LIMIT}\n"
-                    f"   📆 Daily: {daily_rpd}/1000 req  |  {daily_tpd}/100000 tok\n\n"
-                )
-
-        await update.message.reply_text(status_report, parse_mode="Markdown")
+        summary = (
+            f"📊 *Bot Usage Summary*\n\n"
+            f"🔑 Keys: {total_keys}\n"
+            f"📆 Daily Requests: {sum_req}/{max_req} ({sum_req/max_req*100:.1f}%)\n"
+            f"📆 Daily Tokens: {sum_tok}/{max_tok} ({sum_tok/max_tok*100:.1f}%)\n"
+            f"⚡ Active: {active} | ❄️ Cooldown: {cooldown_count}\n"
+            f"⏳ In-flight slots: {MAX_CONCURRENT_REQUESTS - _concurrency_semaphore._value}/{MAX_CONCURRENT_REQUESTS}\n\n"
+            f"_For per-key details use /stats live_"
+        )
+        await update.message.reply_text(summary, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"stats error: {e}")
 
@@ -980,6 +953,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, reply)
         return
 
+# ⭐ ========== UPDATED WELCOME (HTML mention for users without username) ==========
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if not update.message or not update.message.new_chat_members:
@@ -1004,19 +978,11 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text(welcome_text)
             else:
                 display_name = new_user.first_name or "Dost"
-                welcome_text = get_welcome_message(display_name)
-                mention_offset = welcome_text.find(display_name)
+                # HTML link se mention karo — UTF-16 offset error permanently fix
+                mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
+                welcome_text = get_welcome_message(mention_html)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
-                if mention_offset != -1:
-                    entities = [MessageEntity(
-                        type=MessageEntity.TEXT_MENTION,
-                        offset=mention_offset,
-                        length=len(display_name),
-                        user=new_user
-                    )]
-                    await update.message.reply_text(welcome_text, entities=entities)
-                else:
-                    await update.message.reply_text(welcome_text)
+                await update.message.reply_text(welcome_text, parse_mode="HTML")
     except Exception as e:
         logger.warning(f"new_member_welcome error: {e}")
 
@@ -1058,19 +1024,10 @@ async def chat_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE
             await context.bot.send_message(chat_id=chat.id, text=welcome_text)
         else:
             display_name = new_user.first_name or "Dost"
-            welcome_text = get_welcome_message(display_name)
-            mention_offset = welcome_text.find(display_name)
+            mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
+            welcome_text = get_welcome_message(mention_html)
             await asyncio.sleep(random.uniform(0.5, 1.5))
-            if mention_offset != -1:
-                entities = [MessageEntity(
-                    type=MessageEntity.TEXT_MENTION,
-                    offset=mention_offset,
-                    length=len(display_name),
-                    user=new_user
-                )]
-                await context.bot.send_message(chat_id=chat.id, text=welcome_text, entities=entities)
-            else:
-                await context.bot.send_message(chat_id=chat.id, text=welcome_text)
+            await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML")
     except Exception as e:
         logger.warning(f"chat_member_welcome error: {e}")
 
