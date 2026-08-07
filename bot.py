@@ -65,8 +65,13 @@ def key_has_room(idx) -> bool:
     total_tokens = sum(tok for _, tok in entries)
     if total_tokens + REQUEST_TOKEN_ESTIMATE > TPM_SAFE_LIMIT:
         return False
-    # ⭐ Daily limit guard – stop using key if it already used 90% of daily tokens
-    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 90000:   # 90% of 100K
+    # ⭐ Daily limit guard – stop using key jab wo apni daily token limit ke
+    # bilkul kareeb pahunch jaaye (96%). Pehle 90% pe hi rok dete the jisse
+    # 10% budget kabhi use hi nahi hota tha; ab har key apni daily limit ke
+    # kareeb-kareeb (96K/100K) tak use hogi, phir khud ba khud agli available
+    # key pe switch ho jaayega (pick_best_key isko automatically skip karta
+    # hai kyunki key_has_room False return karega).
+    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 96000:   # 96% of 100K
         return False
     return True
 
@@ -181,17 +186,29 @@ def pick_best_key(now: float):
 # 2 second ke andar cooldown me). Ye lock+jitter is race ko todta hai.
 _global_request_lock = asyncio.Lock()
 _last_dispatch_time = 0.0
-MIN_DISPATCH_GAP = 0.06  # ~16 req/s ceiling across ALL keys combined
+MIN_DISPATCH_GAP = 0.15  # ~6-7 req/s ceiling across ALL keys combined
+# jitter add karte hain taaki bahut saari coroutines jo same instant pe
+# wait khatam hone ka wait kar rahi hain, wo bhi ek dusre se thoda spread
+# ho jaayein instead of sab ek saath jaag kar phir se race karein
+DISPATCH_JITTER = 0.05
+
+# ⭐ CONCURRENCY CAP: chahe kitni bhi keys "available" dikhein, ek time pe
+# sirf itni hi Groq calls asal me in-flight rahengi. Isse provider-side
+# burst/concurrent-connection limits kabhi nahi tootenge, aur agar traffic
+# spike ho (100 messages ek saath) to baaki requests queue me wait karengi
+# bajaye sab ek saath fire hone ke.
+MAX_CONCURRENT_REQUESTS = 8
+_concurrency_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
 async def throttle_dispatch():
-    """Har outgoing Groq call se pehle chhota gap ensure karo taaki
-    concurrent requests ek saath saari keys ko na maarein."""
+    """Har outgoing Groq call se pehle chhota gap + jitter ensure karo
+    taaki concurrent requests ek saath saari keys ko na maarein."""
     global _last_dispatch_time
     async with _global_request_lock:
         now = time.time()
         wait = MIN_DISPATCH_GAP - (now - _last_dispatch_time)
         if wait > 0:
-            await asyncio.sleep(wait)
+            await asyncio.sleep(wait + random.uniform(0, DISPATCH_JITTER))
         _last_dispatch_time = time.time()
 
 user_warning_count = {}
@@ -328,38 +345,49 @@ Tera kaam:
 """
         messages = [{"role": "user", "content": prompt}]
 
-        idx = None
-        now = time.time()
-        for attempt in range(len(clients)):
-            i = _rr_index
-            _rr_index = (_rr_index + 1) % len(clients)
-            if i in _key_cooldowns and _key_cooldowns[i] > now:
+        # ⭐ Ab ye bhi generate_greeting/get_ai_reply jaisa hi safe path use
+        # karta hai: pick_best_key (load-balanced) + per-key lock + global
+        # dispatch throttle + concurrency semaphore. Pehle ye function raw
+        # round-robin se seedha key hit kar deta tha, koi lock/throttle
+        # nahi — 15th message pe background task chalta tha aur burst me
+        # bina protection ke keys ko 429 karwa deta tha.
+        tried = set()
+        for _ in range(len(clients)):
+            now = time.time()
+            idx = pick_best_key(now)
+            if idx is None or idx in tried:
+                break
+            tried.add(idx)
+            lock = _key_locks[idx]
+            if lock.locked():
                 continue
-            if not key_has_room(i):
-                continue
-            idx = i
-            break
-        if idx is not None:
-            try:
+            async with lock:
+                if not key_has_room(idx):
+                    continue
                 entry_idx = pre_record_key_usage(idx)
-                response = await clients[idx].chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=messages,
-                    temperature=0.3,
-                    max_tokens=250,
-                    timeout=10.0
-                )
-                final_summary = response.choices[0].message.content
-                save_user_summary(user_id, final_summary)
-                update_key_usage_actual(idx, entry_idx, 250)
-                reset_key_429_streak(idx)
-                logger.info(f"📝 User {user_id} ki summary update: {final_summary[:80]}...")
-            except Exception as e:
-                error_str = str(e).lower()
-                if "429" in error_str or "rate_limit" in error_str:
-                    handle_429_error(idx)
-                else:
-                    logger.error(f"❌ Summary generation failed for {user_id}: {e}")
+                async with _concurrency_semaphore:
+                    await throttle_dispatch()
+                    try:
+                        response = await clients[idx].chat.completions.create(
+                            model="llama-3.1-8b-instant",
+                            messages=messages,
+                            temperature=0.3,
+                            max_tokens=250,
+                            timeout=10.0
+                        )
+                        final_summary = response.choices[0].message.content
+                        save_user_summary(user_id, final_summary)
+                        update_key_usage_actual(idx, entry_idx, 250)
+                        reset_key_429_streak(idx)
+                        logger.info(f"📝 User {user_id} ki summary update: {final_summary[:80]}...")
+                        return
+                    except Exception as e:
+                        error_str = str(e).lower()
+                        if "429" in error_str or "rate_limit" in error_str:
+                            handle_429_error(idx)
+                        else:
+                            logger.error(f"❌ Summary generation failed for {user_id}: {e}")
+                        continue
     except Exception as e:
         logger.error(f"🔥 Summary function crash for {user_id}: {e}")
 
@@ -400,27 +428,28 @@ REPLY:"""
         async with lock:
             if not key_has_room(idx):
                 continue
-            try:
-                entry_idx = pre_record_key_usage(idx)
+            entry_idx = pre_record_key_usage(idx)
+            async with _concurrency_semaphore:
                 await throttle_dispatch()
-                response = await clients[idx].chat.completions.create(
-                    model="llama-3.1-8b-instant",
-                    messages=messages,
-                    temperature=0.8,
-                    max_tokens=80,
-                    timeout=8.0
-                )
-                reply = response.choices[0].message.content
-                update_key_usage_actual(idx, entry_idx, 300)
-                reset_key_429_streak(idx)
-                return reply
-            except Exception as e:
-                error_str = str(e).lower()
-                if "429" in error_str or "rate_limit" in error_str:
-                    handle_429_error(idx)
-                else:
-                    logger.warning(f"Greeting gen fail: {e}")
-                continue
+                try:
+                    response = await clients[idx].chat.completions.create(
+                        model="llama-3.1-8b-instant",
+                        messages=messages,
+                        temperature=0.8,
+                        max_tokens=80,
+                        timeout=8.0
+                    )
+                    reply = response.choices[0].message.content
+                    update_key_usage_actual(idx, entry_idx, 300)
+                    reset_key_429_streak(idx)
+                    return reply
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "429" in error_str or "rate_limit" in error_str:
+                        handle_429_error(idx)
+                    else:
+                        logger.warning(f"Greeting gen fail: {e}")
+                    continue
     return None
 
 # ⭐ ========== ADMIN CHECK HELPER ==========
@@ -559,6 +588,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         now = time.time()
         reset_daily_if_new_day()
         status_report = "📊 *API Keys Status Report:*\n\n"
+        status_report += f"⚙️ In-flight slots: {MAX_CONCURRENT_REQUESTS - _concurrency_semaphore._value}/{MAX_CONCURRENT_REQUESTS}\n"
         if not do_live_check:
             status_report += "_(local counters — live ping ke liye /stats live use karo)_\n\n"
 
@@ -699,47 +729,49 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
             # ⭐ Pehle token reserve karo (race condition rokne ke liye)
             entry_idx = pre_record_key_usage(idx)
-            await throttle_dispatch()
 
-            try:
-                response = await clients[idx].chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=60,
-                    top_p=0.9,
-                    timeout=10.0
-                )
-                reply = response.choices[0].message.content
+            async with _concurrency_semaphore:
+                await throttle_dispatch()
 
-                reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
-                reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                # quotes hatao (single, double, triple)
-                reply = reply.strip().strip('"').strip("'").strip('`')
-                if not reply:
+                try:
+                    response = await clients[idx].chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=60,
+                        top_p=0.9,
+                        timeout=10.0
+                    )
+                    reply = response.choices[0].message.content
+
+                    reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
+                    reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
+                    # quotes hatao (single, double, triple)
+                    reply = reply.strip().strip('"').strip("'").strip('`')
+                    if not reply:
+                        continue
+
+                    usage = getattr(response, "usage", None)
+                    actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
+
+                    # ⭐ Estimated entry ko actual tokens se update karo
+                    update_key_usage_actual(idx, entry_idx, actual_tokens)
+
+                    reset_key_429_streak(idx)
+                    logger.info(f"✅ Key {idx+1} se reply aaya!")
+                    return reply
+
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "429" in error_str or "rate_limit" in error_str:
+                        handle_429_error(idx)
+                    elif "timeout" in error_str:
+                        set_key_cooldown(idx, seconds=30)
+                        logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
+                    else:
+                        logger.error(f"❌ Key {idx+1} error: {e}")
+                        set_key_cooldown(idx, seconds=15)
                     continue
-
-                usage = getattr(response, "usage", None)
-                actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-
-                # ⭐ Estimated entry ko actual tokens se update karo
-                update_key_usage_actual(idx, entry_idx, actual_tokens)
-
-                reset_key_429_streak(idx)
-                logger.info(f"✅ Key {idx+1} se reply aaya!")
-                return reply
-
-            except Exception as e:
-                error_str = str(e).lower()
-                if "429" in error_str or "rate_limit" in error_str:
-                    handle_429_error(idx)
-                elif "timeout" in error_str:
-                    set_key_cooldown(idx, seconds=30)
-                    logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
-                else:
-                    logger.error(f"❌ Key {idx+1} error: {e}")
-                    set_key_cooldown(idx, seconds=15)
-                continue
 
     logger.error("💀 Sab API keys fail/limit ho gayi hain! Ek retry attempt ke baad quiet fail.")
     # ⭐ Ek chhota wait ke baad EK last retry — burst ke turant baad
@@ -757,29 +789,32 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
             continue
         async with lock:
             entry_idx = pre_record_key_usage(idx)
-            await throttle_dispatch()
-            try:
-                response = await clients[idx].chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=60,
-                    top_p=0.9,
-                    timeout=10.0
-                )
-                reply = response.choices[0].message.content
-                reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
-                reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                reply = reply.strip().strip('"').strip("'").strip('`')
-                if reply:
-                    usage = getattr(response, "usage", None)
-                    actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-                    update_key_usage_actual(idx, entry_idx, actual_tokens)
-                    reset_key_429_streak(idx)
-                    logger.info(f"✅ Retry ke baad Key {idx+1} se reply aaya!")
-                    return reply
-            except Exception:
-                pass
+            async with _concurrency_semaphore:
+                await throttle_dispatch()
+                try:
+                    response = await clients[idx].chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=60,
+                        top_p=0.9,
+                        timeout=10.0
+                    )
+                    reply = response.choices[0].message.content
+                    reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
+                    reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
+                    reply = reply.strip().strip('"').strip("'").strip('`')
+                    if reply:
+                        usage = getattr(response, "usage", None)
+                        actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
+                        update_key_usage_actual(idx, entry_idx, actual_tokens)
+                        reset_key_429_streak(idx)
+                        logger.info(f"✅ Retry ke baad Key {idx+1} se reply aaya!")
+                        return reply
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "429" in error_str or "rate_limit" in error_str:
+                        handle_429_error(idx)
 
     logger.error("💀 Retry ke baad bhi sab keys fail. Silent mode active.")
     return None
