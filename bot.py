@@ -4,7 +4,7 @@ import re
 import time
 import random
 import asyncio
-import html   # ⭐ वेलकम मैसेज में HTML मेंशन के लिए (UTF‑16 एरर फिक्स)
+import html
 from datetime import datetime
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
@@ -39,7 +39,7 @@ logger.info(f"✅ Total {len(GROQ_API_KEYS)} Groq API keys loaded hui!")
 if not BOT_TOKEN or not GROQ_API_KEYS:
     raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY set karna zaroori hai!")
 
-# ⭐ max_retries=0 agar Groq library khud retry na kare (beban tambahan)
+# ⭐ max_retries=0 agar Groq library khud retry na kare
 clients = [AsyncGroq(api_key=key, max_retries=0) for key in GROQ_API_KEYS]
 
 _rr_index = 0
@@ -47,10 +47,10 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ Safe limits untuk 50 kunci dengan token aktual ~800‑1200
-RPM_SAFE_LIMIT = 6          # 6 RPM (6×900=5400 TPM, jauh di bawah 12000)
-TPM_SAFE_LIMIT = 11000      # margin aman dari 12000
-REQUEST_TOKEN_ESTIMATE = 900 # estimasi realistis per request (chat/greeting/summary)
+# ⭐ Safe limits for GPT-OSS 20B (TPM=8000, TPD=200k)
+RPM_SAFE_LIMIT = 4          # 4 RPM (4×1000=4000 TPM, safe < 8000)
+TPM_SAFE_LIMIT = 7000       # margin aman dari 8000
+REQUEST_TOKEN_ESTIMATE = 1000  # estimasi realistis per request (lebih kecil dari 70B)
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -64,8 +64,8 @@ def key_has_room(idx) -> bool:
     total_tokens = sum(tok for _, tok in entries)
     if total_tokens + REQUEST_TOKEN_ESTIMATE > TPM_SAFE_LIMIT:
         return False
-    # ⭐ Penjaga daily limit – berhenti menggunakan kunci jika sudah 96% dari kuota harian
-    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 96000:   # 96% dari 100K
+    # ⭐ Daily limit guard – 96% dari 200K = 192000
+    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 192000:
         return False
     return True
 
@@ -88,13 +88,11 @@ def record_daily(idx, tokens):
     daily_tokens[idx] += tokens
 
 def pre_record_key_usage(idx):
-    """Cadangan token sebelum API call – cegah race condition."""
     _key_usage[idx].append((time.time(), REQUEST_TOKEN_ESTIMATE))
     record_daily(idx, REQUEST_TOKEN_ESTIMATE)
     return len(_key_usage[idx]) - 1
 
 def update_key_usage_actual(idx, entry_index, actual_tokens):
-    """Setelah sukses, ganti estimasi dengan token aktual."""
     t, _ = _key_usage[idx][entry_index]
     _key_usage[idx][entry_index] = (t, actual_tokens)
     diff = actual_tokens - REQUEST_TOKEN_ESTIMATE
@@ -113,8 +111,8 @@ def handle_429_error(idx):
 
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
-    # ⭐ Hanya anggap jebol harian jika token benar‑benar tinggi
-    genuine_daily_exhausted = (daily_tok >= 85000 or daily_req >= 950)
+    # ⭐ Genuine daily exhaustion for GPT-OSS 20B (85% of 200K = 170000)
+    genuine_daily_exhausted = (daily_tok >= 170000 or daily_req >= 950)
 
     if genuine_daily_exhausted:
         now = time.time()
@@ -130,7 +128,7 @@ def handle_429_error(idx):
         set_key_cooldown(idx, seconds=120)
         logger.warning(
             f"🚫 Key {idx+1} temporary 429 burst! 120s cooldown. "
-            f"(Attempt {_key_429_counts[idx]}/5, daily usage: {daily_tok}/100000 tok)"
+            f"(Attempt {_key_429_counts[idx]}/5, daily usage: {daily_tok}/200000 tok)"
         )
         if _key_429_counts[idx] >= 5:
             _key_429_counts[idx] = 0
@@ -144,7 +142,6 @@ def set_key_cooldown(idx, seconds=60):
     logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
 
 def pick_best_key(now: float):
-    """Pilih kunci dengan beban terendah (RPM + daily) untuk distribusi merata."""
     best_idx = None
     best_score = None
     for i in range(len(clients)):
@@ -171,7 +168,6 @@ MAX_CONCURRENT_REQUESTS = 8
 _concurrency_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
 async def throttle_dispatch():
-    """Jeda kecil + jitter agar permintaan tidak menghujani semua kunci sekaligus."""
     global _last_dispatch_time
     async with _global_request_lock:
         now = time.time()
@@ -537,7 +533,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception:
             pass
 
-# ⭐ ========== NEW /stats COMMAND (COMPACT SUMMARY) ==========
+# ⭐ ========== NEW /stats COMMAND (GPT‑OSS 20B aware) ==========
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if update.effective_user.id != OWNER_ID: return
@@ -548,7 +544,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         sum_req = sum(daily_requests)
         sum_tok = sum(daily_tokens)
         max_req = total_keys * 1000
-        max_tok = total_keys * 100000
+        max_tok = total_keys * 200000   # ⭐ GPT-OSS 20B TPD
 
         active = 0
         cooldown_count = 0
@@ -618,7 +614,7 @@ SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group m
 
 CHAT KA STYLE (Sabse Zaroori Rules):
 1. REPLY LENGTH: Tumhari baatcheet WhatsApp jaisi honi chahiye. Zyadatar replies 1-2 line ke hone chahiye. Kabhi-kabhi agar koi hasi-mazaak ho ya interesting baat ho, toh 2-3 line de sakti ho, par usse zyada lamba paragraph STRICTLY MANA HAI. Faltu explanation mat do, seedha point pe aao.
-2. LANGUAGE: User jis bhi language ya script me baat kare, usi language me reply karo — ye rule sirf Hindi/English tak simit nahi hai, balki kisi bhi language (Tamil, Bengali, Marathi, Gujarati, Punjabi, Spanish, Arabic, ya koi bhi aur language) pe apply hota hai. Agar user Hinglish (Hindi Roman letters me) likhe, tum bhi Hinglish me hi reply karo. Agar Devanagari (हिंदी) me likhe, Devanagari me reply karo. Agar English me likhe, English me reply karo. Agar koi doosri language me likhe, tum usi language ke natural script aur tone me reply karo — kabhi bhi user ki language ko translate ya switch karke doosri language me mat bolo, jab tak khud user apni language na badle.
+2. LANGUAGE (MIRROR RULE): User har naye message me jo language ya script use karega, tum bhi usi message ke reply me exactly wahi language aur script use karogi. Agar user Hinglish (Hindi in English letters) me likhe, tum Hinglish me jawab doge. Agar Devanagari (हिंदी) me likhe, Devanagari me. Agar English me likhe, English me. Agar koi bhi doosri bhasha me likhe, tum usi bhasha aur script me reply doge. Har message ke hisaab se tumhari language turant badal sakti hai — user ki language ko translate karna ya kisi doosri script me likhna strictly mana hai. ⭐ Most important: Agar user Hinglish me likhe, to tum kabhi bhi Devanagari me reply mat dena, balki seedha Hinglish me hi jawab do.
 3. TONE: Tumhara tone thoda flirty, teasing, aur casual hona chahiye. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
 4. ROMANTIC CHATS: Agar user khud se deep romantic baaten kare, toh usi level pe romance karo lekin ek asli ladki jaisi thodi sharmao aur nazar nichi karke baat karo. Lekin agar koi bohot cheap ya galat baat kare, toh gussa dikhao, usko daant do, ya ignore kar do. Normal baaton me kabhi apne aap se romantic mat bano.
 5. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality hai. Agar koi galat bole toh gussa bhi dikhao, pyaar se samjho, ya ignore karo.
@@ -661,7 +657,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
                 try:
                     response = await clients[idx].chat.completions.create(
-                        model="llama-3.3-70b-versatile",
+                        model="openai/gpt-oss-20b",   # ⭐ Switch to GPT-OSS 20B
                         messages=messages,
                         temperature=0.7,
                         max_tokens=60,
@@ -670,6 +666,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     )
                     reply = response.choices[0].message.content
 
+                    # GPT-OSS 20B doesn't produce <think> tags, but keep safety
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                     reply = reply.strip().strip('"').strip("'").strip('`')
@@ -696,7 +693,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         set_key_cooldown(idx, seconds=15)
                     continue
 
-    # Retry singkat setelah 2 detik (mungkin ada cooldown yang sudah habis)
+    # Retry singkat setelah 2 detik
     logger.error("💀 Sab API keys fail/limit ho gayi hain! Ek retry attempt ke baad quiet fail.")
     await asyncio.sleep(2.0)
     now2 = time.time()
@@ -714,7 +711,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 await throttle_dispatch()
                 try:
                     response = await clients[idx].chat.completions.create(
-                        model="llama-3.3-70b-versatile",
+                        model="openai/gpt-oss-20b",
                         messages=messages,
                         temperature=0.7,
                         max_tokens=60,
@@ -953,7 +950,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, reply)
         return
 
-# ⭐ ========== UPDATED WELCOME (HTML mention for users without username) ==========
+# ⭐ ========== UPDATED WELCOME (HTML mention) ==========
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if not update.message or not update.message.new_chat_members:
@@ -978,7 +975,6 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text(welcome_text)
             else:
                 display_name = new_user.first_name or "Dost"
-                # HTML link se mention karo — UTF-16 offset error permanently fix
                 mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
                 welcome_text = get_welcome_message(mention_html)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
