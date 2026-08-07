@@ -46,10 +46,10 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ Realistic safe limits – actual tokens 3000-4000 ke hisaab se
-RPM_SAFE_LIMIT = 3          # 3 RPM (3×3500=10500 TPM, safe < 12000)
-TPM_SAFE_LIMIT = 11000      # 12000 TPM se comfortable margin
-REQUEST_TOKEN_ESTIMATE = 3500  # worst-case average token usage
+# ⭐ Safe limits tuned for 35 keys with realistic token usage ~1200-1500
+RPM_SAFE_LIMIT = 4          # 4 RPM (4×1500=6000 TPM, safe < 12000)
+TPM_SAFE_LIMIT = 6000       # 12000 TPM se aram se safe
+REQUEST_TOKEN_ESTIMATE = 1500  # realistic average per request
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -62,6 +62,9 @@ def key_has_room(idx) -> bool:
         return False
     total_tokens = sum(tok for _, tok in entries)
     if total_tokens + REQUEST_TOKEN_ESTIMATE > TPM_SAFE_LIMIT:
+        return False
+    # ⭐ Daily limit guard – stop using key if it already used 90% of daily tokens
+    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 90000:   # 90% of 100K
         return False
     return True
 
@@ -96,28 +99,29 @@ def handle_429_error(idx):
 
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
-    is_daily_near_exhausted = (daily_tok >= 90000 or daily_req >= 900)
+    # ⭐ Genuine daily exhaustion only if daily tokens already very high (85k+)
+    genuine_daily_exhausted = (daily_tok >= 85000 or daily_req >= 950)
 
-    if _key_429_counts[idx] >= 5:
-        if is_daily_near_exhausted:
-            now = time.time()
-            tomorrow = (now // 86400 + 1) * 86400
-            seconds = int(tomorrow - now)
-            set_key_cooldown(idx, seconds=seconds)
-            logger.warning(
-                f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! "
-                f"Sleeping until midnight UTC ({seconds}s / {seconds//3600}h {(seconds%3600)//60}m)"
-            )
-        else:
-            set_key_cooldown(idx, seconds=120)
-            logger.warning(
-                f"🚫 Key {idx+1} temporary 429 burst! 120s cooldown. "
-                f"(Attempt {_key_429_counts[idx]}/5, daily usage: {daily_tok}/100000 tok)"
-            )
-            _key_429_counts[idx] = 0
+    if genuine_daily_exhausted:
+        # Pakka daily limit khatam – midnight tak sulao
+        now = time.time()
+        tomorrow = (now // 86400 + 1) * 86400
+        seconds = int(tomorrow - now)
+        set_key_cooldown(idx, seconds=seconds)
+        logger.warning(
+            f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! "
+            f"Sleeping until midnight UTC ({seconds}s / {seconds//3600}h {(seconds%3600)//60}m)"
+        )
+        _key_429_counts[idx] = 0
     else:
+        # Temporary TPM burst – 120s cooldown
         set_key_cooldown(idx, seconds=120)
-        logger.warning(f"🚫 Key {idx+1} rate limited (429)! 120s cooldown. (Attempt {_key_429_counts[idx]}/5)")
+        logger.warning(
+            f"🚫 Key {idx+1} temporary 429 burst! 120s cooldown. "
+            f"(Attempt {_key_429_counts[idx]}/5, daily usage: {daily_tok}/100000 tok)"
+        )
+        if _key_429_counts[idx] >= 5:
+            _key_429_counts[idx] = 0   # 5 consecutive 429s bhi false midnight sleep nahi denge
 
 def reset_key_429_streak(idx):
     _key_429_counts[idx] = 0
