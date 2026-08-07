@@ -46,10 +46,12 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ Safe limits tuned for 35 keys with realistic token usage ~3000-3500
-RPM_SAFE_LIMIT = 3          # 3 RPM (3×3500=10500 TPM, safe < 12000)
+# ⭐ Safe limits tuned for 35 keys with realistic token usage ~600-900
+# (get_ai_reply/generate_greeting use max_tokens<=250, so 3500 was a huge
+#  overestimate that ate ~4x the real budget and caused false 429s/burst-outs)
+RPM_SAFE_LIMIT = 6          # per-key RPM budget, safer under concurrent bursts
 TPM_SAFE_LIMIT = 11000      # 12000 se safe margin
-REQUEST_TOKEN_ESTIMATE = 3500  # worst-case average token usage
+REQUEST_TOKEN_ESTIMATE = 900   # realistic worst-case for these short replies
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -144,6 +146,53 @@ def reset_key_429_streak(idx):
 def set_key_cooldown(idx, seconds=60):
     _key_cooldowns[idx] = time.time() + seconds
     logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
+
+def pick_best_key(now: float):
+    """⭐ LOAD BALANCER: sirf agli key round-robin se lene ki jagah, saari
+    available (non-cooldown, room-wali, unlocked) keys me se sabse kam
+    load wali key chunte hain — RPM entries + daily tokens dono dekh kar.
+    Isse ek hi key baar baar pehle nahi utha karti aur load 35 keys me
+    naturally spread hota hai, chahe traffic kitna bhi ho."""
+    best_idx = None
+    best_score = None
+    for i in range(len(clients)):
+        if i in _key_cooldowns and _key_cooldowns[i] > now:
+            continue
+        if _key_locks[i].locked():
+            continue
+        if not key_has_room(i):
+            continue
+        _clean_key_usage(i, now)
+        rpm_load = len(_key_usage[i])
+        # daily_tokens ko chhota weight dete hain taaki bahut zyada
+        # use ho chuki key thodi kam priority pe jaaye, lekin RPM load
+        # (turant ka pressure) zyada matter kare
+        score = rpm_load * 1000 + daily_tokens[i]
+        if best_score is None or score < best_score:
+            best_score = score
+            best_idx = i
+    return best_idx
+
+# ⭐ ========== BURST PROTECTION ==========
+# Jab traffic spike hota hai (bahut messages ek saath), saari concurrent
+# get_ai_reply() calls same _rr_index cycle follow karti hain aur
+# thundering-herd ki tarah same keys ko same milliseconds me hit karti hain.
+# Isse sab keys ek saath 429 kha jaati hain (jaisa logs me dikha: 20+ keys
+# 2 second ke andar cooldown me). Ye lock+jitter is race ko todta hai.
+_global_request_lock = asyncio.Lock()
+_last_dispatch_time = 0.0
+MIN_DISPATCH_GAP = 0.06  # ~16 req/s ceiling across ALL keys combined
+
+async def throttle_dispatch():
+    """Har outgoing Groq call se pehle chhota gap ensure karo taaki
+    concurrent requests ek saath saari keys ko na maarein."""
+    global _last_dispatch_time
+    async with _global_request_lock:
+        now = time.time()
+        wait = MIN_DISPATCH_GAP - (now - _last_dispatch_time)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _last_dispatch_time = time.time()
 
 user_warning_count = {}
 bio_checked_users = set()
@@ -336,14 +385,15 @@ TUJHE KYA KARNA HAI:
 REPLY:"""
 
     messages = [{"role": "user", "content": prompt}]
-    
+
     global _rr_index
-    now = time.time()
+    tried = set()
     for _ in range(len(clients)):
-        idx = _rr_index
-        _rr_index = (_rr_index + 1) % len(clients)
-        if idx in _key_cooldowns and _key_cooldowns[idx] > now:
-            continue
+        now = time.time()
+        idx = pick_best_key(now)
+        if idx is None or idx in tried:
+            break
+        tried.add(idx)
         lock = _key_locks[idx]
         if lock.locked():
             continue
@@ -352,6 +402,7 @@ REPLY:"""
                 continue
             try:
                 entry_idx = pre_record_key_usage(idx)
+                await throttle_dispatch()
                 response = await clients[idx].chat.completions.create(
                     model="llama-3.1-8b-instant",
                     messages=messages,
@@ -499,24 +550,34 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if update.effective_user.id != OWNER_ID: return
-        await update.message.reply_text("⏳ Sabhi API Servers check ho rahe hain...")
+        # ⭐ "/stats live" se hi live health-ping hoga (35 real API calls khaata hai
+        # jo RPM/daily budget se cut hote hain). Default /stats sirf local
+        # counters dikhata hai — free, instant, aur budget nahi khaata.
+        do_live_check = bool(context.args and context.args[0].lower() == "live")
+        if do_live_check:
+            await update.message.reply_text("⏳ Sabhi API Servers check ho rahe hain (live ping)...")
         now = time.time()
         reset_daily_if_new_day()
         status_report = "📊 *API Keys Status Report:*\n\n"
+        if not do_live_check:
+            status_report += "_(local counters — live ping ke liye /stats live use karo)_\n\n"
 
         for i, client in enumerate(clients):
             name = f"Server {i+1}"
-            t = time.perf_counter()
-            health_ok = False
-            try:
-                await client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
-                    messages=[{"role": "user", "content": "Say OK"}],
-                    max_tokens=5, temperature=0)
-                ms = int((time.perf_counter() - t) * 1000)
-                health_ok = True
-            except Exception:
-                ms = 0
+            health_ok = True
+            ms = 0
+            if do_live_check:
+                t = time.perf_counter()
+                health_ok = False
+                try:
+                    await client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=[{"role": "user", "content": "Say OK"}],
+                        max_tokens=5, temperature=0)
+                    ms = int((time.perf_counter() - t) * 1000)
+                    health_ok = True
+                except Exception:
+                    ms = 0
 
             _clean_key_usage(i, now)
             entries = _key_usage[i]
@@ -620,12 +681,13 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     global _rr_index
     now = time.time()
 
+    tried = set()
     for _ in range(len(clients)):
-        idx = _rr_index
-        _rr_index = (_rr_index + 1) % len(clients)
-
-        if idx in _key_cooldowns and _key_cooldowns[idx] > now:
-            continue
+        now = time.time()
+        idx = pick_best_key(now)
+        if idx is None or idx in tried:
+            break
+        tried.add(idx)
 
         lock = _key_locks[idx]
         if lock.locked():
@@ -637,6 +699,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
             # ⭐ Pehle token reserve karo (race condition rokne ke liye)
             entry_idx = pre_record_key_usage(idx)
+            await throttle_dispatch()
 
             try:
                 response = await clients[idx].chat.completions.create(
@@ -678,7 +741,47 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     set_key_cooldown(idx, seconds=15)
                 continue
 
-    logger.error("💀 Sab API keys fail/limit ho gayi hain! Silent mode active.")
+    logger.error("💀 Sab API keys fail/limit ho gayi hain! Ek retry attempt ke baad quiet fail.")
+    # ⭐ Ek chhota wait ke baad EK last retry — burst ke turant baad
+    # zyada chance hoti hai ki koi key ka 429 cooldown khatam ho chuka ho.
+    # Isse "poori tarah silent" hone ki jagah bot ek genuine chance leta hai.
+    await asyncio.sleep(2.0)
+    now2 = time.time()
+    for idx in range(len(clients)):
+        if idx in _key_cooldowns and _key_cooldowns[idx] > now2:
+            continue
+        if not key_has_room(idx):
+            continue
+        lock = _key_locks[idx]
+        if lock.locked():
+            continue
+        async with lock:
+            entry_idx = pre_record_key_usage(idx)
+            await throttle_dispatch()
+            try:
+                response = await clients[idx].chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=60,
+                    top_p=0.9,
+                    timeout=10.0
+                )
+                reply = response.choices[0].message.content
+                reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
+                reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
+                reply = reply.strip().strip('"').strip("'").strip('`')
+                if reply:
+                    usage = getattr(response, "usage", None)
+                    actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
+                    update_key_usage_actual(idx, entry_idx, actual_tokens)
+                    reset_key_429_streak(idx)
+                    logger.info(f"✅ Retry ke baad Key {idx+1} se reply aaya!")
+                    return reply
+            except Exception:
+                pass
+
+    logger.error("💀 Retry ke baad bhi sab keys fail. Silent mode active.")
     return None
 
 def get_history(user_id: int) -> list:
@@ -1062,4 +1165,16 @@ async def main() -> None:
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # ⭐ CRASH GUARD: agar main() kisi unexpected reason se crash ho jaaye
+    # (jaise startup pe DB/network glitch), process turant marne ki jagah
+    # kuch second wait karke restart try karega — Render jaisi platforms pe
+    # bina manual restart ke bot wapas up ho jaayega.
+    while True:
+        try:
+            asyncio.run(main())
+            break  # clean shutdown (Ctrl+C waghera) — loop se bahar
+        except (KeyboardInterrupt, SystemExit):
+            break
+        except Exception as e:
+            logger.error(f"🔥 main() crashed, restarting in 5s: {e}", exc_info=e)
+            time.sleep(5)
