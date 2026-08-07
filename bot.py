@@ -46,10 +46,10 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ Safe limits tuned for 35 keys with realistic token usage ~1200-1500
-RPM_SAFE_LIMIT = 4          # 4 RPM (4×1500=6000 TPM, safe < 12000)
-TPM_SAFE_LIMIT = 6000       # 12000 TPM se aram se safe
-REQUEST_TOKEN_ESTIMATE = 1500  # realistic average per request
+# ⭐ Safe limits tuned for 35 keys with realistic token usage ~3000-3500
+RPM_SAFE_LIMIT = 3          # 3 RPM (3×3500=10500 TPM, safe < 12000)
+TPM_SAFE_LIMIT = 11000      # 12000 se safe margin
+REQUEST_TOKEN_ESTIMATE = 3500  # worst-case average token usage
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -86,6 +86,20 @@ def record_daily(idx, tokens):
     daily_requests[idx] += 1
     daily_tokens[idx] += tokens
 
+def pre_record_key_usage(idx):
+    """API call se pehle estimate reserve karo — race condition nahi aayegi."""
+    _key_usage[idx].append((time.time(), REQUEST_TOKEN_ESTIMATE))
+    record_daily(idx, REQUEST_TOKEN_ESTIMATE)
+    return len(_key_usage[idx]) - 1
+
+def update_key_usage_actual(idx, entry_index, actual_tokens):
+    """Success ke baad estimate ki jagah actual tokens set karo."""
+    t, _ = _key_usage[idx][entry_index]
+    _key_usage[idx][entry_index] = (t, actual_tokens)
+    # daily tokens adjust karo (difference)
+    diff = actual_tokens - REQUEST_TOKEN_ESTIMATE
+    daily_tokens[idx] += diff
+
 def record_key_usage(idx, tokens=REQUEST_TOKEN_ESTIMATE):
     _key_usage[idx].append((time.time(), tokens))
     record_daily(idx, tokens)
@@ -121,7 +135,7 @@ def handle_429_error(idx):
             f"(Attempt {_key_429_counts[idx]}/5, daily usage: {daily_tok}/100000 tok)"
         )
         if _key_429_counts[idx] >= 5:
-            _key_429_counts[idx] = 0   # 5 consecutive 429s bhi false midnight sleep nahi denge
+            _key_429_counts[idx] = 0
 
 def reset_key_429_streak(idx):
     _key_429_counts[idx] = 0
@@ -278,6 +292,7 @@ Tera kaam:
             break
         if idx is not None:
             try:
+                entry_idx = pre_record_key_usage(idx)
                 response = await clients[idx].chat.completions.create(
                     model="llama-3.1-8b-instant",
                     messages=messages,
@@ -287,6 +302,7 @@ Tera kaam:
                 )
                 final_summary = response.choices[0].message.content
                 save_user_summary(user_id, final_summary)
+                update_key_usage_actual(idx, entry_idx, 250)
                 reset_key_429_streak(idx)
                 logger.info(f"📝 User {user_id} ki summary update: {final_summary[:80]}...")
             except Exception as e:
@@ -335,6 +351,7 @@ REPLY:"""
             if not key_has_room(idx):
                 continue
             try:
+                entry_idx = pre_record_key_usage(idx)
                 response = await clients[idx].chat.completions.create(
                     model="llama-3.1-8b-instant",
                     messages=messages,
@@ -343,7 +360,7 @@ REPLY:"""
                     timeout=8.0
                 )
                 reply = response.choices[0].message.content
-                record_key_usage(idx, 300)
+                update_key_usage_actual(idx, entry_idx, 300)
                 reset_key_429_streak(idx)
                 return reply
             except Exception as e:
@@ -618,6 +635,9 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
             if not key_has_room(idx):
                 continue
 
+            # ⭐ Pehle token reserve karo (race condition rokne ke liye)
+            entry_idx = pre_record_key_usage(idx)
+
             try:
                 response = await clients[idx].chat.completions.create(
                     model="llama-3.3-70b-versatile",
@@ -638,7 +658,10 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
                 usage = getattr(response, "usage", None)
                 actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-                record_key_usage(idx, actual_tokens)
+
+                # ⭐ Estimated entry ko actual tokens se update karo
+                update_key_usage_actual(idx, entry_idx, actual_tokens)
+
                 reset_key_429_streak(idx)
                 logger.info(f"✅ Key {idx+1} se reply aaya!")
                 return reply
