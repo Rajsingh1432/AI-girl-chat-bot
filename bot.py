@@ -38,20 +38,18 @@ logger.info(f"✅ Total {len(GROQ_API_KEYS)} Groq API keys loaded hui!")
 if not BOT_TOKEN or not GROQ_API_KEYS:
     raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY set karna zaroori hai!")
 
-# ⭐ max_retries=0 taake Groq library khud retry na kare (faltoo load nahi)
+# ⭐ max_retries=0 agar Groq library khud retry na kare (beban tambahan)
 clients = [AsyncGroq(api_key=key, max_retries=0) for key in GROQ_API_KEYS]
 
-_rr_index = 0
+_rr_index = 0  # tidak lagi digunakan setelah pick_best_key, tapi dibiarkan untuk referensi
 _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ Safe limits tuned for 35 keys with realistic token usage ~600-900
-# (get_ai_reply/generate_greeting use max_tokens<=250, so 3500 was a huge
-#  overestimate that ate ~4x the real budget and caused false 429s/burst-outs)
-RPM_SAFE_LIMIT = 6          # per-key RPM budget, safer under concurrent bursts
-TPM_SAFE_LIMIT = 11000      # 12000 se safe margin
-REQUEST_TOKEN_ESTIMATE = 900   # realistic worst-case for these short replies
+# ⭐ Safe limits untuk 50 kunci dengan token aktual ~800‑1200
+RPM_SAFE_LIMIT = 6          # 6 RPM (6×900=5400 TPM, jauh di bawah 12000)
+TPM_SAFE_LIMIT = 11000      # margin aman dari 12000
+REQUEST_TOKEN_ESTIMATE = 900 # estimasi realistis per request (chat/greeting/summary)
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -65,13 +63,8 @@ def key_has_room(idx) -> bool:
     total_tokens = sum(tok for _, tok in entries)
     if total_tokens + REQUEST_TOKEN_ESTIMATE > TPM_SAFE_LIMIT:
         return False
-    # ⭐ Daily limit guard – stop using key jab wo apni daily token limit ke
-    # bilkul kareeb pahunch jaaye (96%). Pehle 90% pe hi rok dete the jisse
-    # 10% budget kabhi use hi nahi hota tha; ab har key apni daily limit ke
-    # kareeb-kareeb (96K/100K) tak use hogi, phir khud ba khud agli available
-    # key pe switch ho jaayega (pick_best_key isko automatically skip karta
-    # hai kyunki key_has_room False return karega).
-    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 96000:   # 96% of 100K
+    # ⭐ Penjaga daily limit – berhenti menggunakan kunci jika sudah 96% dari kuota harian
+    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 96000:   # 96% dari 100K
         return False
     return True
 
@@ -94,16 +87,15 @@ def record_daily(idx, tokens):
     daily_tokens[idx] += tokens
 
 def pre_record_key_usage(idx):
-    """API call se pehle estimate reserve karo — race condition nahi aayegi."""
+    """Cadangan token sebelum API call – cegah race condition."""
     _key_usage[idx].append((time.time(), REQUEST_TOKEN_ESTIMATE))
     record_daily(idx, REQUEST_TOKEN_ESTIMATE)
     return len(_key_usage[idx]) - 1
 
 def update_key_usage_actual(idx, entry_index, actual_tokens):
-    """Success ke baad estimate ki jagah actual tokens set karo."""
+    """Setelah sukses, ganti estimasi dengan token aktual."""
     t, _ = _key_usage[idx][entry_index]
     _key_usage[idx][entry_index] = (t, actual_tokens)
-    # daily tokens adjust karo (difference)
     diff = actual_tokens - REQUEST_TOKEN_ESTIMATE
     daily_tokens[idx] += diff
 
@@ -120,11 +112,10 @@ def handle_429_error(idx):
 
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
-    # ⭐ Genuine daily exhaustion only if daily tokens already very high (85k+)
+    # ⭐ Hanya anggap jebol harian jika token benar‑benar tinggi
     genuine_daily_exhausted = (daily_tok >= 85000 or daily_req >= 950)
 
     if genuine_daily_exhausted:
-        # Pakka daily limit khatam – midnight tak sulao
         now = time.time()
         tomorrow = (now // 86400 + 1) * 86400
         seconds = int(tomorrow - now)
@@ -135,7 +126,6 @@ def handle_429_error(idx):
         )
         _key_429_counts[idx] = 0
     else:
-        # Temporary TPM burst – 120s cooldown
         set_key_cooldown(idx, seconds=120)
         logger.warning(
             f"🚫 Key {idx+1} temporary 429 burst! 120s cooldown. "
@@ -153,11 +143,7 @@ def set_key_cooldown(idx, seconds=60):
     logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
 
 def pick_best_key(now: float):
-    """⭐ LOAD BALANCER: sirf agli key round-robin se lene ki jagah, saari
-    available (non-cooldown, room-wali, unlocked) keys me se sabse kam
-    load wali key chunte hain — RPM entries + daily tokens dono dekh kar.
-    Isse ek hi key baar baar pehle nahi utha karti aur load 35 keys me
-    naturally spread hota hai, chahe traffic kitna bhi ho."""
+    """Pilih kunci dengan beban terendah (RPM + daily) untuk distribusi merata."""
     best_idx = None
     best_score = None
     for i in range(len(clients)):
@@ -169,9 +155,6 @@ def pick_best_key(now: float):
             continue
         _clean_key_usage(i, now)
         rpm_load = len(_key_usage[i])
-        # daily_tokens ko chhota weight dete hain taaki bahut zyada
-        # use ho chuki key thodi kam priority pe jaaye, lekin RPM load
-        # (turant ka pressure) zyada matter kare
         score = rpm_load * 1000 + daily_tokens[i]
         if best_score is None or score < best_score:
             best_score = score
@@ -179,30 +162,15 @@ def pick_best_key(now: float):
     return best_idx
 
 # ⭐ ========== BURST PROTECTION ==========
-# Jab traffic spike hota hai (bahut messages ek saath), saari concurrent
-# get_ai_reply() calls same _rr_index cycle follow karti hain aur
-# thundering-herd ki tarah same keys ko same milliseconds me hit karti hain.
-# Isse sab keys ek saath 429 kha jaati hain (jaisa logs me dikha: 20+ keys
-# 2 second ke andar cooldown me). Ye lock+jitter is race ko todta hai.
 _global_request_lock = asyncio.Lock()
 _last_dispatch_time = 0.0
-MIN_DISPATCH_GAP = 0.15  # ~6-7 req/s ceiling across ALL keys combined
-# jitter add karte hain taaki bahut saari coroutines jo same instant pe
-# wait khatam hone ka wait kar rahi hain, wo bhi ek dusre se thoda spread
-# ho jaayein instead of sab ek saath jaag kar phir se race karein
+MIN_DISPATCH_GAP = 0.15
 DISPATCH_JITTER = 0.05
-
-# ⭐ CONCURRENCY CAP: chahe kitni bhi keys "available" dikhein, ek time pe
-# sirf itni hi Groq calls asal me in-flight rahengi. Isse provider-side
-# burst/concurrent-connection limits kabhi nahi tootenge, aur agar traffic
-# spike ho (100 messages ek saath) to baaki requests queue me wait karengi
-# bajaye sab ek saath fire hone ke.
 MAX_CONCURRENT_REQUESTS = 8
 _concurrency_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
 async def throttle_dispatch():
-    """Har outgoing Groq call se pehle chhota gap + jitter ensure karo
-    taaki concurrent requests ek saath saari keys ko na maarein."""
+    """Jeda kecil + jitter agar permintaan tidak menghujani semua kunci sekaligus."""
     global _last_dispatch_time
     async with _global_request_lock:
         now = time.time()
@@ -327,7 +295,6 @@ def remove_active_group(chat_id: int):
 async def generate_summary(user_id: int, history: list):
     if len(history) < 4 or not DATABASE_URL: return
     try:
-        global _rr_index
         old_summary = get_user_summary(user_id)
 
         prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
@@ -345,12 +312,6 @@ Tera kaam:
 """
         messages = [{"role": "user", "content": prompt}]
 
-        # ⭐ Ab ye bhi generate_greeting/get_ai_reply jaisa hi safe path use
-        # karta hai: pick_best_key (load-balanced) + per-key lock + global
-        # dispatch throttle + concurrency semaphore. Pehle ye function raw
-        # round-robin se seedha key hit kar deta tha, koi lock/throttle
-        # nahi — 15th message pe background task chalta tha aur burst me
-        # bina protection ke keys ko 429 karwa deta tha.
         tried = set()
         for _ in range(len(clients)):
             now = time.time()
@@ -414,7 +375,6 @@ REPLY:"""
 
     messages = [{"role": "user", "content": prompt}]
 
-    global _rr_index
     tried = set()
     for _ in range(len(clients)):
         now = time.time()
@@ -579,9 +539,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if update.effective_user.id != OWNER_ID: return
-        # ⭐ "/stats live" se hi live health-ping hoga (35 real API calls khaata hai
-        # jo RPM/daily budget se cut hote hain). Default /stats sirf local
-        # counters dikhata hai — free, instant, aur budget nahi khaata.
         do_live_check = bool(context.args and context.args[0].lower() == "live")
         if do_live_check:
             await update.message.reply_text("⏳ Sabhi API Servers check ho rahe hain (live ping)...")
@@ -708,9 +665,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
-    global _rr_index
-    now = time.time()
-
     tried = set()
     for _ in range(len(clients)):
         now = time.time()
@@ -727,7 +681,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
             if not key_has_room(idx):
                 continue
 
-            # ⭐ Pehle token reserve karo (race condition rokne ke liye)
             entry_idx = pre_record_key_usage(idx)
 
             async with _concurrency_semaphore:
@@ -746,15 +699,12 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                    # quotes hatao (single, double, triple)
                     reply = reply.strip().strip('"').strip("'").strip('`')
                     if not reply:
                         continue
 
                     usage = getattr(response, "usage", None)
                     actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-
-                    # ⭐ Estimated entry ko actual tokens se update karo
                     update_key_usage_actual(idx, entry_idx, actual_tokens)
 
                     reset_key_429_streak(idx)
@@ -773,10 +723,8 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         set_key_cooldown(idx, seconds=15)
                     continue
 
+    # Retry singkat setelah 2 detik (mungkin ada cooldown yang sudah habis)
     logger.error("💀 Sab API keys fail/limit ho gayi hain! Ek retry attempt ke baad quiet fail.")
-    # ⭐ Ek chhota wait ke baad EK last retry — burst ke turant baad
-    # zyada chance hoti hai ki koi key ka 429 cooldown khatam ho chuka ho.
-    # Isse "poori tarah silent" hone ki jagah bot ek genuine chance leta hai.
     await asyncio.sleep(2.0)
     now2 = time.time()
     for idx in range(len(clients)):
@@ -1200,14 +1148,10 @@ async def main() -> None:
         await asyncio.Event().wait()
 
 if __name__ == "__main__":
-    # ⭐ CRASH GUARD: agar main() kisi unexpected reason se crash ho jaaye
-    # (jaise startup pe DB/network glitch), process turant marne ki jagah
-    # kuch second wait karke restart try karega — Render jaisi platforms pe
-    # bina manual restart ke bot wapas up ho jaayega.
     while True:
         try:
             asyncio.run(main())
-            break  # clean shutdown (Ctrl+C waghera) — loop se bahar
+            break
         except (KeyboardInterrupt, SystemExit):
             break
         except Exception as e:
