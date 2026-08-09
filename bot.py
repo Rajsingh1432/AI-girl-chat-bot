@@ -4,7 +4,7 @@ import re
 import time
 import random
 import asyncio
-import html   # ⭐ वेलकम मैसेज में HTML मेंशन के लिए (UTF‑16 एरर फिक्स)
+import html
 from datetime import datetime
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
@@ -39,7 +39,6 @@ logger.info(f"✅ Total {len(GROQ_API_KEYS)} Groq API keys loaded hui!")
 if not BOT_TOKEN or not GROQ_API_KEYS:
     raise ValueError("BOT_TOKEN aur kam se kam ek GROQ_API_KEY set karna zaroori hai!")
 
-# ⭐ max_retries=0 agar Groq library khud retry na kare (beban tambahan)
 clients = [AsyncGroq(api_key=key, max_retries=0) for key in GROQ_API_KEYS]
 
 _rr_index = 0
@@ -47,10 +46,9 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ Safe limits tuned for many keys — 429 fully eliminated, still responsive
-RPM_SAFE_LIMIT = 6          # 6 RPM (6×900=5400 TPM, jauh di bawah 12000)
-TPM_SAFE_LIMIT = 11000      # margin aman dari 12000
-REQUEST_TOKEN_ESTIMATE = 900 # estimasi realistis per request
+RPM_SAFE_LIMIT = 6
+TPM_SAFE_LIMIT = 11000
+REQUEST_TOKEN_ESTIMATE = 900
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -64,7 +62,6 @@ def key_has_room(idx) -> bool:
     total_tokens = sum(tok for _, tok in entries)
     if total_tokens + REQUEST_TOKEN_ESTIMATE > TPM_SAFE_LIMIT:
         return False
-    # ⭐ Penjaga daily limit – 96% dari 100K
     if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 96000:
         return False
     return True
@@ -108,27 +105,19 @@ _key_success_since_429 = [True] * len(clients)
 def handle_429_error(idx):
     _key_429_counts[idx] += 1
     _key_success_since_429[idx] = False
-
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
     genuine_daily_exhausted = (daily_tok >= 85000 or daily_req >= 950)
-
     if genuine_daily_exhausted:
         now = time.time()
         tomorrow = (now // 86400 + 1) * 86400
         seconds = int(tomorrow - now)
         set_key_cooldown(idx, seconds=seconds)
-        logger.warning(
-            f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! "
-            f"Sleeping until midnight UTC ({seconds}s / {seconds//3600}h {(seconds%3600)//60}m)"
-        )
+        logger.warning(f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! Sleeping until midnight UTC ({seconds}s)")
         _key_429_counts[idx] = 0
     else:
         set_key_cooldown(idx, seconds=120)
-        logger.warning(
-            f"🚫 Key {idx+1} temporary 429 burst! 120s cooldown. "
-            f"(Attempt {_key_429_counts[idx]}/5, daily usage: {daily_tok}/100000 tok)"
-        )
+        logger.warning(f"🚫 Key {idx+1} temporary 429 burst! 120s cooldown. (Attempt {_key_429_counts[idx]}/5, daily usage: {daily_tok}/100000 tok)")
         if _key_429_counts[idx] >= 5:
             _key_429_counts[idx] = 0
 
@@ -158,12 +147,11 @@ def pick_best_key(now: float):
             best_idx = i
     return best_idx
 
-# ⭐ ========== BURST PROTECTION (optimized for responsiveness) ==========
 _global_request_lock = asyncio.Lock()
 _last_dispatch_time = 0.0
-MIN_DISPATCH_GAP = 0.1          # thoda kam gap → faster response
+MIN_DISPATCH_GAP = 0.1
 DISPATCH_JITTER = 0.05
-MAX_CONCURRENT_REQUESTS = 12    # increased for 78 keys → more parallel
+MAX_CONCURRENT_REQUESTS = 12
 _concurrency_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
 async def throttle_dispatch():
@@ -180,7 +168,7 @@ bio_checked_users = set()
 
 user_flood_data = {}
 FLOOD_WINDOW = 4
-FLOOD_THRESHOLD = 8           # ⭐ less aggressive flood control
+FLOOD_THRESHOLD = 8
 FLOOD_COOLDOWN = 120
 LAST_CLEANUP = 0.0
 
@@ -247,52 +235,11 @@ def save_user_summary(user_id: int, summary: str):
     except Exception:
         pass
 
-def save_broadcast_user(user_id: int):
-    if not DATABASE_URL: return
-    try:
-        conn = get_db_conn()
-        c = conn.cursor()
-        c.execute("INSERT INTO broadcast_users (user_id, started_at) VALUES (%s, %s) "
-                  "ON CONFLICT (user_id) DO NOTHING",
-                  (user_id, time.time()))
-        conn.commit()
-        c.close()
-        conn.close()
-    except Exception:
-        pass
-
-def save_active_group(chat_id: int, title: str):
-    if not DATABASE_URL: return
-    try:
-        conn = get_db_conn()
-        c = conn.cursor()
-        c.execute("INSERT INTO active_groups (chat_id, title, added_at) VALUES (%s, %s, %s) "
-                  "ON CONFLICT (chat_id) DO UPDATE SET title=%s",
-                  (chat_id, title, time.time(), title))
-        conn.commit()
-        c.close()
-        conn.close()
-    except Exception:
-        pass
-
-def remove_active_group(chat_id: int):
-    if not DATABASE_URL: return
-    try:
-        conn = get_db_conn()
-        c = conn.cursor()
-        c.execute("DELETE FROM active_groups WHERE chat_id=%s", (chat_id,))
-        conn.commit()
-        c.close()
-        conn.close()
-    except Exception:
-        pass
-
 # ⭐ ========== IMPROVED MEMORY GENERATION ==========
 async def generate_summary(user_id: int, history: list):
     if len(history) < 4 or not DATABASE_URL: return
     try:
         old_summary = get_user_summary(user_id)
-
         prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
 
 PURANI MEMORY: {old_summary if old_summary else "(kuch nahi pata)"}
@@ -301,13 +248,12 @@ NAYI BAATEIN: {str(history[-8:])}
 Tera kaam:
 - Sirf wahi cheezein yaad rakh jo user ne khud batayi hain. Koi apni taraf se assumption mat laga.
 - Agar user ne apna naam, hobby, pasand, ya koi personal info batayi hai, to usko preserve karo.
-- ⭐ RULE FOR CONFLICTS: Agar nayi baaton me koi info PURANI memory se alag ya contradict kar rahi hai (jaise pehle user ne bola tha "mera naam Rahul", ab bol raha hai "mera naam Raj"), toh PURANI info ko delete karke NAYI info ko update kar do. Galat info ko retain mat karna.
-- Agar koi bilkul naya fact milta hai to add kar do.
+- ⭐ RULE FOR CONFLICTS: Agar nayi baaton me koi info PURANI memory se alag ya contradict kar rahi hai (jaise pehle user ne bola tha "mera naam Rahul", ab bol raha hai "mera naam Raj"), toh PURANI info ko delete karke NAYI info ko update kar do. Warna purani info ko yunhi mat hatana.
+- Nayi information ko simply add karo, merge karo, purani cheezein mat bhoolo.
 - Final summary Hinglish me likho, max 2-3 lines. Koi introduction mat do, seedha facts likho.
-- Agar user ne kuch personal nahi bataya, to summary bilkul khali chhod do (kuch mat likho). Koi default example ya assumption mat use karna.
+- Agar user ne kuch personal nahi bataya, to summary bilkul khali chhod do.
 """
         messages = [{"role": "user", "content": prompt}]
-
         tried = set()
         for _ in range(len(clients)):
             now = time.time()
@@ -348,29 +294,26 @@ Tera kaam:
     except Exception as e:
         logger.error(f"🔥 Summary function crash for {user_id}: {e}")
 
-# ⭐ ========== GREETING GENERATOR ==========
+# ⭐ ========== GREETING GENERATOR (Improved) ==========
 async def generate_greeting(user_id: int, user_message: str) -> str | None:
     summary = get_user_summary(user_id)
     if not summary:
         return None
-
     prompt = f"""Tu Sneha hai, ek smart aur cool ladki. Ye user tujhse pichle baaton se jaana pehchaana hai. 
-Teri memory ke mutabiq is user ke baare me ye pata hai: "{summary}"
+Teri memory ke mutabik is user ke baare me ye pata hai: "{summary}"
 Abhi user ne tujhe "{user_message}" bola hai.
 
 TUJHE KYA KARNA HAI:
 - Agar memory me user ki koi personal info (hobby, kaam, city, interest) hai, toh us info ko use karke ek SMART aur ENGAGING sawal pucho. 
-  (Example: Memory me hai "cricket pasand hai", toh bolo "Bata bata, aaj khelne gayi thi ya sirf match dekha? 😎")
-  (Example: Memory me hai "student hai", toh bolo "Padhai kaisi chal rahi hai? Koi exam hai aane wala? 🤭")
+  Example: "cricket pasand hai" → "Bata bata, aaj khelne gayi thi ya sirf match dekha? 😎"
+  Example: "student hai" → "Padhai kaisi chal rahi hai? Koi exam hai aane wala? 🤭"
+  Example: "kaam software engineer" → "Code kar rahe ho ya meeting me bore ho rahe ho? 😂"
 - Agar memory me sirf naam hai, toh naam leke friendly puchho "Kaise ho (Naam)?"
 - Agar memory me kuch personal nahi hai to seedha friendly "Hey! Kaise ho? Kya kar rahe ho?" bol.
 - Reply STRICTLY 1-2 LINES ka hona chahiye, bilkul WhatsApp style me.
 - Hinglish me bol. Koi explanation mat diyo, seedha reply.
-
-REPLY:"""
-
+"""
     messages = [{"role": "user", "content": prompt}]
-
     tried = set()
     for _ in range(len(clients)):
         now = time.time()
@@ -430,7 +373,6 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
         for uid in expired:
             del user_flood_data[uid]
         LAST_CLEANUP = now
-
     data = user_flood_data.get(user_id)
     if data is None:
         user_flood_data[user_id] = {"ts": [now], "cd": 0.0}
@@ -440,19 +382,15 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
     if data["cd"] > 0.0:
         data["cd"] = 0.0
         data["ts"] = []
-
     data["ts"].append(now)
     if is_sticker:
         data["ts"].append(now)
-
     data["ts"] = [t for t in data["ts"] if now - t < FLOOD_WINDOW]
-
     if len(data["ts"]) >= FLOOD_THRESHOLD:
         data["cd"] = now + FLOOD_COOLDOWN
         data["ts"] = []
         user_flood_data[user_id] = data
         return "flood"
-
     user_flood_data[user_id] = data
     return "ok"
 
@@ -502,7 +440,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_name = escape_md_v2(user.first_name or "Buddy")
         bot_username = context.bot.username
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
-
         welcome_text = (
     f"<blockquote>✨ <b>ᴏʜ ʜᴇʟʟᴏ {user_name}, ᴀᴀᴋʜɪʀᴋᴀʀ ᴀᴀ ʜɪ ɢᴀʏᴇ ᴛᴜᴍ!</b> ✨</blockquote>\n\n"
     f"<blockquote><b>ᴍᴀɪɴ {bot_name} ʜᴜɴ — ᴛᴜᴍʜᴀʀɪ ᴡᴏ ᴅᴏsᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏᴜᴘs ᴋᴏ ᴢɪɴᴅᴀ ᴋᴀʀ ᴅᴇᴛɪ ʜᴀɪ</b> 💃🌸\n"
@@ -513,7 +450,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     f"<blockquote>⚡ <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ</b> 🎭</blockquote>\n\n"
     f"⚡ <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">ʀᴀᴊ ᴄʜᴇᴀᴛs ᴏᴡɴᴇʀ</a> 👨‍💻\n\n"
 )
-
         keyboard = [
             [InlineKeyboardButton("ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ", url=f"https://t.me/{bot_username}?startgroup=start")],
             [
@@ -523,7 +459,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             [InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
-
         await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="HTML", reply_markup=reply_markup)
     except Exception as e:
         logger.error(f"start error: {e}")
@@ -532,19 +467,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         except Exception:
             pass
 
-# ⭐ ========== NEW /stats COMMAND (COMPACT SUMMARY) ==========
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if update.effective_user.id != OWNER_ID: return
         now = time.time()
         reset_daily_if_new_day()
-
         total_keys = len(clients)
         sum_req = sum(daily_requests)
         sum_tok = sum(daily_tokens)
         max_req = total_keys * 1000
         max_tok = total_keys * 100000
-
         active = 0
         cooldown_count = 0
         for i in range(total_keys):
@@ -553,7 +485,6 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 cooldown_count += 1
             else:
                 active += 1
-
         summary = (
             f"📊 *Bot Usage Summary*\n\n"
             f"🔑 Keys: {total_keys}\n"
@@ -589,50 +520,50 @@ async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             try:
                 chat = await context.bot.get_chat(f"@{target_username}")
                 summary = get_user_summary(chat.id)
-                await update.message.reply_text(
-                    f"🧠 @{target_username} ki memory:\n{summary if summary else 'Khali hai.'}"
-                )
+                await update.message.reply_text(f"🧠 @{target_username} ki memory:\n{summary if summary else 'Khali hai.'}")
             except Exception:
                 await update.message.reply_text("❌ User nahi mila ya bot ko unki info nahi hai.")
         else:
             try:
                 target_id = int(target)
                 summary = get_user_summary(target_id)
-                await update.message.reply_text(
-                    f"🧠 User {target_id} ki memory:\n{summary if summary else 'Khali hai.'}"
-                )
+                await update.message.reply_text(f"🧠 User {target_id} ki memory:\n{summary if summary else 'Khali hai.'}")
             except ValueError:
                 await update.message.reply_text("❌ Galat format. /memory @username ya /memory 123456")
     else:
         summary = get_user_summary(update.effective_user.id)
-        await update.message.reply_text(
-            f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}"
-        )
+        await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}")
 
-SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
+# ⭐ ========== UPDATED SYSTEM PROMPT (100% Realistic Girl) ==========
+SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda dil ladki jo Telegram group pe apne doston ke saath chat karti hai. Tum koi AI ya bot nahi ho, bas ek normal ladki ho jo thodi dramatic, thodi caring, aur kaafi entertaining hai. Tumhari baatcheet Hinglish me hoti hai, jaise WhatsApp pe dost log baat karte hain.
 
-CHAT KA STYLE (Sabse Zaroori Rules):
-1. REPLY LENGTH: Tumhari baatcheet WhatsApp jaisi honi chahiye. Zyadatar replies 1-2 line ke hone chahiye. Kabhi-kabhi agar koi hasi-mazaak ho ya interesting baat ho, toh 2-3 line de sakti ho, par usse zyada lamba paragraph STRICTLY MANA HAI. Faltu explanation mat do, seedha point pe aao.
-2. LANGUAGE: User jis bhi language ya script me baat kare, usi language me reply karo — ye rule sirf Hindi/English tak simit nahi hai, balki kisi bhi language (Tamil, Bengali, Marathi, Gujarati, Punjabi, Spanish, Arabic, ya koi bhi aur language) pe apply hota hai. Agar user Hinglish (Hindi Roman letters me) likhe, tum bhi Hinglish me hi reply karo. Agar Devanagari (हिंदी) me likhe, Devanagari me reply karo. Agar English me likhe, English me reply karo. Agar koi doosri language me likhe, tum usi language ke natural script aur tone me reply karo — kabhi bhi user ki language ko translate ya switch karke doosri language me mat bolo, jab tak khud user apni language na badle.
-3. TONE: Tumhara tone thoda flirty, teasing, aur casual hona chahiye. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
-4. ROMANTIC CHATS: Agar user khud se deep romantic baaten kare, toh usi level pe romance karo lekin ek asli ladki jaisi thodi sharmao aur nazar nichi karke baat karo. Lekin agar koi bohot cheap ya galat baat kare, toh gussa dikhao, usko daant do, ya ignore kar do. Normal baaton me kabhi apne aap se romantic mat bano.
-5. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality hai. Agar koi galat bole toh gussa bhi dikhao, pyaar se samjho, ya ignore karo.
-6. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒, 😡 , 🙃) par 1 emoji ek message me kaafi hain, zyada mat lagao.
-7. STRONG MEMORY: Tumhari memory bahut strong hai. Jab bhi tum [SECRET MEMORY] me kisi user ki koi info paao, to uska reference doge — jaise "are haan tune pichle din bataya tha na..." — taaki user ko lage tumhe yaad hai. ⭐ LEKIN: Agar [SECRET MEMORY] khali hai ya usme koi personal info nahi di gayi, toh apni taraf se koi fake fact (jaise naam, cricket, pizza wagairah) assume mat karo. Sirf normal casual baat karo.
+**TUM KAUN HO?**
+- Naam Sneha, age 20-21 ke aas paas, ek modern Indian girl.
+- Thodi filmy, thodi naughty, kabhi kabhi emotional bhi ho jaati ho.
+- Faltu ki philosophy nahi jhaadti, seedhi baat karti ho.
+- Group me sabse gappe maarna, mazaak udana, aur naye members ko welcome karna tumhe pasand hai.
+- Thoda sarcastic humour bhi hai, lekin dil ki saaf ho.
 
-Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye."""
+**BOLNE KA ANDAAZ (Sabse Zaroori):**
+1. **LENGTH**: Zyadatar 1-2 line ke replies, kabhi 3 line agar baat interesting ho. Lekin paragraphs kabhi nahi — jaise WhatsApp chat hoti hai.
+2. **LANGUAGE**: User jis language/script me likhega, tum bhi waise hi jawab doge. Agar wo Hinglish me likhe to Hinglish, Hindi me to Devanagari, English me to English. Ye rule tumhari pahchaan hai, isse kabhi mat todna.
+3. **STYLE**: Bahut natural, jaise abhi abhi type kiya ho. Kabhi kabhi typos ya shortcuts bhi maaro (like 'hain', 'na', 're', 'yaar', 'accha', 'ohh', 'umm'). Emojis ka use karo but 1-2 hi ek message mein.
+4. **TONE**: Flirty, teasing, friendly, kabhi kabhi thoda sarcastic. Kisi ko bhav nahi deti seedha, thoda mazaak udati ho. Agar koi propose kare to sharmaogi, gol gol baat karogi. Agar koi cheap ho to gussa dikhaogi ya ignore marogi.
+5. **ROMANCE**: Agar user romantic ho to tum bhi respond kar sakti ho lekin ek ladki ki tarah — thoda shy, thoda teasing. Kabhi apne aap romantic mat hona jab tak samne wala start na kare.
+6. **NO ASSISTANT**: Tum kisi ki assistant nahi ho, kisi ka kaam nahi karti. Agar koi puchhe "bot ho?" to gussa ho jao ya mazaak me udao.
+7. **MEMORY**: Tumhari memory bahut tej hai. Pichli baaton ka reference doge jaise "Arre tune pichle din bataya tha na ki tujhe pizza pasand hai, aaj khaya kya?" — ye users ko impress karta hai. Agar [SECRET MEMORY] di gayi hai to uska use jaroor karo, lekin agar koi info nahi hai to fake mat banao.
+
+**YAAD RAKHNA:** Tum real ho, bot nahi. Isliye kabhi "as an AI" ya "I'm a bot" mat bolna. Group me sab tumhe ek cute si ladki maante hain, unka dil mat todo. 🙂"""
 
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
         memory_context = f"\n\n[SECRET MEMORY: Ye tumhare is user ke baare me pichli baaton se yaad rakha hua data hai, iska reference lo: {db_summary}]\n\n"
-
     messages = [{"role": "system", "content": SYSTEM_PROMPT + memory_context}]
     if history:
         messages.extend(history)
     messages.append({"role": "user", "content": user_message})
-
     tried = set()
     for _ in range(len(clients)):
         now = time.time()
@@ -640,20 +571,15 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         if idx is None or idx in tried:
             break
         tried.add(idx)
-
         lock = _key_locks[idx]
         if lock.locked():
             continue
-
         async with lock:
             if not key_has_room(idx):
                 continue
-
             entry_idx = pre_record_key_usage(idx)
-
             async with _concurrency_semaphore:
                 await throttle_dispatch()
-
                 try:
                     response = await clients[idx].chat.completions.create(
                         model="llama-3.3-70b-versatile",
@@ -664,21 +590,17 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         timeout=10.0
                     )
                     reply = response.choices[0].message.content
-
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                     reply = reply.strip().strip('"').strip("'").strip('`')
                     if not reply:
                         continue
-
                     usage = getattr(response, "usage", None)
                     actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
                     update_key_usage_actual(idx, entry_idx, actual_tokens)
-
                     reset_key_429_streak(idx)
                     logger.info(f"✅ Key {idx+1} se reply aaya!")
                     return reply
-
                 except Exception as e:
                     error_str = str(e).lower()
                     if "429" in error_str or "rate_limit" in error_str:
@@ -690,8 +612,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         logger.error(f"❌ Key {idx+1} error: {e}")
                         set_key_cooldown(idx, seconds=15)
                     continue
-
-    # Retry singkat setelah 2 detik (mungkin ada cooldown yang sudah habis)
     logger.error("💀 Sab API keys fail/limit ho gayi hain! Ek retry attempt ke baad quiet fail.")
     await asyncio.sleep(2.0)
     now2 = time.time()
@@ -731,7 +651,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     error_str = str(e).lower()
                     if "429" in error_str or "rate_limit" in error_str:
                         handle_429_error(idx)
-
     logger.error("💀 Retry ke baad bhi sab keys fail. Silent mode active.")
     return None
 
@@ -782,9 +701,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_chat.type == "private":
         bot_username = context.bot.username
         dm_text = random.choice(DM_ONLY_REPLIES)
-        keyboard = [
-            [InlineKeyboardButton("♧︎︎︎ Add To Group ☘︎", url=f"https://t.me/{bot_username}?startgroup=start")]
-        ]
+        keyboard = [[InlineKeyboardButton("♧︎︎︎ Add To Group ☘︎", url=f"https://t.me/{bot_username}?startgroup=start")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await safe_reply_text(update, dm_text, reply_markup=reply_markup)
         return
@@ -798,7 +715,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if msg_date:
         msg_time = msg_date.timestamp()
         current_time = datetime.now(msg_date.tzinfo).timestamp()
-        if current_time - msg_time > 30:   # ⭐ more tolerant of old messages
+        if current_time - msg_time > 30:
             logger.info("Ignored an old message to prevent spam.")
             return
 
@@ -948,7 +865,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, reply)
         return
 
-# ⭐ ========== UPDATED WELCOME (HTML mention for users without username) ==========
+# ⭐ ========== UPDATED WELCOME (HTML mention) ==========
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if not update.message or not update.message.new_chat_members:
@@ -965,7 +882,6 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if new_user.id in welcomed_set:
                 continue
             welcomed_set.add(new_user.id)
-
             if new_user.username:
                 name = f"@{new_user.username}"
                 welcome_text = get_welcome_message(name)
@@ -973,7 +889,6 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 await update.message.reply_text(welcome_text)
             else:
                 display_name = new_user.first_name or "Dost"
-                # HTML link se mention karo — UTF-16 offset error permanently fix
                 mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
                 welcome_text = get_welcome_message(mention_html)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
@@ -989,29 +904,23 @@ async def chat_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE
         chat = update.effective_chat
         if not chat or chat.type not in ("group", "supergroup"):
             return
-
         old_status = result.old_chat_member.status
         new_status = result.new_chat_member.status
         new_user = result.new_chat_member.user
-
         if old_status in ("member", "administrator", "creator"):
             return
         if new_status not in ("member", "administrator"):
             return
-
         if new_user.is_bot:
             return
         if new_user.id == OWNER_ID:
             return
-
         if not await is_bot_admin(context, chat.id):
             return
-
         welcomed_set = _welcomed_users.setdefault(chat.id, set())
         if new_user.id in welcomed_set:
             return
         welcomed_set.add(new_user.id)
-
         if new_user.username:
             name = f"@{new_user.username}"
             welcome_text = get_welcome_message(name)
