@@ -822,29 +822,72 @@ async def safe_reply_text(update: Update, text: str, **kwargs) -> None:
     except Exception as e:
         logger.warning(f"reply_text fail: {e}")
 
-# ⭐ ========== REALISTIC TYPING DELAY (3-5 sec, continuous typing indicator) ==========
-# Telegram ka "typing..." status sirf ~5 second tak dikhta hai, uske baad apne aap gayab ho jata hai.
-# Isliye agar total delay 5 sec se zyada honi ho, toh beech-beech me dobara "typing" action bhejna padta hai
-# taaki poore wait ke dauraan user ko "typing..." dikhta rahe — bilkul real insaan jaisa feel aaye.
-async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str) -> None:
-    try:
-        # ⭐ Har reply 3 se 5 second ke beech aayega (jaisa maanga gaya tha), text length se thoda vary hoga
-        base_delay = min(max(len(text) * 0.06, 3.0), 5.0)
-        delay = base_delay + random.uniform(-0.3, 0.4)
-        delay = min(max(delay, 3.0), 5.0)  # hard clamp: kabhi 3s se kam ya 5s se zyada nahi
+# ⭐ ========== FIXED: TYPING INDICATOR AB TURANT SHURU HOTA HAI, AI CALL KE SAATH PARALLEL ==========
+# PEHLE BUG: typing delay AI reply mil jaane KE BAAD chalta tha -> user ko AI-wait ke time
+# (0-10 sec, Render cold start pe aur zyada) kuch nahi dikhta tha, phir achanak 3-5 sec ka
+# typing aata tha. Isi wajah se "shant baith jaana + fansh fansh" wala feel aa raha tha.
+#
+# FIX: ab typing indicator turant background me shuru ho jata hai, aur AI call parallel chalti hai.
+# Jab bhi AI ka reply pehle aa jaye (jo zyadatar case me hoga), turant bhej dete hain -
+# poora 3-5 sec ka artificial wait nahi karte agar AI khud itna time le chuki ho.
+# Sirf tab tak extra typing dikhate hain jab AI bahut fast (<1.5s) reply kare, taaki bilkul
+# instant/robotic na lage — lekin agar AI ne khud 3+ sec liye, to turant reply bhej dete hain.
 
-        elapsed = 0.0
-        # Telegram typing action ~5s tak valid rehta hai, har 4s me refresh karte hain
-        while elapsed < delay:
+async def _keep_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    """Background loop jo har ~4 sec me typing action bhejta rehta hai jab tak cancel na ho."""
+    try:
+        while True:
             try:
                 await context.bot.send_chat_action(chat_id=chat_id, action="typing")
             except Exception:
                 pass
-            chunk = min(4.0, delay - elapsed)
-            await asyncio.sleep(chunk)
-            elapsed += chunk
+            await asyncio.sleep(4.0)
+    except asyncio.CancelledError:
+        pass
+
+async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str) -> None:
+    """Fallback function — jab typing already parallel me chal chuki ho (naya flow),
+    ye sirf ek chhota minimum wait ensure karta hai taaki reply bilkul robotic-instant na lage."""
+    try:
+        min_delay = random.uniform(0.4, 0.9)
+        await asyncio.sleep(min_delay)
     except Exception:
         pass
+
+async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int, coro):
+    """
+    Typing indicator ko TURANT shuru karta hai (background task), aur uske saath parallel
+    AI reply generate karta hai. Jaise hi AI ka reply aata hai:
+      - agar bahut jaldi aaya (< 3 sec), to bache hue time tak thoda aur typing dikhakar bhejta hai
+        (taaki natural lage, ekdum instant robotic na ho)
+      - agar AI ne khud 3+ sec liye, to turant reply bhej deta hai, extra wait nahi karta
+    Total user-facing wait hamesha ~3-5 sec ke aas paas rehta hai, bina kisi "silent gap" ke.
+    """
+    typing_task = asyncio.create_task(_keep_typing(context, chat_id))
+    start = time.time()
+    try:
+        result = await coro
+    finally:
+        typing_task.cancel()
+        try:
+            await typing_task
+        except asyncio.CancelledError:
+            pass
+
+    elapsed = time.time() - start
+    target_min = 3.0
+    if elapsed < target_min:
+        # AI bahut fast tha -> thoda aur typing dikhao taaki natural lage
+        remaining = min(target_min - elapsed, 2.0)
+        # is dauraan bhi typing action bhejte rahenge
+        extra_task = asyncio.create_task(_keep_typing(context, chat_id))
+        await asyncio.sleep(remaining)
+        extra_task.cancel()
+        try:
+            await extra_task
+        except asyncio.CancelledError:
+            pass
+    return result
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
@@ -987,47 +1030,80 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if is_bot_mentioned: is_standalone = False
     if update.message.forward_date: is_standalone = False
 
-    if is_standalone:
+    # ⭐ Helper: kisi bhi flow (standalone/reply/mention) me "purani baaton" wala greeting try karega
+    async def _maybe_greet_and_reply(is_first_touch_ok: bool):
         msg_count = user_msg_counter.get(user_id, 0)
-        # ⭐ FIX: Ab sirf pehle hi message pe nahi, balki jab bhi purana user firse "hello/hi" type ka
-        # chhota greeting bole (aur usse pehle abhi tak greeting nahi mil chuka), tab uski purani
-        # baaton (jaise developer wala kaam, cricket match) ka reference deke poocha jayega.
-        is_short_greeting = bool(re.match(r'^(hi+|hello+|hey+|hola|namaste|yo+|sup)\W*$', clean_text.strip(), re.IGNORECASE))
-        should_try_greeting = (msg_count == 0) or (is_short_greeting and user_id not in _greeted_once)
+        # ⭐ FIX: pehle regex sirf EXACT "hi"/"hello" match karta tha — agar user "hello sneha",
+        # "hii kaisi ho", "hey wassup" jaisa kuch bolta tha to match hi nahi hota tha, greeting
+        # trigger hi nahi hoti thi. Ab shuruaat me greeting-word ho to bhi match karega.
+        stripped = clean_text.strip()
+        is_short_greeting = bool(re.match(
+            r'^(hi+|hello+|hey+|hola|namaste|namaskar|yo+|sup|kaise\s*ho|kya\s*haal|good\s*morning|gm|good\s*evening)\b',
+            stripped, re.IGNORECASE
+        )) and len(stripped.split()) <= 5  # chhota casual greeting hi, lambi baat nahi
+        should_try_greeting = is_short_greeting and user_id not in _greeted_once
+        if is_first_touch_ok:
+            should_try_greeting = should_try_greeting or (msg_count == 0)
 
         if should_try_greeting:
-            greeting = await generate_greeting(user_id, clean_text)
+            greeting = await get_reply_with_live_typing(
+                context, chat.id, generate_greeting(user_id, clean_text)
+            )
             if greeting:
                 _greeted_once.add(user_id)
-                user_mention = f"@{user.username}" if user.username else user.first_name
-                final_reply = f"{user_mention} {greeting}"
-                await realistic_typing_delay(context, chat.id, final_reply)
-                await safe_reply_text(update, final_reply)
-                update_history(user_id, clean_text, greeting)
-                return
+                return greeting
+        return None
 
-        reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
+    if is_standalone:
+        greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
+        if greeting:
+            user_mention = f"@{user.username}" if user.username else user.first_name
+            final_reply = f"{user_mention} {greeting}"
+            await safe_reply_text(update, final_reply)
+            update_history(user_id, clean_text, greeting)
+            return
+
+        reply = await get_reply_with_live_typing(
+            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id))
+        )
         if not reply: return
         update_history(user_id, clean_text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         final_reply = f"{user_mention} {reply}"
-        await realistic_typing_delay(context, chat.id, final_reply)
         await safe_reply_text(update, final_reply)
         return
 
     if is_reply_to_bot:
-        reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
+        # ⭐ FIX: pehle yaha greeting check tha hi nahi — ab reply-to-bot flow me bhi purani
+        # baaton wala greeting try hoga agar user "hi/hello" type ka msg bot ko reply kar raha ho
+        greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
+        if greeting:
+            await safe_reply_text(update, greeting)
+            update_history(user_id, clean_text, greeting)
+            return
+
+        reply = await get_reply_with_live_typing(
+            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id))
+        )
         if not reply: return
         update_history(user_id, clean_text, reply)
-        await realistic_typing_delay(context, chat.id, reply)
         await safe_reply_text(update, reply)
         return
 
     if is_bot_mentioned:
-        reply = await get_ai_reply(clean_text, user_id, get_history(user_id))
+        # ⭐ FIX: yaha bhi greeting missing thi — ab @mention karke "hello" bolne pe bhi
+        # purani baaton ka reference milega, seedha generic AI reply nahi jayega
+        greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
+        if greeting:
+            await safe_reply_text(update, greeting)
+            update_history(user_id, clean_text, greeting)
+            return
+
+        reply = await get_reply_with_live_typing(
+            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id))
+        )
         if not reply: return
         update_history(user_id, clean_text, reply)
-        await realistic_typing_delay(context, chat.id, reply)
         await safe_reply_text(update, reply)
         return
 
