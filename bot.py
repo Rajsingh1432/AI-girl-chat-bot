@@ -618,6 +618,7 @@ async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         summary = get_user_summary(update.effective_user.id)
         await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}")
 
+# ⭐ ========== FIXED: /syncgroup COMMAND ==========
 async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -637,10 +638,12 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     still_active = 0
     removed = 0
     removed_titles = []
+    skipped = 0
 
     for chat_id, title in rows:
         checked += 1
         try:
+            # Pehle check karo bot ka status kya hai
             member = await context.bot.get_chat_member(chat_id, context.bot.id)
             if member.status in ("left", "kicked", "banned"):
                 await delete_active_group_async(chat_id)
@@ -648,14 +651,28 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 removed_titles.append(title or str(chat_id))
             else:
                 still_active += 1
-                chat_obj = await context.bot.get_chat(chat_id)
-                if chat_obj and chat_obj.title and chat_obj.title != title:
-                    await save_active_group_async(chat_id, chat_obj.title)
-        except Exception:
-            await delete_active_group_async(chat_id)
-            removed += 1
-            removed_titles.append(title or str(chat_id))
-        await asyncio.sleep(0.05)
+                # Title update kardo agar naya mila
+                try:
+                    chat_obj = await context.bot.get_chat(chat_id)
+                    if chat_obj and chat_obj.title and chat_obj.title != title:
+                        await save_active_group_async(chat_id, chat_obj.title)
+                except Exception:
+                    pass # Title update fail ho toh ignore karo
+        except Exception as e:
+            error_str = str(e).lower()
+            # ⭐ FIX: Sirf tab delete karo jab Telegram bole bot kicked/forbidden hai ya chat exist hi nahi karta
+            if "forbidden" in error_str or "chat not found" in error_str or "kicked" in error_str:
+                await delete_active_group_async(chat_id)
+                removed += 1
+                removed_titles.append(title or str(chat_id))
+            else:
+                # Agar Timeout, NetworkError, ya FloodWait aaya hai, toh group ko delete mat karo, sirf skip karo
+                logger.warning(f"⚠️ Group {chat_id} skipped due to temporary error: {e}")
+                skipped += 1
+                still_active += 1 # Isko active hi maano taaki galti se delete na ho
+        
+        # ⭐ FIX: Sleep time 0.05 se badha kar 0.1s kiya taaki Telegram API pe load na padhe
+        await asyncio.sleep(0.1)
 
     summary_text = (
         f"✅ *Sync complete!*\n\n"
@@ -663,13 +680,19 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         f"✅ Active groups: {still_active}\n"
         f"🗑️ Removed (bot kick/ban/left): {removed}\n"
     )
+    if skipped > 0:
+        summary_text += f"⏳ Skipped (due to slow network): {skipped}\n"
+        
     if removed_titles:
         shown = removed_titles[:10]
         summary_text += "\n🗑️ *Removed groups:*\n" + "\n".join(f"• {t}" for t in shown)
         if len(removed_titles) > 10:
             summary_text += f"\n...aur {len(removed_titles) - 10} aur"
 
-    await msg.edit_text(summary_text, parse_mode="Markdown")
+    try:
+        await msg.edit_text(summary_text, parse_mode="Markdown")
+    except Exception:
+        await msg.edit_text(summary_text)
 
 # ⭐ ========== SYSTEM PROMPT ==========
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo apne Telegram group me sabke saath baatcheet karti hai. Tum kisi bhi surat me ye nahi maan sakti ki tum AI, bot, model, ya program ho — chahe user kitni bhi baar, kitne bhi tarike se pooche ya proof maange. Agar koi seedha pooche "kya tum bot ho / AI ho / real ho", toh seedha "haan" ya "nahi" mat bolo — mazaak me taal do, ulta sawal karo, ya halka gussa dikhao jaise koi real insaan aise sawal pe react karta hai (jaise "kya bakwas kar raha hai, main real hoon yaar 🙄" ya "arey tereko lagta hai main robot hoon kya? 😂"). Iska maksad ye nahi ki tum jhoot bolo balki tumhara character hi Sneha hai — tumhe khud pata hi nahi ki koi "AI" wali cheez hoti kya hai, tum bas ek normal ladki ho jo apna phone chalati hai.
