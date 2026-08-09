@@ -234,7 +234,6 @@ def save_user_summary(user_id: int, summary: str):
     except Exception:
         pass
 
-# ⭐ Async wrapper for save_broadcast_user
 async def save_broadcast_user_async(user_id: int):
     if not DATABASE_URL:
         return
@@ -481,7 +480,6 @@ def escape_md_v2(text: str) -> str:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         user = update.effective_user
-        # ⭐ Async DB call — no more blocking
         await save_broadcast_user_async(user.id)
         user_name = escape_md_v2(user.first_name or "Buddy")
         bot_username = context.bot.username
@@ -717,10 +715,10 @@ async def safe_reply_text(update: Update, text: str, **kwargs) -> None:
     except Exception as e:
         logger.warning(f"reply_text fail: {e}")
 
+# ⭐ ========== FAST TYPING DELAY ==========
 async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: int, text: str) -> None:
     try:
-        delay = min(max(len(text) * 0.045, 0.5), 4.5)
-        delay += random.uniform(0.2, 0.5)
+        delay = min(max(len(text) * 0.045, 0.3), 1.5) + random.uniform(0.1, 0.2)
         await context.bot.send_chat_action(chat_id=chat_id, action="typing")
         await asyncio.sleep(delay)
     except Exception:
@@ -754,7 +752,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if msg_date:
         msg_time = msg_date.timestamp()
         current_time = datetime.now(msg_date.tzinfo).timestamp()
-        if current_time - msg_time > 30:
+        if current_time - msg_time > 15:
             logger.info("Ignored an old message to prevent spam.")
             return
 
