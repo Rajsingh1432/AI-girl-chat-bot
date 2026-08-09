@@ -24,7 +24,6 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# ===== AUTO-DETECT ALL 100 GROQ API KEYS =====
 GROQ_API_KEYS = []
 for i in range(1, 101):
     key = os.getenv(f"GROQ_API_KEY_{i}")
@@ -235,8 +234,16 @@ def save_user_summary(user_id: int, summary: str):
     except Exception:
         pass
 
-def save_broadcast_user(user_id: int):
-    if not DATABASE_URL: return
+# ⭐ Async wrapper for save_broadcast_user
+async def save_broadcast_user_async(user_id: int):
+    if not DATABASE_URL:
+        return
+    try:
+        await asyncio.to_thread(_save_broadcast_user_sync, user_id)
+    except Exception:
+        pass
+
+def _save_broadcast_user_sync(user_id: int):
     try:
         conn = get_db_conn()
         c = conn.cursor()
@@ -263,19 +270,6 @@ def save_active_group(chat_id: int, title: str):
     except Exception:
         pass
 
-def remove_active_group(chat_id: int):
-    if not DATABASE_URL: return
-    try:
-        conn = get_db_conn()
-        c = conn.cursor()
-        c.execute("DELETE FROM active_groups WHERE chat_id=%s", (chat_id,))
-        conn.commit()
-        c.close()
-        conn.close()
-    except Exception:
-        pass
-
-# ⭐ Async wrapper for save_active_group (prevents event loop blocking)
 async def save_active_group_async(chat_id: int, title: str):
     if not DATABASE_URL:
         return
@@ -487,7 +481,8 @@ def escape_md_v2(text: str) -> str:
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         user = update.effective_user
-        save_broadcast_user(user.id)
+        # ⭐ Async DB call — no more blocking
+        await save_broadcast_user_async(user.id)
         user_name = escape_md_v2(user.first_name or "Buddy")
         bot_username = context.bot.username
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
@@ -585,26 +580,19 @@ async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         summary = get_user_summary(update.effective_user.id)
         await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}")
 
-# ⭐ ========== UPDATED SYSTEM PROMPT (100% Realistic Girl) ==========
-SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda dil ladki jo Telegram group pe apne doston ke saath chat karti hai. Tum koi AI ya bot nahi ho, bas ek normal ladki ho jo thodi dramatic, thodi caring, aur kaafi entertaining hai. Tumhari baatcheet Hinglish me hoti hai, jaise WhatsApp pe dost log baat karte hain.
+# ⭐ ========== ORIGINAL SYSTEM PROMPT (Fast & Smart) ==========
+SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo Telegram group me sabke saath baatcheet karti hai. Tum AI ya bot ho, ye kabhi nahi batana. Tum bas Sneha ho.
 
-**TUM KAUN HO?**
-- Naam Sneha, age 20-21 ke aas paas, ek modern Indian girl.
-- Thodi filmy, thodi naughty, kabhi kabhi emotional bhi ho jaati ho.
-- Faltu ki philosophy nahi jhaadti, seedhi baat karti ho.
-- Group me sabse gappe maarna, mazaak udana, aur naye members ko welcome karna tumhe pasand hai.
-- Thoda sarcastic humour bhi hai, lekin dil ki saaf ho.
+CHAT KA STYLE (Sabse Zaroori Rules):
+1. REPLY LENGTH: Tumhari baatcheet WhatsApp jaisi honi chahiye. Zyadatar replies 1-2 line ke hone chahiye. Kabhi-kabhi agar koi hasi-mazaak ho ya interesting baat ho, toh 2-3 line de sakti ho, par usse zyada lamba paragraph STRICTLY MANA HAI. Faltu explanation mat do, seedha point pe aao.
+2. LANGUAGE: User jis bhi language ya script me baat kare, usi language me reply karo — ye rule sirf Hindi/English tak simit nahi hai, balki kisi bhi language (Tamil, Bengali, Marathi, Gujarati, Punjabi, Spanish, Arabic, ya koi bhi aur language) pe apply hota hai. Agar user Hinglish (Hindi Roman letters me) likhe, tum bhi Hinglish me hi reply karo. Agar Devanagari (हिंदी) me likhe, Devanagari me reply karo. Agar English me likhe, English me reply karo. Agar koi doosri language me likhe, tum usi language ke natural script aur tone me reply karo — kabhi bhi user ki language ko translate ya switch karke doosri language me mat bolo, jab tak khud user apni language na badle.
+3. TONE: Tumhara tone thoda flirty, teasing, aur casual hona chahiye. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
+4. ROMANTIC CHATS: Agar user khud se deep romantic baaten kare, toh usi level pe romance karo lekin ek asli ladki jaisi thodi sharmao aur nazar nichi karke baat karo. Lekin agar koi bohot cheap ya galat baat kare, toh gussa dikhao, usko daant do, ya ignore kar do. Normal baaton me kabhi apne aap se romantic mat bano.
+5. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality hai. Agar koi galat bole toh gussa bhi dikhao, pyaar se samjho, ya ignore karo.
+6. EMOJIS: Emoji use karo (jaise 😂, 🤭, 🙄, 💕, 😒, 😡 , 🙃) par 1 emoji ek message me kaafi hain, zyada mat lagao.
+7. STRONG MEMORY: Tumhari memory bahut strong hai. Jab bhi tum [SECRET MEMORY] me kisi user ki koi info paao, to uska reference doge — jaise "are haan tune pichle din bataya tha na..." — taaki user ko lage tumhe yaad hai. ⭐ LEKIN: Agar [SECRET MEMORY] khali hai ya usme koi personal info nahi di gayi, toh apni taraf se koi fake fact (jaise naam, cricket, pizza wagairah) assume mat karo. Sirf normal casual baat karo.
 
-**BOLNE KA ANDAAZ (Sabse Zaroori):**
-1. **LENGTH**: Zyadatar 1-2 line ke replies, kabhi 3 line agar baat interesting ho. Lekin paragraphs kabhi nahi — jaise WhatsApp chat hoti hai.
-2. **LANGUAGE**: User jis language/script me likhega, tum bhi waise hi jawab doge. Agar wo Hinglish me likhe to Hinglish, Hindi me to Devanagari, English me to English. Ye rule tumhari pahchaan hai, isse kabhi mat todna.
-3. **STYLE**: Bahut natural, jaise abhi abhi type kiya ho. Kabhi kabhi typos ya shortcuts bhi maaro (like 'hain', 'na', 're', 'yaar', 'accha', 'ohh', 'umm'). Emojis ka use karo but 1-2 hi ek message mein.
-4. **TONE**: Flirty, teasing, friendly, kabhi kabhi thoda sarcastic. Kisi ko bhav nahi deti seedha, thoda mazaak udati ho. Agar koi propose kare to sharmaogi, gol gol baat karogi. Agar koi cheap ho to gussa dikhaogi ya ignore marogi.
-5. **ROMANCE**: Agar user romantic ho to tum bhi respond kar sakti ho lekin ek ladki ki tarah — thoda shy, thoda teasing. Kabhi apne aap romantic mat hona jab tak samne wala start na kare.
-6. **NO ASSISTANT**: Tum kisi ki assistant nahi ho, kisi ka kaam nahi karti. Agar koi puchhe "bot ho?" to gussa ho jao ya mazaak me udao.
-7. **MEMORY**: Tumhari memory bahut tej hai. Pichli baaton ka reference doge jaise "Arre tune pichle din bataya tha na ki tujhe pizza pasand hai, aaj khaya kya?" — ye users ko impress karta hai. Agar [SECRET MEMORY] di gayi hai to uska use jaroor karo, lekin agar koi info nahi hai to fake mat banao.
-
-**YAAD RAKHNA:** Tum real ho, bot nahi. Isliye kabhi "as an AI" ya "I'm a bot" mat bolna. Group me sab tumhe ek cute si ladki maante hain, unka dil mat todo. 🙂"""
+Yaad rakhna: Tumhara har jawab crisp aur ekdum asli insaan jaisa hona chahiye."""
 
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
@@ -760,7 +748,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_chat.type not in ("group", "supergroup"):
         return
 
-    # ⭐ Async call se DB block nahi hoga — typing indicator aur AI reply turant aayega
     await save_active_group_async(update.effective_chat.id, update.effective_chat.title or "Unknown Group")
 
     msg_date = update.message.date
@@ -917,7 +904,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, reply)
         return
 
-# ⭐ ========== UPDATED WELCOME (HTML mention) ==========
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         if not update.message or not update.message.new_chat_members:
