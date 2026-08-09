@@ -4,7 +4,7 @@ import re
 import time
 import random
 import asyncio
-import html   # for welcome mention without username
+import html
 from datetime import datetime
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
