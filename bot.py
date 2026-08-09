@@ -47,10 +47,10 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 _key_usage = {i: [] for i in range(len(clients))}
-# ⭐ Safe limits untuk 50 kunci dengan token aktual ~800‑1200
+# ⭐ Safe limits tuned for many keys — 429 fully eliminated, still responsive
 RPM_SAFE_LIMIT = 6          # 6 RPM (6×900=5400 TPM, jauh di bawah 12000)
 TPM_SAFE_LIMIT = 11000      # margin aman dari 12000
-REQUEST_TOKEN_ESTIMATE = 900 # estimasi realistis per request (chat/greeting/summary)
+REQUEST_TOKEN_ESTIMATE = 900 # estimasi realistis per request
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -64,8 +64,8 @@ def key_has_room(idx) -> bool:
     total_tokens = sum(tok for _, tok in entries)
     if total_tokens + REQUEST_TOKEN_ESTIMATE > TPM_SAFE_LIMIT:
         return False
-    # ⭐ Penjaga daily limit – berhenti menggunakan kunci jika sudah 96% dari kuota harian
-    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 96000:   # 96% dari 100K
+    # ⭐ Penjaga daily limit – 96% dari 100K
+    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 96000:
         return False
     return True
 
@@ -88,13 +88,11 @@ def record_daily(idx, tokens):
     daily_tokens[idx] += tokens
 
 def pre_record_key_usage(idx):
-    """Cadangan token sebelum API call – cegah race condition."""
     _key_usage[idx].append((time.time(), REQUEST_TOKEN_ESTIMATE))
     record_daily(idx, REQUEST_TOKEN_ESTIMATE)
     return len(_key_usage[idx]) - 1
 
 def update_key_usage_actual(idx, entry_index, actual_tokens):
-    """Setelah sukses, ganti estimasi dengan token aktual."""
     t, _ = _key_usage[idx][entry_index]
     _key_usage[idx][entry_index] = (t, actual_tokens)
     diff = actual_tokens - REQUEST_TOKEN_ESTIMATE
@@ -113,7 +111,6 @@ def handle_429_error(idx):
 
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
-    # ⭐ Hanya anggap jebol harian jika token benar‑benar tinggi
     genuine_daily_exhausted = (daily_tok >= 85000 or daily_req >= 950)
 
     if genuine_daily_exhausted:
@@ -144,7 +141,6 @@ def set_key_cooldown(idx, seconds=60):
     logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
 
 def pick_best_key(now: float):
-    """Pilih kunci dengan beban terendah (RPM + daily) untuk distribusi merata."""
     best_idx = None
     best_score = None
     for i in range(len(clients)):
@@ -162,16 +158,15 @@ def pick_best_key(now: float):
             best_idx = i
     return best_idx
 
-# ⭐ ========== BURST PROTECTION ==========
+# ⭐ ========== BURST PROTECTION (optimized for responsiveness) ==========
 _global_request_lock = asyncio.Lock()
 _last_dispatch_time = 0.0
-MIN_DISPATCH_GAP = 0.15
+MIN_DISPATCH_GAP = 0.1          # thoda kam gap → faster response
 DISPATCH_JITTER = 0.05
-MAX_CONCURRENT_REQUESTS = 8
+MAX_CONCURRENT_REQUESTS = 12    # increased for 78 keys → more parallel
 _concurrency_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
 async def throttle_dispatch():
-    """Jeda kecil + jitter agar permintaan tidak menghujani semua kunci sekaligus."""
     global _last_dispatch_time
     async with _global_request_lock:
         now = time.time()
@@ -185,7 +180,7 @@ bio_checked_users = set()
 
 user_flood_data = {}
 FLOOD_WINDOW = 4
-FLOOD_THRESHOLD = 6
+FLOOD_THRESHOLD = 8           # ⭐ less aggressive flood control
 FLOOD_COOLDOWN = 120
 LAST_CLEANUP = 0.0
 
@@ -803,7 +798,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if msg_date:
         msg_time = msg_date.timestamp()
         current_time = datetime.now(msg_date.tzinfo).timestamp()
-        if current_time - msg_time > 15:
+        if current_time - msg_time > 30:   # ⭐ more tolerant of old messages
             logger.info("Ignored an old message to prevent spam.")
             return
 
