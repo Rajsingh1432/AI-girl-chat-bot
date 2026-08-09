@@ -275,6 +275,18 @@ def remove_active_group(chat_id: int):
     except Exception:
         pass
 
+# ⭐ Async wrapper for save_active_group (prevents event loop blocking)
+async def save_active_group_async(chat_id: int, title: str):
+    if not DATABASE_URL:
+        return
+    try:
+        await asyncio.to_thread(_save_active_group_sync, chat_id, title)
+    except Exception:
+        pass
+
+def _save_active_group_sync(chat_id: int, title: str):
+    save_active_group(chat_id, title)
+
 # ⭐ ========== IMPROVED MEMORY GENERATION ==========
 async def generate_summary(user_id: int, history: list):
     if len(history) < 4 or not DATABASE_URL: return
@@ -748,7 +760,8 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_chat.type not in ("group", "supergroup"):
         return
 
-    save_active_group(update.effective_chat.id, update.effective_chat.title or "Unknown Group")
+    # ⭐ Async call se DB block nahi hoga — typing indicator aur AI reply turant aayega
+    await save_active_group_async(update.effective_chat.id, update.effective_chat.title or "Unknown Group")
 
     msg_date = update.message.date
     if msg_date:
