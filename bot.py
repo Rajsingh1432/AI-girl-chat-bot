@@ -4,7 +4,7 @@ import re
 import time
 import random
 import asyncio
-import html
+import html   # for welcome mention without username
 from datetime import datetime
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
@@ -235,6 +235,46 @@ def save_user_summary(user_id: int, summary: str):
     except Exception:
         pass
 
+def save_broadcast_user(user_id: int):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("INSERT INTO broadcast_users (user_id, started_at) VALUES (%s, %s) "
+                  "ON CONFLICT (user_id) DO NOTHING",
+                  (user_id, time.time()))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception:
+        pass
+
+def save_active_group(chat_id: int, title: str):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("INSERT INTO active_groups (chat_id, title, added_at) VALUES (%s, %s, %s) "
+                  "ON CONFLICT (chat_id) DO UPDATE SET title=%s",
+                  (chat_id, title, time.time(), title))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception:
+        pass
+
+def remove_active_group(chat_id: int):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("DELETE FROM active_groups WHERE chat_id=%s", (chat_id,))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception:
+        pass
+
 # ⭐ ========== IMPROVED MEMORY GENERATION ==========
 async def generate_summary(user_id: int, history: list):
     if len(history) < 4 or not DATABASE_URL: return
@@ -294,7 +334,7 @@ Tera kaam:
     except Exception as e:
         logger.error(f"🔥 Summary function crash for {user_id}: {e}")
 
-# ⭐ ========== GREETING GENERATOR (Improved) ==========
+# ⭐ ========== GREETING GENERATOR ==========
 async def generate_greeting(user_id: int, user_message: str) -> str | None:
     summary = get_user_summary(user_id)
     if not summary:
@@ -307,7 +347,6 @@ TUJHE KYA KARNA HAI:
 - Agar memory me user ki koi personal info (hobby, kaam, city, interest) hai, toh us info ko use karke ek SMART aur ENGAGING sawal pucho. 
   Example: "cricket pasand hai" → "Bata bata, aaj khelne gayi thi ya sirf match dekha? 😎"
   Example: "student hai" → "Padhai kaisi chal rahi hai? Koi exam hai aane wala? 🤭"
-  Example: "kaam software engineer" → "Code kar rahe ho ya meeting me bore ho rahe ho? 😂"
 - Agar memory me sirf naam hai, toh naam leke friendly puchho "Kaise ho (Naam)?"
 - Agar memory me kuch personal nahi hai to seedha friendly "Hey! Kaise ho? Kya kar rahe ho?" bol.
 - Reply STRICTLY 1-2 LINES ka hona chahiye, bilkul WhatsApp style me.
