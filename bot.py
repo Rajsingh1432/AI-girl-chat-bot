@@ -388,7 +388,7 @@ Abhi user ne tujhe "{user_message}" bola hai.
 
 TUJHE KYA KARNA HAI:
 - Memory me jo bhi SPECIFIC cheez pata hai (kaam, city, hobby, padhai), usi ka SEEDHA naam leke poochh, jaise koi purana dost karta hai. Example: "Are kaafi din ho gaye! Bata developer wala kaam kaisa chal raha hai ab?"
-- Agar memory me sirf naam hai koi specific detail nahi, toh naam leke "Kaise ho {naam}? Bahut din baad!" jaisa bolo.
+- Agar memory me sirf naam hai koi specific detail nahi, toh naam leke "Kaise ho naam? Bahut din baad!" jaisa bolo.
 - Agar memory me kuch bhi specific nahi hai to seedha friendly "Hey! Kaha the itne din? Kaise ho?" bol.
 - Reply SIRF 1 LINE ka hona chahiye. Kahani ya lamba paragraph mat likho.
 - Hinglish me bol. Koi explanation mat diyo, seedha reply.
