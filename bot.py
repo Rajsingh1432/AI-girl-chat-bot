@@ -8,12 +8,14 @@ import html
 from datetime import datetime
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
-from telegram.ext import Application, CommandHandler, MessageHandler, ChatMemberHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, ChatMemberHandler, filters, ContextTypes, CallbackQueryHandler
 from telegram.error import RetryAfter, TimedOut
 from groq import AsyncGroq
 from dotenv import load_dotenv
 from sticker_replies import get_random_sticker_reply
 from broadcast import broadcast_command, broadcast_stats_command, broadcastgc_command
+# ⭐ Game.py import
+from game import games_menu, button_router
 
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -107,7 +109,6 @@ def handle_429_error(idx, error_msg=""):
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
     
-    # ⭐ FIX: Smart daily limit detection
     is_daily = ("daily" in error_msg.lower() or "exhausted" in error_msg.lower() or 
                 daily_tok >= 85000 or daily_req >= 950 or _key_429_counts[idx] >= 4)
     
@@ -357,8 +358,8 @@ Tera kaam:
                         response = await clients[idx].chat.completions.create(
                             model="llama-3.1-8b-instant",
                             messages=messages,
-                            temperature=0.2,  # Lower temp for factual accuracy
-                            max_tokens=150,   # Reduced from 250 so memory stays short
+                            temperature=0.2,
+                            max_tokens=150,
                             timeout=10.0
                         )
                         final_summary = response.choices[0].message.content
@@ -416,7 +417,7 @@ TUJHE KYA KARNA HAI:
                         model="llama-3.1-8b-instant",
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=50,  # Reduced to 50 for strict 1 line greeting
+                        max_tokens=50,
                         timeout=8.0
                     )
                     reply = response.choices[0].message.content
@@ -516,6 +517,36 @@ def escape_md_v2(text: str) -> str:
     specials = r'_*[]()~`>#+-=|{}.!'
     return "".join(f"\\{ch}" if ch in specials else ch for ch in text)
 
+# ⭐ MASTER BUTTON ROUTER (Game Menu + Game.py delegation)
+async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query: return
+    data = query.data
+    
+    if data == "g_guide":
+        await query.answer()
+        guide_text = (
+            "🎮 *Sneha ke Games Arcade! 🎮*\n\n"
+            "Group me khelne ke liye niche commands ka use karein:\n\n"
+            "1️⃣ *Truth & Dare* (`/truth` ya `/dare`)\n"
+            "2️⃣ *Would You Rather* (`/wyr`)\n"
+            "3️⃣ *Emoji Puzzle* (`/puzzle`)\n"
+            "4️⃣ *Rapid Fire Quiz* (`/play`)\n\n"
+            "💡 *Niyam:* Multiplayer games me 30 seconds ke andar 'Join' button dabana padega. Jo sabse pehle sahi jawab dega, usko point milega!\n\n"
+            "Aur kisi bhi message ka reply karke `/games` likhna toh games menu pop-up ho jayega (Agar Sneha admin hai) 😎"
+        )
+        keyboard = [
+            [
+                InlineKeyboardButton("ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king"),
+                InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+WJneJ6gRAqg2ZTI1")
+            ]
+        ]
+        await query.message.reply_text(guide_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        return
+        
+    # Baaki ke buttons game.py ko delegate karo
+    await button_router(update, context)
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot_username = context.bot.username
     keyboard = [[InlineKeyboardButton("♧︎︎︎ Add To Group ☘︎", url=f"https://t.me/{bot_username}?startgroup=start")]]
@@ -542,6 +573,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ", url="https://t.me/KnowRajpapa")
             ],
             [InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
+            # ⭐ Naya Games Button
+            [InlineKeyboardButton("🎮 ɢᴀᴍᴇs ᴋʜᴇʟᴏ", callback_data="g_guide")]
         ]
         full_reply_markup = InlineKeyboardMarkup(full_keyboard)
         await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="HTML", reply_markup=full_reply_markup)
@@ -767,7 +800,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         set_key_cooldown(idx, seconds=15)
                     continue
 
-    # ⭐ FIX: Smarter retry logic. Agar sab keys cooldown me hain, toh bekar me spam mat karo.
     now2 = time.time()
     best_idx = None
     earliest_cd = float('inf')
@@ -939,6 +971,15 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     bot_username = context.bot.username
     message_text = update.message.text or ""
+
+    # ⭐ SMART GAME TRIGGER: Kisi bhi tarah /games likhne par menu pop-up hoga (Agar bot admin hai)
+    text_lower = message_text.lower()
+    bot_usr_lower = bot_username.lower()
+    
+    if "/games" in text_lower or f"@{bot_usr_lower} games" in text_lower or f"@{bot_usr_lower}/games" in text_lower:
+        if await is_bot_admin(context, chat.id):
+            await games_menu(update, context)
+            return
 
     is_bot_mentioned = False
     if update.message.entities:
@@ -1228,6 +1269,13 @@ async def main() -> None:
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("broadcaststats", broadcast_stats_command))
     application.add_handler(CommandHandler("broadcastgc", broadcastgc_command))
+    
+    # ⭐ Game Commands
+    application.add_handler(CommandHandler("games", games_menu))
+    
+    # ⭐ Game Button Click Handler (Master Router)
+    application.add_handler(CallbackQueryHandler(master_button_router))
+    
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
     application.add_handler(ChatMemberHandler(chat_member_welcome, ChatMemberHandler.CHAT_MEMBER))
     application.add_handler(ChatMemberHandler(bot_membership_update, ChatMemberHandler.MY_CHAT_MEMBER))
