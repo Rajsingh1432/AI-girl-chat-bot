@@ -538,7 +538,7 @@ async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYP
         keyboard = [
             [
                 InlineKeyboardButton("ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king"),
-                InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+WJneJ6gRAqg2ZTI1")
+                InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+0xoXWln4qiM2NTY9")
             ]
         ]
         await query.message.reply_text(guide_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -572,7 +572,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 InlineKeyboardButton("ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king"),
                 InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ", url="https://t.me/KnowRajpapa")
             ],
-            [InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+WJneJ6gRAqg2ZTI1")],
+            [InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+0xoXWln4qiM2NTY9")],
             # ⭐ Naya Games Button
             [InlineKeyboardButton("🎮 ɢᴀᴍᴇs ᴋʜᴇʟᴏ", callback_data="g_guide")]
         ]
