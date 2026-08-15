@@ -101,13 +101,17 @@ def record_key_usage(idx, tokens=REQUEST_TOKEN_ESTIMATE):
 _key_429_counts = [0] * len(clients)
 _key_success_since_429 = [True] * len(clients)
 
-def handle_429_error(idx):
+def handle_429_error(idx, error_msg=""):
     _key_429_counts[idx] += 1
     _key_success_since_429[idx] = False
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
-    genuine_daily_exhausted = (daily_tok >= 85000 or daily_req >= 950)
-    if genuine_daily_exhausted:
+    
+    # ⭐ FIX: Smart daily limit detection
+    is_daily = ("daily" in error_msg.lower() or "exhausted" in error_msg.lower() or 
+                daily_tok >= 85000 or daily_req >= 950 or _key_429_counts[idx] >= 4)
+    
+    if is_daily:
         now = time.time()
         tomorrow = (now // 86400 + 1) * 86400
         seconds = int(tomorrow - now)
@@ -115,10 +119,8 @@ def handle_429_error(idx):
         logger.warning(f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! Sleeping until midnight UTC ({seconds}s)")
         _key_429_counts[idx] = 0
     else:
-        set_key_cooldown(idx, seconds=120)
-        logger.warning(f"🚫 Key {idx+1} temporary 429 burst! 120s cooldown. (Attempt {_key_429_counts[idx]}/5, daily usage: {daily_tok}/100000 tok)")
-        if _key_429_counts[idx] >= 5:
-            _key_429_counts[idx] = 0
+        set_key_cooldown(idx, seconds=45)
+        logger.warning(f"🚫 Key {idx+1} temporary 429 burst! 45s cooldown. (Attempt {_key_429_counts[idx]}/4)")
 
 def reset_key_429_streak(idx):
     _key_429_counts[idx] = 0
@@ -150,7 +152,6 @@ _global_request_lock = asyncio.Lock()
 _last_dispatch_time = 0.0
 MIN_DISPATCH_GAP = 0.1
 DISPATCH_JITTER = 0.05
-# ⭐ BEAST FIX: 78 keys hain, toh 30 concurrent requests parfect hain. Koi msg drop nahi hoga.
 MAX_CONCURRENT_REQUESTS = 30
 _concurrency_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
@@ -168,7 +169,6 @@ bio_checked_users = set()
 
 user_flood_data = {}
 FLOOD_WINDOW = 4
-# ⭐ BEAST FIX: Active groups me log jaldi msg bhejte the, 8 par block ho jata tha. Ab 12 par hoga.
 FLOOD_THRESHOLD = 12
 FLOOD_COOLDOWN = 120
 LAST_CLEANUP = 0.0
@@ -228,7 +228,6 @@ def save_user_summary(user_id: int, summary: str):
     try:
         conn = get_db_conn()
         c = conn.cursor()
-        # ⭐ FIX: SQL Syntax Error fixed here (%3 -> %s)
         c.execute("INSERT INTO user_memory (user_id, summary, updated_at) VALUES (%s, %s, %s) "
                   "ON CONFLICT (user_id) DO UPDATE SET summary=%s, updated_at=%s",
                   (user_id, summary, time.time(), summary, time.time()))
@@ -358,8 +357,8 @@ Tera kaam:
                         response = await clients[idx].chat.completions.create(
                             model="llama-3.1-8b-instant",
                             messages=messages,
-                            temperature=0.2, # ⭐ FIX: Lower temp for factual accuracy
-                            max_tokens=150,  # ⭐ FIX: Reduced from 250 so memory stays short
+                            temperature=0.2,  # Lower temp for factual accuracy
+                            max_tokens=150,   # Reduced from 250 so memory stays short
                             timeout=10.0
                         )
                         final_summary = response.choices[0].message.content
@@ -371,7 +370,7 @@ Tera kaam:
                     except Exception as e:
                         error_str = str(e).lower()
                         if "429" in error_str or "rate_limit" in error_str:
-                            handle_429_error(idx)
+                            handle_429_error(idx, error_str)
                         else:
                             logger.error(f"❌ Summary generation failed for {user_id}: {e}")
                         continue
@@ -417,11 +416,10 @@ TUJHE KYA KARNA HAI:
                         model="llama-3.1-8b-instant",
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=50,  # ⭐ FIX: Reduced to 50 for strict 1 line greeting
+                        max_tokens=50,  # Reduced to 50 for strict 1 line greeting
                         timeout=8.0
                     )
                     reply = response.choices[0].message.content
-                    # ⭐ FIX: Greeting me bhi quotes aur ! clean karna zaroori hai
                     reply = reply.replace('!', '')
                     reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                     reply = reply.strip().strip('`')
@@ -432,7 +430,7 @@ TUJHE KYA KARNA HAI:
                 except Exception as e:
                     error_str = str(e).lower()
                     if "429" in error_str or "rate_limit" in error_str:
-                        handle_429_error(idx)
+                        handle_429_error(idx, error_str)
                     else:
                         logger.warning(f"Greeting gen fail: {e}")
                     continue
@@ -621,7 +619,6 @@ async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         summary = get_user_summary(update.effective_user.id)
         await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}")
 
-# ⭐ ========== FIXED: /syncgroup COMMAND ==========
 async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -646,7 +643,6 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     for chat_id, title in rows:
         checked += 1
         try:
-            # Pehle check karo bot ka status kya hai
             member = await context.bot.get_chat_member(chat_id, context.bot.id)
             if member.status in ("left", "kicked", "banned"):
                 await delete_active_group_async(chat_id)
@@ -654,27 +650,23 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 removed_titles.append(title or str(chat_id))
             else:
                 still_active += 1
-                # Title update kardo agar naya mila
                 try:
                     chat_obj = await context.bot.get_chat(chat_id)
                     if chat_obj and chat_obj.title and chat_obj.title != title:
                         await save_active_group_async(chat_id, chat_obj.title)
                 except Exception:
-                    pass # Title update fail ho toh ignore karo
+                    pass
         except Exception as e:
             error_str = str(e).lower()
-            # ⭐ FIX: Sirf tab delete karo jab Telegram bole bot kicked/forbidden hai ya chat exist hi nahi karta
             if "forbidden" in error_str or "chat not found" in error_str or "kicked" in error_str:
                 await delete_active_group_async(chat_id)
                 removed += 1
                 removed_titles.append(title or str(chat_id))
             else:
-                # Agar Timeout, NetworkError, ya FloodWait aaya hai, toh group ko delete mat karo, sirf skip karo
                 logger.warning(f"⚠️ Group {chat_id} skipped due to temporary error: {e}")
                 skipped += 1
-                still_active += 1 # Isko active hi maano taaki galti se delete na ho
+                still_active += 1
         
-        # ⭐ FIX: Sleep time 0.05 se badha kar 0.1s kiya taaki Telegram API pe load na padhe
         await asyncio.sleep(0.1)
 
     summary_text = (
@@ -717,7 +709,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
-        # ⭐ FIX: Memory context clear kiya hai
         memory_context = f"\n\n[SECRET MEMORY: Ye user ki purani memory hai. Isme jo facts (kaam, naam, city) hain unko bhoolna nahi hai aur unka reference lena hai: {db_summary}]\n\n"
     messages = [{"role": "system", "content": SYSTEM_PROMPT + memory_context}]
     if history:
@@ -746,13 +737,12 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         temperature=0.7,
                         max_tokens=100,
                         top_p=0.9,
-                        timeout=15.0  # ⭐ BEAST FIX: 10s se badha kar 15s kiya, slow API pe bhi no crash
+                        timeout=15.0
                     )
                     reply = response.choices[0].message.content
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                     
-                    # ⭐ FIX: Saare '!' (single/double) poori tarah hatao, aur quotes bhi hatao
                     reply = reply.replace('!', '')
                     reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                     
@@ -768,7 +758,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 except Exception as e:
                     error_str = str(e).lower()
                     if "429" in error_str or "rate_limit" in error_str:
-                        handle_429_error(idx)
+                        handle_429_error(idx, error_str)
                     elif "timeout" in error_str:
                         set_key_cooldown(idx, seconds=30)
                         logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
@@ -776,51 +766,58 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         logger.error(f"❌ Key {idx+1} error: {e}")
                         set_key_cooldown(idx, seconds=15)
                     continue
-    logger.error("💀 Sab API keys fail/limit ho gayi hain! Ek retry attempt ke baad quiet fail.")
-    await asyncio.sleep(2.0)
+
+    # ⭐ FIX: Smarter retry logic. Agar sab keys cooldown me hain, toh bekar me spam mat karo.
     now2 = time.time()
-    for idx in range(len(clients)):
-        if idx in _key_cooldowns and _key_cooldowns[idx] > now2:
-            continue
-        if not key_has_room(idx):
-            continue
-        lock = _key_locks[idx]
-        if lock.locked():
-            continue
-        async with lock:
-            entry_idx = pre_record_key_usage(idx)
-            async with _concurrency_semaphore:
-                await throttle_dispatch()
-                try:
-                    response = await clients[idx].chat.completions.create(
-                        model="llama-3.3-70b-versatile",
-                        messages=messages,
-                        temperature=0.7,
-                        max_tokens=100,
-                        top_p=0.9,
-                        timeout=15.0
-                    )
-                    reply = response.choices[0].message.content
-                    reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
-                    reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                    
-                    # ⭐ FIX: Saare '!' (single/double) poori tarah hatao, aur quotes bhi hatao
-                    reply = reply.replace('!', '')
-                    reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
-                    
-                    reply = reply.strip().strip('`')
-                    if reply:
-                        usage = getattr(response, "usage", None)
-                        actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-                        update_key_usage_actual(idx, entry_idx, actual_tokens)
-                        reset_key_429_streak(idx)
-                        logger.info(f"✅ Retry ke baad Key {idx+1} se reply aaya!")
-                        return reply
-                except Exception as e:
-                    error_str = str(e).lower()
-                    if "429" in error_str or "rate_limit" in error_str:
-                        handle_429_error(idx)
-    logger.error("💀 Retry ke baad bhi sab keys fail. Silent mode active.")
+    best_idx = None
+    earliest_cd = float('inf')
+    
+    for i in range(len(clients)):
+        if _key_locks[i].locked(): continue
+        cd = _key_cooldowns.get(i, 0)
+        if cd < earliest_cd:
+            earliest_cd = cd
+            best_idx = i
+            
+    if best_idx is not None:
+        wait_time = earliest_cd - now2
+        if wait_time > 0 and wait_time < 10:
+            logger.info(f"⏳ Sab keys busy hain. {wait_time:.1f}s wait karke key {best_idx+1} try kar rahe hain.")
+            await asyncio.sleep(wait_time)
+            lock = _key_locks[best_idx]
+            if not lock.locked():
+                async with lock:
+                    entry_idx = pre_record_key_usage(best_idx)
+                    async with _concurrency_semaphore:
+                        await throttle_dispatch()
+                        try:
+                            response = await clients[best_idx].chat.completions.create(
+                                model="llama-3.3-70b-versatile",
+                                messages=messages,
+                                temperature=0.7,
+                                max_tokens=100,
+                                top_p=0.9,
+                                timeout=15.0
+                            )
+                            reply = response.choices[0].message.content
+                            reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
+                            reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
+                            reply = reply.replace('!', '')
+                            reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
+                            reply = reply.strip().strip('`')
+                            if reply:
+                                usage = getattr(response, "usage", None)
+                                actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
+                                update_key_usage_actual(best_idx, entry_idx, actual_tokens)
+                                reset_key_429_streak(best_idx)
+                                logger.info(f"✅ Smart Retry se Key {best_idx+1} se reply aaya!")
+                                return reply
+                        except Exception as e:
+                            error_str = str(e).lower()
+                            if "429" in error_str or "rate_limit" in error_str:
+                                handle_429_error(best_idx, error_str)
+
+    logger.warning("⏳ Sab keys abhi cooldown me hain. Silent mode active (No Spam).")
     return None
 
 def get_history(user_id: int) -> list:
@@ -865,7 +862,6 @@ async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: in
     except Exception:
         pass
 
-# ⭐ BEAST MODE TYPING LOGIC: Max delay 4.5s, perfectly balanced for active groups
 async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int, coro):
     typing_task = asyncio.create_task(_keep_typing(context, chat_id))
     start = time.time()
@@ -879,17 +875,15 @@ async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id
             pass
 
     elapsed = time.time() - start
-    target_min = 2.5  # Default target time for short messages
+    target_min = 2.5
     
     if isinstance(result, str):
         if len(result) > 100:
             target_min = 3.5
         if len(result) > 200:
-            target_min = 4.5  # Max 4.5 second hi wait karega
+            target_min = 4.5
             
     if elapsed < target_min:
-        # AI fast tha -> thoda aur typing dikhao taaki natural lage
-        # Artificial wait max 1.5s tak hi hoga, taaki AI ne 3s liya toh 1.5s aur rukega (Total 4.5s)
         remaining = min(target_min - elapsed, 1.5)
         extra_task = asyncio.create_task(_keep_typing(context, chat_id))
         await asyncio.sleep(remaining)
@@ -1061,7 +1055,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 return greeting
         return None
 
-    # ⭐ FIX: Agar API limit ho jaye to bot bilkul shant rahega, koi fallback msg nahi bhejega
     if is_standalone:
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
         if greeting:
