@@ -3,7 +3,7 @@ import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 
-SUPPORT_LINK = "https://t.me/+WJneJ6gRAqg2ZTI1"
+SUPPORT_LINK = "https://t.me/+0xoXWln4qiM2NTY9"
 
 # ==========================================
 # GAME DATA
