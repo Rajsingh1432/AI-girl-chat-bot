@@ -526,14 +526,14 @@ async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYP
     if data == "g_guide":
         await query.answer()
         guide_text = (
-            "🎮 *Sneha ke Games Arcade! 🎮*\n\n"
-            "Group me khelne ke liye niche commands ka use karein:\n\n"
-            "1️⃣ *Truth & Dare* (`/truth` ya `/dare`)\n"
-            "2️⃣ *Would You Rather* (`/wyr`)\n"
-            "3️⃣ *Emoji Puzzle* (`/puzzle`)\n"
-            "4️⃣ *Rapid Fire Quiz* (`/play`)\n\n"
-            "💡 *Niyam:* Multiplayer games me 30 seconds ke andar 'Join' button dabana padega. Jo sabse pehle sahi jawab dega, usko point milega!\n\n"
-            "Aur kisi bhi message ka reply karke `/games` likhna toh games menu pop-up ho jayega (Agar Sneha admin hai) 😎"
+            "<blockquote><b>🎮 Sneha's Game Arcade 🎮</b></blockquote>\n\n"
+            "Group me khelne ke liye bas <code>/games</code> type karo, ya kisi bhi message ka reply karke <code>/games</code> likho! 👇\n\n"
+            "Available Games:\n"
+            "1️⃣ <b>Truth & Dare</b> - Sach bolo ya task karo\n"
+            "2️⃣ <b>Emoji Puzzle</b> - Emojis dekh ke movie guess karo\n"
+            "3️⃣ <b>Rapid Fire Quiz</b> - Dimag lagao aur jeeto\n\n"
+            "💡 <b>Niyam:</b> Multiplayer games me 30 seconds ke andar 'Join' button dabana padega. "
+            "Jo sabse pehle sahi jawab dega, usko point milega aur uske baad buttons lock ho jayenge! 🔒"
         )
         keyboard = [
             [
@@ -541,12 +541,12 @@ async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYP
                 InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+WJneJ6gRAqg2ZTI1")
             ]
         ]
-        await query.message.reply_text(guide_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        await query.message.reply_text(guide_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         return
         
     # Baaki ke buttons game.py ko delegate karo
     await button_router(update, context)
-
+    
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot_username = context.bot.username
     keyboard = [[InlineKeyboardButton("♧︎︎︎ Add To Group ☘︎", url=f"https://t.me/{bot_username}?startgroup=start")]]
