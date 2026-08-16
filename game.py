@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 # ⭐ Alag file se questions import kar rahe hain
 from questions import EMOJI_PUZZLES, BRAIN_QUESTIONS
 
-SUPPORT_LINK = "https://t.me/+0xoXWln4qiM2NTY9"
+SUPPORT_LINK = "https://t.me/+WJneJ6gRAqg2ZTI1"
 
 TRUTHS = [
     "Tumhare phone me sabse embarrassing photo kiski hai?", "Group me sabse boring insaan kaun hai?", 
@@ -49,7 +49,7 @@ async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         "🎮 <b>Truth &amp; Dare</b> - Sach bolo ya task karo\n"
         "🎬 <b>Emoji Puzzle</b> - Movie guess karo (10 Rounds)\n"
         "🧠 <b>Rapid Fire Quiz</b> - Dimag lagao (10 Rounds)\n\n"
-        "<i>💡 Multiplayer games me 20 seconds ke andar join karna padega! Har sawaal ka time 15 seconds hoga.</i>"
+        "<i>💡 Multiplayer games me 20 seconds ke andar join karna padega! Har sawaal ka time 20 seconds hoga.</i>"
     )
     
     if update.message:
@@ -139,14 +139,15 @@ async def init_join_phase(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
         "players": {user.id: {"name": user.first_name, "score": 0}},
         "phase": "joining",
         "round": 1,
-        "total_rounds": 10,  # ⭐ 10 ROUNDS STRICT
+        "total_rounds": 10,
         "current_ans_text": None,
         "correct_idx": None,
         "answered": set(),
         "msg_id": None,
         "round_ended": False,
         "p_pool": p_pool,
-        "b_pool": b_pool
+        "b_pool": b_pool,
+        "timer_task": None # ⭐ Timer task store karne ke liye
     }
     
     keyboard = [[InlineKeyboardButton("🎯 Join Game", callback_data="g_join")]]
@@ -184,7 +185,6 @@ async def ask_puzzle(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     game = active_games.get(chat_id)
     if not game: return
     
-    # ⭐ STRICT CHECK: 10 rounds poore hone par hi winner declare hoga
     if game['round'] > game['total_rounds']:
         await end_game_winner(update, context, chat_id)
         return
@@ -198,7 +198,6 @@ async def ask_puzzle(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     opts = p['opts'].copy()
     random.shuffle(opts)
     
-    # ⭐ 100% ACCURATE INDEX SYSTEM
     correct_idx = opts.index(p['ans'])
     game['correct_idx'] = correct_idx
     game['current_ans_text'] = p['ans']
@@ -214,18 +213,22 @@ async def ask_puzzle(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
         parse_mode="HTML"
     )
     game['msg_id'] = msg.message_id
-    asyncio.create_task(puzzle_timer(update, context, chat_id))
+    # ⭐ Timer task ko store karo taaki user answer dene par cancel kar sakein
+    game['timer_task'] = asyncio.create_task(puzzle_timer(update, context, chat_id))
 
 async def puzzle_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    await asyncio.sleep(15) # ⭐ 15 SEC TIMER
+    try:
+        await asyncio.sleep(20) # ⭐ 20 SEC TIMER
+    except asyncio.CancelledError:
+        return # Agar user ne answer de diya, toh timer cancel ho jayega
+        
     game = active_games.get(chat_id)
     if not game or game['phase'] != 'playing' or game.get('round_ended'): return
     
     game['round_ended'] = True
-    # ⭐ ROAST ON TIMEOUT
     roasts = [
         "⏳ Time up! Kisi ka dimag nahi chala? 😏 Sahi jawab tha:",
-        "⏳ 15 second khatam! Bade khiladi lagte ho? 😭 Sahi jawab tha:",
+        "⏳ 20 second khatam! Bade khiladi lagte ho? 😭 Sahi jawab tha:",
         "⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
     ]
     await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
@@ -265,6 +268,11 @@ async def handle_puzzle_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         
     if chosen_idx == game['correct_idx']:
         game['round_ended'] = True
+        
+        # ⭐ FIX: Cancel the timer task immediately!
+        if game.get('timer_task'):
+            game['timer_task'].cancel()
+            
         game['players'][user.id]['score'] += 1
         
         try:
@@ -275,7 +283,7 @@ async def handle_puzzle_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await query.answer("✅ Bilkul Sahi!", show_alert=True)
         await context.bot.send_message(chat_id, f"🎉 Wah! <b>{user.first_name}</b> ne sahi jawab de diya! 🎯\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
         
-        await asyncio.sleep(2)
+        await asyncio.sleep(2) # Thoda rukey taaki user result padh sake
         game['round'] += 1
         await ask_puzzle(update, context, chat_id)
     else:
@@ -290,7 +298,6 @@ async def ask_brain(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id:
     game = active_games.get(chat_id)
     if not game: return
     
-    # ⭐ STRICT CHECK: 10 rounds poore hone par hi winner declare hoga
     if game['round'] > game['total_rounds']:
         await end_game_winner(update, context, chat_id)
         return
@@ -304,7 +311,6 @@ async def ask_brain(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id:
     opts = q_data['opts'].copy()
     random.shuffle(opts)
     
-    # ⭐ 100% ACCURATE INDEX SYSTEM
     correct_idx = opts.index(q_data['ans'])
     game['correct_idx'] = correct_idx
     game['current_ans_text'] = q_data['ans']
@@ -320,19 +326,23 @@ async def ask_brain(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id:
         parse_mode="HTML"
     )
     game['msg_id'] = msg.message_id
-    asyncio.create_task(brain_timer(update, context, chat_id))
+    # ⭐ Timer task ko store karo taaki user answer dene par cancel kar sakein
+    game['timer_task'] = asyncio.create_task(brain_timer(update, context, chat_id))
 
 async def brain_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    await asyncio.sleep(15) # ⭐ 15 SEC TIMER
+    try:
+        await asyncio.sleep(20) # ⭐ 20 SEC TIMER
+    except asyncio.CancelledError:
+        return # Agar user ne answer de diya, toh timer cancel ho jayega
+        
     game = active_games.get(chat_id)
     if not game or game['phase'] != 'playing' or game.get('round_ended'):
         return
         
     game['round_ended'] = True
-    # ⭐ ROAST ON TIMEOUT
     roasts = [
         "⏳ Time up! Koi point nahi mila? 😏 Sahi jawab tha:",
-        "⏳ 15 second khatam! Bade dimag wale lagte ho? 😭 Sahi jawab tha:",
+        "⏳ 20 second khatam! Bade dimag wale lagte ho? 😭 Sahi jawab tha:",
         "⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
     ]
     await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
@@ -372,6 +382,11 @@ async def handle_brain_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, c
         
     if chosen_idx == game['correct_idx']:
         game['round_ended'] = True
+        
+        # ⭐ FIX: Cancel the timer task immediately!
+        if game.get('timer_task'):
+            game['timer_task'].cancel()
+            
         game['players'][user.id]['score'] += 1
         
         try:
@@ -382,7 +397,7 @@ async def handle_brain_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, c
         await query.answer("✅ Bilkul Sahi!", show_alert=True)
         await context.bot.send_message(chat_id, f"🎯 <b>{user.first_name}</b> ne dimag lagaya aur sahi jawab diya!\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
         
-        await asyncio.sleep(2)
+        await asyncio.sleep(2) # Thoda rukey taaki user result padh sake
         game['round'] += 1
         await ask_brain(update, context, chat_id)
     else:
