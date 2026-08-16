@@ -204,3 +204,29 @@ BRAIN_QUESTIONS = [
     {"q": "Kaun sa fal mitai me aata hai aur sabzi me bhi?", "opts": ["Seb", "Kela", "Gajar", "Tamatar"], "ans": "Gajar"},
     {"q": "Kaun sa kaam hai jo tum akela nahi kar sakte?", "opts": ["Shaadi", "Khana", "Sona", "Hasna"], "ans": "Shaadi"}
 ]
+
+# ==========================================
+# WORD GUESS (CROSSWORD STYLE)
+# ==========================================
+WORD_PUZZLES = [
+    {"q": "Clue: Khan banane ki jagah (8 letters)", "ans": "Rasoighar", "opts": ["Rasoighar", "Bedroom", "Drawing Room", "Bathroom"]},
+    {"q": "Clue: Rozana liya jane wala aarthik sahayata (8 letters)", "ans": "Tankhwa", "opts": ["Tankhwa", "Bakshish", "Chanda", "Byaj"]},
+    {"q": "Clue: Aasmaan me chamakne wali cheez (6 letters)", "ans": "Tara", "opts": ["Tara", "Badal", "Chand", "Sooraj"]},
+    {"q": "Clue: Pedon se milne wali hari patte (5 letters)", "ans": "Patti", "opts": ["Patti", "Jad", "Daali", "Phal"]},
+    {"q": "Clue: Pani me tairne wala janwar (4 letters)", "ans": "Machh", "opts": ["Machh", "Kachhua", "Magarmach", "Beng"]},
+    {"q": "Clue: Vidyalaya jane wale bachhe (7 letters)", "ans": "Chhatra", "opts": ["Chhatra", "Adhyapak", "Pradhanacharya", "Praj"]},
+    {"q": "Clue: Vehicle chalane wala vyakti (6 letters)", "ans": "Chalak", "opts": ["Chalak", "Yatri", "Conductor", "Police"]},
+    {"q": "Clue: Dhoop se milne wali garmi (5 letters)", "ans": "Tapish", "opts": ["Tapish", "Aag", "Pasina", "Hawa"]},
+    {"q": "Clue: Khelne ke liye prayukt kitaab (5 letters)", "ans": "Patri", "opts": ["Patri", "Kalam", "Dasta", "Baksa"]},
+    {"q": "Clue: Bhojan karne ka sthan (6 letters)", "ans": "Bhojnal", "opts": ["Bhojnal", "Rasoighar", "Kaksh", "Prishth"]},
+    {"q": "Clue: Vastuon ko rakha jata hai isme (5 letters)", "ans": "Almari", "opts": ["Almari", "Mez", "Khat", "Kursi"]},
+    {"q": "Clue: Time dekhne ka yantra (5 letters)", "ans": "Ghadi", "opts": ["Ghadi", "Calculator", "Calendar", "Phone"]},
+    {"q": "Clue: Barish me upyog ki jati hai (7 letters)", "ans": "Chhatri", "opts": ["Chhatri", "Duniya", "Pankha", "Balti"]},
+    {"q": "Clue: Likhne ka kaam aata hai (5 letters)", "ans": "Kalam", "opts": ["Kalam", "Rubber", "Scale", "Pencil"]},
+    {"q": "Clue: Pahaad ki choti (5 letters)", "ans": "Shikhar", "opts": ["Shikhar", "Ghati", "Jungle", "Nadi"]},
+    {"q": "Clue: Andhera hatane ke liye (6 letters)", "ans": "Batti", "opts": ["Batti", "Pankha", "Khidki", "Darwaza"]},
+    {"q": "Clue: Mithaas ke liye upyog (5 letters)", "ans": "Cheeni", "opts": ["Cheeni", "Namak", "Mirch", "Haldi"]},
+    {"q": "Clue: Ped se milkar aata hai (4 letters)", "ans": "Phal", "opts": ["Phal", "Sabzi", "Khet", "Beej"]},
+    {"q": "Clue: Raat ko sone ka sthan (4 letters)", "ans": "Khat", "opts": ["Khat", "Mez", "Sofa", "Jamghat"]},
+    {"q": "Clue: Dawai dene wala vyakti (5 letters)", "ans": "Vaidya", "opts": ["Vaidya", "Rogi", "Sipahi", "Nars"]}
+]
