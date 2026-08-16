@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 # ⭐ Alag file se questions import kar rahe hain
 from questions import EMOJI_PUZZLES, BRAIN_QUESTIONS
 
-SUPPORT_LINK = "https://t.me/+0xoXWln4qiM2NTY9"
+SUPPORT_LINK = "https://t.me/+WJneJ6gRAqg2ZTI1"
 
 TRUTHS = [
     "Tumhare phone me sabse embarrassing photo kiski hai?", "Group me sabse boring insaan kaun hai?", 
@@ -46,10 +46,10 @@ async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     text = (
         "<blockquote><b>🎮 Sneha's Game Arcade 🎮</b></blockquote>\n\n"
         "Khelne ke liye niche koi bhi game choose karo:\n\n"
-        "🎮 <b>Truth & Dare</b> - Sach bolo ya task karo\n"
+        "🎮 <b>Truth &amp; Dare</b> - Sach bolo ya task karo\n"
         "🎬 <b>Emoji Puzzle</b> - Movie guess karo (10 Rounds)\n"
         "🧠 <b>Rapid Fire Quiz</b> - Dimag lagao (10 Rounds)\n\n"
-        "<i>💡 Multiplayer games me 30 seconds ke andar join karna padega!</i>"
+        "<i>💡 Multiplayer games me 20 seconds ke andar join karna padega! Har sawaal ka time 15 seconds hoga.</i>"
     )
     
     if update.message:
@@ -105,7 +105,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         players_list = "\n".join([f"- {p['name']}" for p in game['players'].values()])
         await query.edit_message_text(
-            f"⏳ <b>{game['type']} Shuru Ho Raha Hai!</b>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>30 seconds</b> hain.\n\n👥 <b>Players Joined:</b>\n{players_list}",
+            f"⏳ <b>{game['type']} Shuru Ho Raha Hai!</b>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>20 seconds</b> hain.\n\n👥 <b>Players Joined:</b>\n{players_list}",
             reply_markup=query.message.reply_markup,
             parse_mode="HTML"
         )
@@ -129,7 +129,6 @@ async def init_join_phase(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
         
     is_puzzle = (g_type == "puzzle")
     
-    # ⭐ NO-REPEAT POOL SYSTEM: Shuffle all questions at the start
     p_pool = EMOJI_PUZZLES.copy()
     b_pool = BRAIN_QUESTIONS.copy()
     random.shuffle(p_pool)
@@ -140,8 +139,8 @@ async def init_join_phase(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
         "players": {user.id: {"name": user.first_name, "score": 0}},
         "phase": "joining",
         "round": 1,
-        "total_rounds": 10,  # ⭐ 10 ROUNDS SET
-        "current_ans": None,
+        "total_rounds": 10,  # ⭐ 10 ROUNDS STRICT
+        "current_ans_text": None,
         "correct_idx": None,
         "answered": set(),
         "msg_id": None,
@@ -154,14 +153,14 @@ async def init_join_phase(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
     
     await context.bot.send_message(
         chat_id=chat_id,
-        text=f"⏳ <b>{active_games[chat_id]['type']} Shuru Ho Raha Hai!</b>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>30 seconds</b> hain.\n\n👥 <b>Players Joined:</b>\n- {user.first_name}",
+        text=f"⏳ <b>{active_games[chat_id]['type']} Shuru Ho Raha Hai!</b>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>20 seconds</b> hain.\n\n👥 <b>Players Joined:</b>\n- {user.first_name}",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
     asyncio.create_task(join_timer(update, context, chat_id))
 
 async def join_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    await asyncio.sleep(30)
+    await asyncio.sleep(20) # 20 sec join time
     game = active_games.get(chat_id)
     if not game or game['phase'] != 'joining': return
     
@@ -185,22 +184,24 @@ async def ask_puzzle(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     game = active_games.get(chat_id)
     if not game: return
     
+    # ⭐ STRICT CHECK: 10 rounds poore hone par hi winner declare hoga
     if game['round'] > game['total_rounds']:
         await end_game_winner(update, context, chat_id)
         return
         
-    # Agar pool khatam ho jaye (5000+ questions hone tab tak ye check nahi hoga), toh refill kar do
     if not game['p_pool']:
         game['p_pool'] = EMOJI_PUZZLES.copy()
         random.shuffle(game['p_pool'])
         
-    p = game['p_pool'].pop() # ⭐ Pop question so it doesn't repeat
+    p = game['p_pool'].pop()
     
     opts = p['opts'].copy()
     random.shuffle(opts)
     
+    # ⭐ 100% ACCURATE INDEX SYSTEM
     correct_idx = opts.index(p['ans'])
     game['correct_idx'] = correct_idx
+    game['current_ans_text'] = p['ans']
     game['answered'] = set()
     game['round_ended'] = False
     
@@ -216,12 +217,18 @@ async def ask_puzzle(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     asyncio.create_task(puzzle_timer(update, context, chat_id))
 
 async def puzzle_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    await asyncio.sleep(30) # 30 sec timer
+    await asyncio.sleep(15) # ⭐ 15 SEC TIMER
     game = active_games.get(chat_id)
     if not game or game['phase'] != 'playing' or game.get('round_ended'): return
     
     game['round_ended'] = True
-    await context.bot.send_message(chat_id, "⏳ Time up! Agla round load ho raha hai...", parse_mode="HTML")
+    # ⭐ ROAST ON TIMEOUT
+    roasts = [
+        "⏳ Time up! Kisi ka dimag nahi chala? 😏 Sahi jawab tha:",
+        "⏳ 15 second khatam! Bade khiladi lagte ho? 😭 Sahi jawab tha:",
+        "⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
+    ]
+    await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
     
     await asyncio.sleep(2)
     game['round'] += 1
@@ -257,7 +264,7 @@ async def handle_puzzle_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         return
         
     if chosen_idx == game['correct_idx']:
-        game['round_ended'] = True  # ⭐ LOCK BUTTONS
+        game['round_ended'] = True
         game['players'][user.id]['score'] += 1
         
         try:
@@ -266,13 +273,15 @@ async def handle_puzzle_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             pass
             
         await query.answer("✅ Bilkul Sahi!", show_alert=True)
-        await context.bot.send_message(chat_id, f"🎉 Bhai sahab! <b>{user.first_name}</b> ne pakdi movie! 🎯", parse_mode="HTML")
+        await context.bot.send_message(chat_id, f"🎉 Wah! <b>{user.first_name}</b> ne sahi jawab de diya! 🎯\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
         
         await asyncio.sleep(2)
         game['round'] += 1
         await ask_puzzle(update, context, chat_id)
     else:
-        await query.answer("❌ Galat jawab! 😏", show_alert=True)
+        await query.answer("❌ Galat Jawab!", show_alert=True)
+        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b>, ye galat jawab hai! Soch samajh kar daba. 🤔", parse_mode="HTML")
+
 
 # ==========================================
 # 5. RAPID FIRE LOGIC (10 Rounds)
@@ -281,6 +290,7 @@ async def ask_brain(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id:
     game = active_games.get(chat_id)
     if not game: return
     
+    # ⭐ STRICT CHECK: 10 rounds poore hone par hi winner declare hoga
     if game['round'] > game['total_rounds']:
         await end_game_winner(update, context, chat_id)
         return
@@ -289,13 +299,15 @@ async def ask_brain(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id:
         game['b_pool'] = BRAIN_QUESTIONS.copy()
         random.shuffle(game['b_pool'])
         
-    q_data = game['b_pool'].pop() # ⭐ Pop question so it doesn't repeat
+    q_data = game['b_pool'].pop()
     
     opts = q_data['opts'].copy()
     random.shuffle(opts)
     
+    # ⭐ 100% ACCURATE INDEX SYSTEM
     correct_idx = opts.index(q_data['ans'])
     game['correct_idx'] = correct_idx
+    game['current_ans_text'] = q_data['ans']
     game['answered'] = set()
     game['round_ended'] = False
     
@@ -311,13 +323,19 @@ async def ask_brain(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id:
     asyncio.create_task(brain_timer(update, context, chat_id))
 
 async def brain_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    await asyncio.sleep(30)
+    await asyncio.sleep(15) # ⭐ 15 SEC TIMER
     game = active_games.get(chat_id)
     if not game or game['phase'] != 'playing' or game.get('round_ended'):
         return
         
-    game['round_ended'] = True  # ⭐ LOCK BUTTONS
-    await context.bot.send_message(chat_id, "⏳ Time up! Agla round load ho raha hai...", parse_mode="HTML")
+    game['round_ended'] = True
+    # ⭐ ROAST ON TIMEOUT
+    roasts = [
+        "⏳ Time up! Koi point nahi mila? 😏 Sahi jawab tha:",
+        "⏳ 15 second khatam! Bade dimag wale lagte ho? 😭 Sahi jawab tha:",
+        "⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
+    ]
+    await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
     
     await asyncio.sleep(2)
     game['round'] += 1
@@ -353,7 +371,7 @@ async def handle_brain_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, c
         return
         
     if chosen_idx == game['correct_idx']:
-        game['round_ended'] = True  # ⭐ LOCK BUTTONS
+        game['round_ended'] = True
         game['players'][user.id]['score'] += 1
         
         try:
@@ -362,13 +380,14 @@ async def handle_brain_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, c
             pass
             
         await query.answer("✅ Bilkul Sahi!", show_alert=True)
-        await context.bot.send_message(chat_id, f"🎯 <b>{user.first_name}</b> ne point pakda! +1", parse_mode="HTML")
+        await context.bot.send_message(chat_id, f"🎯 <b>{user.first_name}</b> ne dimag lagaya aur sahi jawab diya!\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
         
         await asyncio.sleep(2)
         game['round'] += 1
         await ask_brain(update, context, chat_id)
     else:
-        await query.answer("❌ Galat jawab! 😏", show_alert=True)
+        await query.answer("❌ Galat Jawab!", show_alert=True)
+        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b>, galat jawab! Aur socho. 🤔", parse_mode="HTML")
 
 # ==========================================
 # 6. WINNER ANNOUNCEMENT
