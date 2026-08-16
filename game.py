@@ -7,6 +7,26 @@ from questions import EMOJI_PUZZLES, BRAIN_QUESTIONS, WORD_PUZZLES
 
 SUPPORT_LINK = "https://t.me/+0xoXWln4qiM2NTY9"
 
+# ⭐ DUPLICATE QUESTIONS REMOVE KARNE KA HELPER
+def _dedupe_questions(items):
+    seen = set()
+    unique = []
+    for item in items:
+        key = (
+            item.get("q", ""),
+            item.get("e", ""),
+            item.get("ans", "")
+        )
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique
+
+# ⭐ Import ke baad hi dedupe karo taaki global pool me duplicate na jaye
+EMOJI_PUZZLES = _dedupe_questions(EMOJI_PUZZLES)
+BRAIN_QUESTIONS = _dedupe_questions(BRAIN_QUESTIONS)
+WORD_PUZZLES = _dedupe_questions(WORD_PUZZLES)
+
 # ⭐ GLOBAL POOL SYSTEM: Ye list poore bot ke lifetime ke liye yaad rakhega
 # Jab tak ye khaali nahi hogi, koi question repeat nahi hoga (chahe 100 game khel lo)
 GLOBAL_P_POOL = []
