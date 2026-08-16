@@ -98,7 +98,7 @@ EMOJI_PUZZLES = [
     {"e": "🔫👑🩸", "ans": "Gangs of Wasseypur", "opts": ["Gangs of Wasseypur", "Satya", "Once Upon a Time in Mumbaai", "Shootout at Wadala"]},
     {"e": "🚾💧🚾", "ans": "Gully Boy", "opts": ["Gully Boy", "Rockstar", "Aashiqui 2", "Delhi Belly"]},
     {"e": "👰🚗💔", "ans": "Tanu Weds Manu", "opts": ["Tanu Weds Manu", "Tanu Weds Manu Returns", "Shubh Mangal Saavdhan", "Raanjhanaa"]},
-    {"e": "👨‍🦰🛺❤️", "ans": "Raanjhanaa", "opts": ["Raanjhanaa", "Tanu Weds Manu", "Aanand L Rai", "Shubh Mangal Saavdhan"]}
+    {"e": "👨‍🦰🛺❤️", "ans": "Raanjhanaa", "opts": ["Raanjhanaa", "Tanu Weds Manu", "Aanand L Rai", "Shubh Mangal Saavdhan"]},
     {"e": "🧔⚔️🏔️", "ans": "KGF", "opts": ["KGF", "Pushpa", "Salaar", "RRR"]},
     {"e": "🐒💪🔥", "ans": "Hanuman", "opts": ["Hanuman", "Adipurush", "Kantara", "Kalki 2898 AD"]},
     {"e": "🚂🔥🇮🇳", "ans": "RRR", "opts": ["RRR", "KGF", "Pushpa", "Baahubali"]},
