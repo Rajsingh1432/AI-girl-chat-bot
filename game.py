@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 # ⭐ Alag file se questions import kar rahe hain
 from questions import EMOJI_PUZZLES, BRAIN_QUESTIONS
 
-SUPPORT_LINK = "https://t.me/+WJneJ6gRAqg2ZTI1"
+SUPPORT_LINK = "https://t.me/+0xoXWln4qiM2NTY9"
 
 TRUTHS = [
     "Tumhare phone me sabse embarrassing photo kiski hai?", "Group me sabse boring insaan kaun hai?", 
