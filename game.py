@@ -5,7 +5,7 @@ from telegram.ext import ContextTypes
 # ⭐ Alag file se questions import kar rahe hain
 from questions import EMOJI_PUZZLES, BRAIN_QUESTIONS, WORD_PUZZLES
 
-SUPPORT_LINK = "https://t.me/+WJneJ6gRAqg2ZTI1"
+SUPPORT_LINK = "https://t.me/+0xoXWln4qiM2NTY9"
 
 # ⭐ GLOBAL POOL SYSTEM: Ye list poore bot ke lifetime ke liye yaad rakhega
 # Jab tak ye khaali nahi hogi, koi question repeat nahi hoga (chahe 100 game khel lo)
