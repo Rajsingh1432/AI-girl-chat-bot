@@ -972,11 +972,14 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     bot_username = context.bot.username
     message_text = update.message.text or ""
 
-    # ⭐ SMART GAME TRIGGER: Kisi bhi tarah /games likhne par menu pop-up hoga (Agar bot admin hai)
+    # ⭐ SMART GAME TRIGGER: Kisi bhi tarah /game ya /games likhne par menu pop-up hoga (Agar bot admin hai)
     text_lower = message_text.lower()
     bot_usr_lower = bot_username.lower()
     
-    if "/games" in text_lower or f"@{bot_usr_lower} games" in text_lower or f"@{bot_usr_lower}/games" in text_lower:
+    # Check kar rahe hain ki message me /game ya /games hai, ya @bot game hai (chahe message kahi bhi ho)
+    is_game_trigger = ("/game" in text_lower) or (f"@{bot_usr_lower} game" in text_lower) or (f"@{bot_usr_lower}/game" in text_lower)
+    
+    if is_game_trigger:
         if await is_bot_admin(context, chat.id):
             await games_menu(update, context)
             return
