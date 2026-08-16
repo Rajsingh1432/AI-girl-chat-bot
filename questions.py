@@ -209,7 +209,6 @@ BRAIN_QUESTIONS = [
 # WORD GUESS (CROSSWORD STYLE)
 # ==========================================
 WORD_PUZZLES = [
-    
     {"q": "Paheli: Ek ghar bana, do darwaze, ek se aaye, ek se jaaye. Main kaun?", "ans": "Naak", "opts": ["Naak", "Kaan", "Aankh", "Muh"]},
     {"q": "Paheli: Pahaad jitna bhaari, par ek panchhi se ud jata hai. Main kaun?", "ans": "Baadal", "opts": ["Baadal", "Pahaad", "Suraj", "Chand"]},
     {"q": "Paheli: Main hamesha peechhe rehta hu, kabhi aage nahi aata. Main kaun?", "ans": "Beeta hua kal", "opts": ["Beeta hua kal", "Aane wala kal", "Aaj", "Subah"]},
@@ -278,36 +277,12 @@ WORD_PUZZLES = [
     {"q": "Paheli: Hathi chala bazaar, jaisa chala waisa saajar. Main kaun?", "ans": "Juta", "opts": ["Juta", "Topi", "Kapda", "Bori"]},
     {"q": "Paheli: Kamre me ek, chhat pe do, bahar dekho toh sabhi. Main kaun?", "ans": "Taare", "opts": ["Taare", "Suraj", "Badal", "Chand"]},
     {"q": "Paheli: Hamesha aage rehta hu, par peeche se aawaz aati hai. Main kaun?", "ans": "Bijli", "opts": ["Bijli", "Badal", "Barish", "Hawa"]},
-    {"q": "Paheli: Main aisi cheez hu jo bina haath pair ke nagar basati hu. Main kaun?", "ans": "Makdi", "opts": ["Makdi", "Makkhi", "Chinti", "Bhramar"]},
     {"q": "Paheli: Jab chaho tab la sakte ho, par pakad nahi sakte. Main kaun?", "ans": "Hawa", "opts": ["Hawa", "Paani", "Aag", "Dhoop"]},
     {"q": "Paheli: Garmi me aag lagau toh roye, sardi me dhoop me rakh du toh bhi roye. Main kaun?", "ans": "Baraf", "opts": ["Baraf", "Aag", "Paani", "Batti"]},
     {"q": "Paheli: Chidiya ne ande diye, log khane ko khade hue. Main kaun?", "ans": "Matar", "opts": ["Matar", "Chawal", "Dal", "Bhutte"]},
-    {"q": "Paheli: Ek aisi cheez hai jo thokne se banti hai, par use karne ke liye phir se thokna padta hai. Main kaun?", "ans": "Taali", "opts": ["Taali", "Sikka", "Ball", "Danda"]},
     {"q": "Paheli: Sab milke mujhe banate hain, par main kachcha kaam nahi aata. Main kaun?", "ans": "Eent", "opts": ["Eent", "Lakdi", "Pathar", "Cement"]},
     {"q": "Paheli: Main aisi cheez hu jo bina khaye marr jata hu. Main kaun?", "ans": "Bhookh", "opts": ["Bhookh", "Pyas", "Neend", "Maut"]},
-    {"q": "Paheli: Kitne hi mujhe todo, main tut-tu ke ek hi banunga. Main kaun?", "ans": "Paani", "opts": ["Paani", "Aag", "Hawa", "Mitti"]},
-    {"q": "Paheli: Main aisi cheez hu jo andhere me kaam nahi aati, par roshni me sab kuch karti hu. Main kaun?", "ans": "Aankh", "opts": ["Aankh", "Dimaag", "Hath", "Muh"]},
     {"q": "Paheli: Meri aadat hai ek hi, par main badalta hu roz. Main kaun?", "ans": "Kal", "opts": ["Kal", "Aaj", "Din", "Raat"]},
-    {"q": "Paheli: Main aisi cheez hu jo gir toh jati hu par tutti nahi. Main kaun?", "ans": "Raat", "opts": ["Raat", "Saanp", "Rassi", "Aansu"]},
-    {"q": "Paheli: Main aisi cheez hu jo paani me doob ke bhi nahi bheegti. Main kaun?", "ans": "Chhatri", "opts": ["Chhatri", "Kapda", "Plastic", "Lakdi"]},
-    {"q": "Paheli: Main aisi cheez hu jo andar se khaali ho toh bhari dikhti hu. Main kaun?", "ans": "Botal", "opts": ["Botal", "Dabba", "Balti", "Box"]},
-    {"q": "Paheli: Ek aisi gaadi jiska pahiya nahi, par chalti hai. Main kaun?", "ans": "Naav", "opts": ["Naav", "Train", "Bus", "Plane"]},
-    {"q": "Paheli: Main aisi cheez hu jo barish me bheegti nahi, par dhoop me sookh jati hu. Main kaun?", "ans": "Paani", "opts": ["Paani", "Kapda", "Chhatri", "Lakdi"]},
-    {"q": "Paheli: Sabse pehle main aata hu, par sabke baad mera naam aata hai. Main kaun?", "ans": "Aaj", "opts": ["Aaj", "Kal", "Din", "Subah"]},
-    {"q": "Paheli: Main aisi cheez hu jo utna chhupo utna zyada dikh-ta hu. Main kaun?", "ans": "Sach", "opts": ["Sach", "Jhoot", "Raaz", "Dhokha"]},
     {"q": "Paheli: Ek aisi cheez hai jo bina haath pair ke bhaag-ti hai. Main kaun?", "ans": "Waqt", "opts": ["Waqt", "Paani", "Hawa", "Aag"]},
-    {"q": "Paheli: Na main zinda hu, na murda, par sabka kaam karta hu. Main kaun?", "ans": "Robot", "opts": ["Robot", "Murti", "Photo", "Pankha"]},
-    {"q": "Paheli: Main aisi cheez hu jo bina bol-e sab samajh jata hu. Main kaun?", "ans": "Dil", "opts": ["Dil", "Dimaag", "Aankh", "Kaan"]},
-    {"q": "Paheli: Main aisi cheez hu jo sab chah-te hain, par milne par chhupate hain. Main kaun?", "ans": "Paisa", "opts": ["Paisa", "Sona", "Heera", "Jewel"]},
-    {"q": "Paheli: Main aisi cheez hu jo utni badi hoti hu jitni tum khilate ho. Main kaun?", "ans": "Baloon", "opts": ["Baloon", "Ball", "Pippal", "Foosball"]},
-    {"q": "Paheli: Ek aisi cheez hai jo tut-ne se aawaz karti hai, par uthane se nahi. Main kaun?", "ans": "Sheesha", "opts": ["Sheesha", "Lakdi", "Lohe", "Plastic"]},
-    {"q": "Paheli: Main aisi cheez hu jo aapke paas hai, par aap mujhe doosro ko nahi de sakte. Main kaun?", "ans": "Naam", "opts": ["Naam", "Jeevan", "Maut", "Dil"]},
-    {"q": "Paheli: Sabse uncha pahaad bhi main hu, sabse neeche khadd bhi main hu. Main kaun?", "ans": "Aasmaan", "opts": ["Aasmaan", "Zameen", "Samundar", "Pahaad"]},
-    {"q": "Paheli: Main aisi cheez hu jo ghar pe le ke ghoomta hu, par kuch karta nahi. Main kaun?", "ans": "Kachhua", "opts": ["Kachhua", "Kutta", "Billi", "Ghoda"]},
-    {"q": "Paheli: Main aisi cheez hu jo sab ko aata hai, par koi mujhe pehchan-ta nahi. Main kaun?", "ans": "Maut", "opts": ["Maut", "Zindagi", "Dukh", "Khushi"]},
-    {"q": "Paheli: Main aisi cheez hu jo utna lamba hota hu jitna tum bhagao. Main kaun?", "ans": "Dhaaga", "opts": ["Dhaaga", "Rassi", "Lakdi", "Keel"]},
-    {"q": "Paheli: Gagan me chubhta hu, par khoon nahi nikalta. Main kaun?", "ans": "Tara", "opts": ["Tara", "Suraj", "Chand", "Badal"]},
-    {"q": "Paheli: Main aisi cheez hu jo chahiye toh mitti, par kaam aaye toh sona. Main kaun?", "ans": "Ann", "opts": ["Ann", "Paani", "Hawa", "Dhoop"]},
-    {"q": "Paheli: Main aisi cheez hu jo andar se kitni bhi ghani ho, par bahar se sab dikhe. Main kaun?", "ans": "Khidki", "opts": ["Khidki", "Deewar", "Darwaza", "Chhajja"]},
-    {"q": "Paheli: Main aisi cheez hu jo kabhi nahi sooti, par kabhi jagti bhi nahi. Main kaun?", "ans": "Neend", "opts": ["Neend", "Maut", "Sapna", "Jagrukta"]}
+    {"q": "Paheli: Gagan me chubhta hu, par khoon nahi nikalta. Main kaun?", "ans": "Tara", "opts": ["Tara", "Suraj", "Chand", "Badal"]}
 ]
