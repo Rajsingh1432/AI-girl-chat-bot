@@ -1273,8 +1273,9 @@ async def main() -> None:
     application.add_handler(CommandHandler("broadcaststats", broadcast_stats_command))
     application.add_handler(CommandHandler("broadcastgc", broadcastgc_command))
     
-    # ⭐ Game Commands
+        # ⭐ Game Commands
     application.add_handler(CommandHandler("games", games_menu))
+    application.add_handler(CommandHandler("game", games_menu)) # ⭐ Ye line add karo
     
     # ⭐ Game Button Click Handler (Master Router)
     application.add_handler(CallbackQueryHandler(master_button_router))
