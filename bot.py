@@ -78,7 +78,16 @@ def reset_daily_if_new_day():
         for i in range(len(clients)):
             daily_requests[i] = 0
             daily_tokens[i] = 0
+            _key_429_counts[i] = 0
+            _key_success_since_429[i] = True
+            # Sirf "daily exhausted" wali cooldowns hataen (lambi wali,
+            # jo agle UTC midnight tak set hoti hain). Chhoti temporary
+            # 429-burst cooldowns (45s) ko yahan chhedne ki zaroorat nahi,
+            # wo apne aap expire ho jati hain.
+            if i in _key_cooldowns and _key_cooldowns[i] - time.time() > 3600:
+                del _key_cooldowns[i]
         last_reset_day = today
+        logger.info(f"🔄 Naya UTC din shuru hua ({today}) — sabhi {len(clients)} keys ke daily counters aur cooldowns auto-reset ho gaye!")
 
 def record_daily(idx, tokens):
     reset_daily_if_new_day()
@@ -110,7 +119,7 @@ def handle_429_error(idx, error_msg=""):
     daily_req = daily_requests[idx]
     
     is_daily = ("daily" in error_msg.lower() or "exhausted" in error_msg.lower() or 
-                daily_tok >= 85000 or daily_req >= 950 or _key_429_counts[idx] >= 4)
+                daily_tok >= 85000 or daily_req >= 950)
     
     if is_daily:
         now = time.time()
@@ -1255,8 +1264,23 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
     else:
         logger.error("Unhandled:", exc_info=error)
 
+async def daily_reset_watcher():
+    """
+    Background loop: har 60 second me check karta hai ki naya UTC din shuru
+    hua ya nahi. Agar hua, to reset_daily_if_new_day() khud-ba-khud sabhi
+    keys ke daily counters aur "daily exhausted" cooldowns clear kar degi —
+    bina kisi user message ya manual restart ke wait kiye.
+    """
+    while True:
+        try:
+            reset_daily_if_new_day()
+        except Exception as e:
+            logger.error(f"daily_reset_watcher error: {e}", exc_info=e)
+        await asyncio.sleep(60)
+
 async def main() -> None:
     init_db()
+    asyncio.create_task(daily_reset_watcher())
     application = (
         Application.builder()
         .token(BOT_TOKEN)
