@@ -14,7 +14,6 @@ from groq import AsyncGroq
 from dotenv import load_dotenv
 from sticker_replies import get_random_sticker_reply
 from broadcast import broadcast_command, broadcast_stats_command, broadcastgc_command
-# ⭐ Game.py import
 from game import games_menu, button_router
 
 load_dotenv()
@@ -46,20 +45,21 @@ _rr_index = 0
 _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
-# --- openai/gpt-oss-120b ke actual Groq limits (per key): RPM 30, RPD 1000, TPM 8000, TPD 200000 ---
-# TPM hi asli constraint hai (RPM 30 hone ke bawajood TPM 8000 pehle hi rok deta hai),
-# isliye RPM ko loose rakha hai (sirf ek outer safety net) aur poora control TOKEN budget (TPM) se hota hai.
+# openai/gpt-oss-120b ke actual Groq limits (per key): RPM 30, RPD 1000, TPM 8000, TPD 200000
 _key_usage = {i: [] for i in range(len(clients))}
-RPM_SAFE_LIMIT = 28         # actual RPM 30 ke bahut kareeb — TPM hi asli brake hai, RPM sirf backup safety
-TPM_SAFE_LIMIT = 7500        # actual TPM 8000 ka ~94% — TPM hi primary control hai isliye margin kam rakha
-REQUEST_TOKEN_ESTIMATE = 700  # average real usage ke kareeb — na zyada tight, na zyada loose
+RPM_SAFE_LIMIT = 28
+TPM_SAFE_LIMIT = 7500
+REQUEST_TOKEN_ESTIMATE = 700
 
-DAILY_REQUEST_LIMIT = 950    # actual RPD 1000 ka ~95%
-DAILY_TOKEN_LIMIT = 190000   # actual TPD 200000 ka ~95%
+DAILY_REQUEST_LIMIT = 950
+DAILY_TOKEN_LIMIT = 190000
 
 daily_requests = [0] * len(clients)
 daily_tokens = [0] * len(clients)
 last_reset_day = time.strftime("%Y%m%d")
+
+_key_429_counts = [0] * len(clients)
+_key_success_since_429 = [True] * len(clients)
 
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
@@ -88,10 +88,6 @@ def reset_daily_if_new_day():
             daily_tokens[i] = 0
             _key_429_counts[i] = 0
             _key_success_since_429[i] = True
-            # Sirf "daily exhausted" wali cooldowns hataen (lambi wali,
-            # jo agle UTC midnight tak set hoti hain). Chhoti temporary
-            # 429-burst cooldowns (45s) ko yahan chhedne ki zaroorat nahi,
-            # wo apne aap expire ho jati hain.
             if i in _key_cooldowns and _key_cooldowns[i] - time.time() > 3600:
                 del _key_cooldowns[i]
         last_reset_day = today
@@ -116,9 +112,6 @@ def update_key_usage_actual(idx, entry_index, actual_tokens):
 def record_key_usage(idx, tokens=REQUEST_TOKEN_ESTIMATE):
     _key_usage[idx].append((time.time(), tokens))
     record_daily(idx, tokens)
-
-_key_429_counts = [0] * len(clients)
-_key_success_since_429 = [True] * len(clients)
 
 def handle_429_error(idx, error_msg=""):
     _key_429_counts[idx] += 1
@@ -376,7 +369,7 @@ Tera kaam:
                             model="openai/gpt-oss-20b",
                             messages=messages,
                             temperature=0.2,
-                            max_tokens=150,
+                            max_tokens=300,
                             timeout=10.0
                         )
                         final_summary = response.choices[0].message.content
@@ -434,7 +427,7 @@ TUJHE KYA KARNA HAI:
                         model="openai/gpt-oss-20b",
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=50,
+                        max_tokens=200,
                         timeout=8.0
                     )
                     reply = response.choices[0].message.content
@@ -534,7 +527,7 @@ def escape_md_v2(text: str) -> str:
     specials = r'_*[]()~`>#+-=|{}.!'
     return "".join(f"\\{ch}" if ch in specials else ch for ch in text)
 
-# ⭐ MASTER BUTTON ROUTER (Game Menu + Game.py delegation)
+# ⭐ MASTER BUTTON ROUTER
 async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query: return
@@ -561,7 +554,6 @@ async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.reply_text(guide_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         return
         
-    # Baaki ke buttons game.py ko delegate karo
     await button_router(update, context)
     
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -590,7 +582,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ", url="https://t.me/KnowRajpapa")
             ],
             [InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+0xoXWln4qiM2NTY9")],
-            # ⭐ Naya Games Button
             [InlineKeyboardButton("🎮 ɢᴀᴍᴇs ᴋʜᴇʟᴏ", callback_data="g_guide")]
         ]
         full_reply_markup = InlineKeyboardMarkup(full_keyboard)
@@ -611,7 +602,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         sum_req = sum(daily_requests)
         sum_tok = sum(daily_tokens)
         max_req = total_keys * 1000
-        max_tok = total_keys * 100000
+        max_tok = total_keys * 200000  # 120B/20B ke liye TPD 200K
         active = 0
         cooldown_count = 0
         for i in range(total_keys):
@@ -785,7 +776,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         model="openai/gpt-oss-120b",
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=100,
+                        max_tokens=400,
                         top_p=0.9,
                         timeout=15.0
                     )
@@ -817,6 +808,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         set_key_cooldown(idx, seconds=15)
                     continue
 
+    # Smart retry: agar sab keys busy, to earliest cooldown wali key ka wait karo
     now2 = time.time()
     best_idx = None
     earliest_cd = float('inf')
@@ -836,35 +828,37 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
             lock = _key_locks[best_idx]
             if not lock.locked():
                 async with lock:
-                    entry_idx = pre_record_key_usage(best_idx)
-                    async with _concurrency_semaphore:
-                        await throttle_dispatch()
-                        try:
-                            response = await clients[best_idx].chat.completions.create(
-                                model="openai/gpt-oss-120b",
-                                messages=messages,
-                                temperature=0.7,
-                                max_tokens=100,
-                                top_p=0.9,
-                                timeout=15.0
-                            )
-                            reply = response.choices[0].message.content
-                            reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
-                            reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                            reply = reply.replace('!', '')
-                            reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
-                            reply = reply.strip().strip('`')
-                            if reply:
-                                usage = getattr(response, "usage", None)
-                                actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-                                update_key_usage_actual(best_idx, entry_idx, actual_tokens)
-                                reset_key_429_streak(best_idx)
-                                logger.info(f"✅ Smart Retry se Key {best_idx+1} se reply aaya!")
-                                return reply
-                        except Exception as e:
-                            error_str = str(e).lower()
-                            if "429" in error_str or "rate_limit" in error_str:
-                                handle_429_error(best_idx, error_str)
+                    # Retry ke liye bhi key_has_room check karo
+                    if key_has_room(best_idx):
+                        entry_idx = pre_record_key_usage(best_idx)
+                        async with _concurrency_semaphore:
+                            await throttle_dispatch()
+                            try:
+                                response = await clients[best_idx].chat.completions.create(
+                                    model="openai/gpt-oss-120b",
+                                    messages=messages,
+                                    temperature=0.7,
+                                    max_tokens=400,
+                                    top_p=0.9,
+                                    timeout=15.0
+                                )
+                                reply = response.choices[0].message.content
+                                reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
+                                reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
+                                reply = reply.replace('!', '')
+                                reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
+                                reply = reply.strip().strip('`')
+                                if reply:
+                                    usage = getattr(response, "usage", None)
+                                    actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
+                                    update_key_usage_actual(best_idx, entry_idx, actual_tokens)
+                                    reset_key_429_streak(best_idx)
+                                    logger.info(f"✅ Smart Retry se Key {best_idx+1} se reply aaya!")
+                                    return reply
+                            except Exception as e:
+                                error_str = str(e).lower()
+                                if "429" in error_str or "rate_limit" in error_str:
+                                    handle_429_error(best_idx, error_str)
 
     logger.warning("⏳ Sab keys abhi cooldown me hain. Silent mode active (No Spam).")
     return None
@@ -989,11 +983,9 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     bot_username = context.bot.username
     message_text = update.message.text or ""
 
-    # ⭐ SMART GAME TRIGGER: Kisi bhi tarah /game ya /games likhne par menu pop-up hoga (Agar bot admin hai)
     text_lower = message_text.lower()
     bot_usr_lower = bot_username.lower()
     
-    # Check kar rahe hain ki message me /game ya /games hai, ya @bot game hai (chahe message kahi bhi ho)
     is_game_trigger = ("/game" in text_lower) or (f"@{bot_usr_lower} game" in text_lower) or (f"@{bot_usr_lower}/game" in text_lower)
     
     if is_game_trigger:
@@ -1129,7 +1121,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id))
         )
         if not reply: 
-            return # Silent mode active
+            return
         update_history(user_id, clean_text, reply)
         user_mention = f"@{user.username}" if user.username else user.first_name
         final_reply = f"{user_mention} {reply}"
@@ -1147,7 +1139,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id))
         )
         if not reply: 
-            return # Silent mode active
+            return
         update_history(user_id, clean_text, reply)
         await safe_reply_text(update, reply)
         return
@@ -1163,7 +1155,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id))
         )
         if not reply: 
-            return # Silent mode active
+            return
         update_history(user_id, clean_text, reply)
         await safe_reply_text(update, reply)
         return
@@ -1273,12 +1265,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         logger.error("Unhandled:", exc_info=error)
 
 async def daily_reset_watcher():
-    """
-    Background loop: har 60 second me check karta hai ki naya UTC din shuru
-    hua ya nahi. Agar hua, to reset_daily_if_new_day() khud-ba-khud sabhi
-    keys ke daily counters aur "daily exhausted" cooldowns clear kar degi —
-    bina kisi user message ya manual restart ke wait kiye.
-    """
     while True:
         try:
             reset_daily_if_new_day()
@@ -1304,14 +1290,9 @@ async def main() -> None:
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("broadcaststats", broadcast_stats_command))
     application.add_handler(CommandHandler("broadcastgc", broadcastgc_command))
-    
-        # ⭐ Game Commands
     application.add_handler(CommandHandler("games", games_menu))
-    application.add_handler(CommandHandler("game", games_menu)) # ⭐ Ye line add karo
-    
-    # ⭐ Game Button Click Handler (Master Router)
+    application.add_handler(CommandHandler("game", games_menu))
     application.add_handler(CallbackQueryHandler(master_button_router))
-    
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
     application.add_handler(ChatMemberHandler(chat_member_welcome, ChatMemberHandler.CHAT_MEMBER))
     application.add_handler(ChatMemberHandler(bot_membership_update, ChatMemberHandler.MY_CHAT_MEMBER))
