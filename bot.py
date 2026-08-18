@@ -46,10 +46,16 @@ _rr_index = 0
 _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
+# --- openai/gpt-oss-120b ke actual Groq limits (per key): RPM 30, RPD 1000, TPM 8000, TPD 200000 ---
+# TPM hi asli constraint hai (RPM 30 hone ke bawajood TPM 8000 pehle hi rok deta hai),
+# isliye RPM ko loose rakha hai (sirf ek outer safety net) aur poora control TOKEN budget (TPM) se hota hai.
 _key_usage = {i: [] for i in range(len(clients))}
-RPM_SAFE_LIMIT = 6
-TPM_SAFE_LIMIT = 11000
-REQUEST_TOKEN_ESTIMATE = 900
+RPM_SAFE_LIMIT = 28         # actual RPM 30 ke bahut kareeb — TPM hi asli brake hai, RPM sirf backup safety
+TPM_SAFE_LIMIT = 7500        # actual TPM 8000 ka ~94% — TPM hi primary control hai isliye margin kam rakha
+REQUEST_TOKEN_ESTIMATE = 700  # average real usage ke kareeb — na zyada tight, na zyada loose
+
+DAILY_REQUEST_LIMIT = 950    # actual RPD 1000 ka ~95%
+DAILY_TOKEN_LIMIT = 190000   # actual TPD 200000 ka ~95%
 
 daily_requests = [0] * len(clients)
 daily_tokens = [0] * len(clients)
@@ -67,7 +73,9 @@ def key_has_room(idx) -> bool:
     total_tokens = sum(tok for _, tok in entries)
     if total_tokens + REQUEST_TOKEN_ESTIMATE > TPM_SAFE_LIMIT:
         return False
-    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > 96000:
+    if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > DAILY_TOKEN_LIMIT:
+        return False
+    if daily_requests[idx] + 1 > DAILY_REQUEST_LIMIT:
         return False
     return True
 
@@ -119,7 +127,7 @@ def handle_429_error(idx, error_msg=""):
     daily_req = daily_requests[idx]
     
     is_daily = ("daily" in error_msg.lower() or "exhausted" in error_msg.lower() or 
-                daily_tok >= 85000 or daily_req >= 950)
+                daily_tok >= DAILY_TOKEN_LIMIT or daily_req >= DAILY_REQUEST_LIMIT)
     
     if is_daily:
         now = time.time()
@@ -365,7 +373,7 @@ Tera kaam:
                     await throttle_dispatch()
                     try:
                         response = await clients[idx].chat.completions.create(
-                            model="llama-3.1-8b-instant",
+                            model="openai/gpt-oss-20b",
                             messages=messages,
                             temperature=0.2,
                             max_tokens=150,
@@ -423,7 +431,7 @@ TUJHE KYA KARNA HAI:
                 await throttle_dispatch()
                 try:
                     response = await clients[idx].chat.completions.create(
-                        model="llama-3.1-8b-instant",
+                        model="openai/gpt-oss-20b",
                         messages=messages,
                         temperature=0.7,
                         max_tokens=50,
@@ -774,7 +782,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                 await throttle_dispatch()
                 try:
                     response = await clients[idx].chat.completions.create(
-                        model="llama-3.3-70b-versatile",
+                        model="openai/gpt-oss-120b",
                         messages=messages,
                         temperature=0.7,
                         max_tokens=100,
@@ -833,7 +841,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         await throttle_dispatch()
                         try:
                             response = await clients[best_idx].chat.completions.create(
-                                model="llama-3.3-70b-versatile",
+                                model="openai/gpt-oss-120b",
                                 messages=messages,
                                 temperature=0.7,
                                 max_tokens=100,
