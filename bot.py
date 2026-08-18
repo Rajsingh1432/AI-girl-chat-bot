@@ -47,12 +47,12 @@ _key_locks = [asyncio.Lock() for _ in clients]
 
 # openai/gpt-oss-120b ke actual Groq limits (per key): RPM 30, RPD 1000, TPM 8000, TPD 200000
 _key_usage = {i: [] for i in range(len(clients))}
-RPM_SAFE_LIMIT = 28
-TPM_SAFE_LIMIT = 7500
-REQUEST_TOKEN_ESTIMATE = 700
+RPM_SAFE_LIMIT = 6
+TPM_SAFE_LIMIT = 7000        # 8000 से नीचे, सुरक्षित मार्जिन
+REQUEST_TOKEN_ESTIMATE = 900 # पुराना वाला ही रखो
 
-DAILY_REQUEST_LIMIT = 950
-DAILY_TOKEN_LIMIT = 190000
+DAILY_REQUEST_LIMIT = 950    # 1000 का 95%
+DAILY_TOKEN_LIMIT = 190000   # 200000 का 95%
 
 daily_requests = [0] * len(clients)
 daily_tokens = [0] * len(clients)
