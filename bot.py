@@ -905,10 +905,12 @@ async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: in
     except Exception:
         pass
 
-async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int, coro):
+async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int, coro, existing_typing_task=None):
     # Real fast-typer insaan ke hisab se: ~14 characters/second (~170 WPM),
     # 1.0s se 6.0s ke beech clamp kiya taaki chhote/bade dono replies natural lagein.
-    typing_task = asyncio.create_task(_keep_typing(context, chat_id))
+    # Agar caller ke paas pehle se ek typing task chal raha ho (early start), usi ko
+    # reuse karte hain — naya task banane se koi flicker/gap nahi aata.
+    typing_task = existing_typing_task if existing_typing_task is not None else asyncio.create_task(_keep_typing(context, chat_id))
     start = time.time()
     try:
         result = await coro
@@ -964,7 +966,9 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_chat.type not in ("group", "supergroup"):
         return
 
-    await save_active_group_async(update.effective_chat.id, update.effective_chat.title or "Unknown Group")
+    # DB write ko background me fire-and-forget kar diya — isse reply/typing
+    # indicator DB ki speed pe block nahi hoga (yehi "chup baithna" wala gap tha).
+    asyncio.create_task(save_active_group_async(update.effective_chat.id, update.effective_chat.title or "Unknown Group"))
 
     msg_date = update.message.date
     if msg_date:
@@ -985,8 +989,22 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, "Ruko ruko baby! 😤 Itni jaldi kya hai? 2 minute baad aana!")
         return
 
+    # Typing indicator yahin se start kar diya — isse pehle jo bhi Telegram/DB
+    # calls (admin check, bio check) blocking hoti hain, unke dauran bhi ab
+    # "typing" dikhta rahega — koi chup baithne wala gap nahi aayega.
+    early_typing_task = asyncio.create_task(_keep_typing(context, chat.id))
+    try:
+        await _handle_after_typing_starts(update, context, early_typing_task, chat, user, user_id, is_sticker, message_text=update.message.text or "")
+    finally:
+        if not early_typing_task.done():
+            early_typing_task.cancel()
+            try:
+                await early_typing_task
+            except asyncio.CancelledError:
+                pass
+
+async def _handle_after_typing_starts(update, context, early_typing_task, chat, user, user_id, is_sticker, message_text):
     bot_username = context.bot.username
-    message_text = update.message.text or ""
 
     text_lower = message_text.lower()
     bot_usr_lower = bot_username.lower()
@@ -1106,7 +1124,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
         if should_try_greeting:
             greeting = await get_reply_with_live_typing(
-                context, chat.id, generate_greeting(user_id, clean_text)
+                context, chat.id, generate_greeting(user_id, clean_text), existing_typing_task=early_typing_task
             )
             if greeting:
                 _greeted_once.add(user_id)
@@ -1123,7 +1141,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
 
         reply = await get_reply_with_live_typing(
-            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id))
+            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id)), existing_typing_task=early_typing_task
         )
         if not reply: 
             return
@@ -1141,7 +1159,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
 
         reply = await get_reply_with_live_typing(
-            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id))
+            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id)), existing_typing_task=early_typing_task
         )
         if not reply: 
             return
@@ -1157,7 +1175,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
 
         reply = await get_reply_with_live_typing(
-            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id))
+            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id)), existing_typing_task=early_typing_task
         )
         if not reply: 
             return
@@ -1356,3 +1374,4 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"🔥 main() crashed, restarting in 5s: {e}", exc_info=e)
             time.sleep(5)
+ 
