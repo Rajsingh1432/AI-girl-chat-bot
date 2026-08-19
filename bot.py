@@ -373,7 +373,7 @@ STRICT RULES:
                             max_tokens=60,  # ⭐ FIX: 60 tokens se zyada garbage nahi likhega
                             timeout=10.0
                         )
-                                                final_summary = response.choices[0].message.content.strip()
+                        final_summary = response.choices[0].message.content.strip()
                         
                         # ⭐ FIX: Case-Insensitive Garbage Filter
                         lower_summary = final_summary.lower()
