@@ -48,11 +48,11 @@ _key_locks = [asyncio.Lock() for _ in clients]
 # openai/gpt-oss-120b ke actual Groq limits (per key): RPM 30, RPD 1000, TPM 8000, TPD 200000
 _key_usage = {i: [] for i in range(len(clients))}
 RPM_SAFE_LIMIT = 6
-TPM_SAFE_LIMIT = 7000        # 8000 से नीचे, सुरक्षित मार्जिन
-REQUEST_TOKEN_ESTIMATE = 900 # पुराना वाला ही रखो
+TPM_SAFE_LIMIT = 7000
+REQUEST_TOKEN_ESTIMATE = 900
 
-DAILY_REQUEST_LIMIT = 950    # 1000 का 95%
-DAILY_TOKEN_LIMIT = 190000   # 200000 का 95%
+DAILY_REQUEST_LIMIT = 950
+DAILY_TOKEN_LIMIT = 190000
 
 daily_requests = [0] * len(clients)
 daily_tokens = [0] * len(clients)
@@ -660,6 +660,96 @@ async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         summary = get_user_summary(update.effective_user.id)
         await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}")
 
+# ⭐ ========== DBCHECK COMMAND (Owner Only) ==========
+async def dbcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    if not DATABASE_URL:
+        await update.message.reply_text("❌ DATABASE_URL set nahi hai.")
+        return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM user_memory")
+        total = c.fetchone()[0]
+        c.execute("SELECT summary FROM user_memory WHERE user_id=%s", (update.effective_user.id,))
+        row = c.fetchone()
+        c.close()
+        conn.close()
+        if row and row[0]:
+            await update.message.reply_text(f"✅ Tumhari memory DB me hai ({total} total users)\n\n{row[0]}")
+        else:
+            await update.message.reply_text(f"❌ Tumhari memory DB me nahi mili.\nTotal users memory: {total}")
+    except Exception as e:
+        await update.message.reply_text(f"DB check error: {e}")
+
+# ⭐ ========== MIGRATE MEMORY COMMAND (Neon -> Supabase) ==========
+async def migrate_memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    if not DATABASE_URL:
+        await update.message.reply_text("❌ Naya Supabase DATABASE_URL set nahi hai.")
+        return
+    old_url = os.getenv("OLD_DATABASE_URL")
+    if not old_url:
+        await update.message.reply_text("❌ OLD_DATABASE_URL set nahi hai.")
+        return
+
+    msg = await update.message.reply_text("🔄 Purani memory copy ho rahi hai...")
+
+    try:
+        # Purani DB se data padho
+        old_conn = psycopg2.connect(old_url)
+        old_cur = old_conn.cursor()
+        old_cur.execute("SELECT user_id, summary, updated_at FROM user_memory")
+        user_rows = old_cur.fetchall()
+        old_cur.execute("SELECT user_id, started_at FROM broadcast_users")
+        broadcast_rows = old_cur.fetchall()
+        old_cur.execute("SELECT chat_id, title, added_at FROM active_groups")
+        group_rows = old_cur.fetchall()
+        old_cur.close()
+        old_conn.close()
+
+        # Nayi DB me data likho
+        new_conn = psycopg2.connect(DATABASE_URL)
+        new_cur = new_conn.cursor()
+
+        for user_id, summary, updated_at in user_rows:
+            new_cur.execute(
+                "INSERT INTO user_memory (user_id, summary, updated_at) VALUES (%s,%s,%s) "
+                "ON CONFLICT (user_id) DO UPDATE SET summary=%s, updated_at=%s",
+                (user_id, summary, updated_at, summary, updated_at)
+            )
+
+        for user_id, started_at in broadcast_rows:
+            new_cur.execute(
+                "INSERT INTO broadcast_users (user_id, started_at) VALUES (%s,%s) "
+                "ON CONFLICT (user_id) DO NOTHING",
+                (user_id, started_at)
+            )
+
+        for chat_id, title, added_at in group_rows:
+            new_cur.execute(
+                "INSERT INTO active_groups (chat_id, title, added_at) VALUES (%s,%s,%s) "
+                "ON CONFLICT (chat_id) DO UPDATE SET title=%s, added_at=%s",
+                (chat_id, title, added_at, title, added_at)
+            )
+
+        new_conn.commit()
+        new_cur.close()
+        new_conn.close()
+
+        await msg.edit_text(
+            f"✅ Migration complete!\n"
+            f"📦 user_memory: {len(user_rows)} rows\n"
+            f"📦 broadcast_users: {len(broadcast_rows)} rows\n"
+            f"📦 active_groups: {len(group_rows)} rows"
+        )
+    except Exception as e:
+        await msg.edit_text(f"❌ Migration error: {e}")
+
 async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -906,10 +996,6 @@ async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: in
         pass
 
 async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int, coro, existing_typing_task=None):
-    # Real fast-typer insaan ke hisab se: ~14 characters/second (~170 WPM),
-    # 1.0s se 6.0s ke beech clamp kiya taaki chhote/bade dono replies natural lagein.
-    # Agar caller ke paas pehle se ek typing task chal raha ho (early start), usi ko
-    # reuse karte hain — naya task banane se koi flicker/gap nahi aata.
     typing_task = existing_typing_task if existing_typing_task is not None else asyncio.create_task(_keep_typing(context, chat_id))
     start = time.time()
     try:
@@ -934,8 +1020,6 @@ async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id
         remaining = target_min - elapsed
         await asyncio.sleep(remaining)
 
-    # Ab jaake typing indicator band karo — turant iske baad reply bhejna hai,
-    # isliye "typing" se "message aaya" ke beech koi flicker/gap nahi dikhega.
     typing_task.cancel()
     try:
         await typing_task
@@ -966,8 +1050,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if update.effective_chat.type not in ("group", "supergroup"):
         return
 
-    # DB write ko background me fire-and-forget kar diya — isse reply/typing
-    # indicator DB ki speed pe block nahi hoga (yehi "chup baithna" wala gap tha).
     asyncio.create_task(save_active_group_async(update.effective_chat.id, update.effective_chat.title or "Unknown Group"))
 
     msg_date = update.message.date
@@ -989,9 +1071,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, "Ruko ruko baby! 😤 Itni jaldi kya hai? 2 minute baad aana!")
         return
 
-    # Typing indicator yahin se start kar diya — isse pehle jo bhi Telegram/DB
-    # calls (admin check, bio check) blocking hoti hain, unke dauran bhi ab
-    # "typing" dikhta rahega — koi chup baithne wala gap nahi aayega.
     early_typing_task = asyncio.create_task(_keep_typing(context, chat.id))
     try:
         await _handle_after_typing_starts(update, context, early_typing_task, chat, user, user_id, is_sticker, message_text=update.message.text or "")
@@ -1309,6 +1388,8 @@ async def main() -> None:
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("resetkeys", resetkeys_command))
     application.add_handler(CommandHandler("memory", memory_command))
+    application.add_handler(CommandHandler("dbcheck", dbcheck_command))
+    application.add_handler(CommandHandler("migrate_memory", migrate_memory_command))
     application.add_handler(CommandHandler("syncgroup", syncgroup_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("broadcaststats", broadcast_stats_command))
@@ -1374,4 +1455,3 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"🔥 main() crashed, restarting in 5s: {e}", exc_info=e)
             time.sleep(5)
- 
