@@ -231,7 +231,6 @@ def get_user_summary(user_id: int) -> str:
         conn.close()
         return row[0] if row and row[0] else ""
     except Exception as e:
-        # ⭐ FIX: Silent failure removed. Agar Supabase read fail karega, toh exact error log me aayega
         logger.error(f"❌ DB Fetch Failed for {user_id}: {e}")
         return ""
 
@@ -247,7 +246,6 @@ def save_user_summary(user_id: int, summary: str):
         c.close()
         conn.close()
     except Exception as e:
-        # ⭐ FIX: Silent pass removed
         logger.error(f"❌ DB Save Failed for {user_id}: {e}")
 
 async def save_broadcast_user_async(user_id: int):
@@ -330,27 +328,24 @@ def get_all_active_groups() -> list:
         logger.warning(f"get_all_active_groups fail: {e}")
         return []
 
-# ⭐ ========== IMPROVED MEMORY GENERATION ==========
+# ⭐ ========== IMPROVED MEMORY GENERATION (With Garbage Filter) ==========
 async def generate_summary(user_id: int, history: list):
     if len(history) < 4 or not DATABASE_URL: return
     
-    # ⭐ FIX: Log added to know function triggered
     logger.info(f"🔄 Summary generation triggered for {user_id}...")
     
     try:
         old_summary = get_user_summary(user_id)
-        prompt = f"""Tu ek memory manager hai. Neeche purani memory aur user ki nayi baatein di gayi hain.
+        prompt = f"""Tu ek memory bot hai. Neeche purani memory aur nayi chat di gayi hai. Tujhe sirf personal facts save karne hain.
 
-PURANI MEMORY: {old_summary if old_summary else "(kuch nahi pata)"}
-NAYI BAATEIN: {str(history[-12:])}
+PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
+NAYI CHAT: {str(history[-12:])}
 
-Tera kaam:
-- ⭐ MOST IMPORTANT: PURANI MEMORY me jo bhi info hai (naam, kaam, city, hobby), usko APNE FINAL ANSWER ME LAZIMI (mandatory) include karna. Purani memory ko bhoolna ya delete karna STRICTLY MANA hai.
-- Agar user ne nayi baaton me koi aisi info batayi jo PURANI memory se CONTRADICT karti hai (jaise pehle usne kaha tha "mera naam Rahul", aur ab bol raha hai "mera naam Raj"), toh PURANI info ko DELETE karke NAYI info ko update kar do.
-- Agar user same info bar bar repeat kar raha hai (jaise bar bar "mera naam Rahul" bol raha hai), toh usko same hi rakhna, koi replacement mat karna.
-- Agar user nayi pasand (new hobby, new preference) batata hai, toh purani pasand ko replace kar dena, dono ko mix mat karna.
-- Nayi information ko simply add karo. Final summary Hinglish me likho, max 1-2 lines me saare facts likho. Koi introduction mat do, seedha facts likho.
-- Agar user ne pichli baaton me aur is baat me bhi kuch personal nahi bataya, aur purani memory khali thi, to summary bilkul khali chhod do.
+STRICT RULES:
+1. Sirf 1-2 lines me facts likho (jaise: Naam Raj hai, developer hai, cricket pasand hai).
+2. Koi heading (jaise **Summary:** ya **Nayi Baatein:**) mat likho. Koi analysis mat likho. Prompt ko dobara mat likho.
+3. Purani facts ko rakhna, agar user ne koi nayi baat (naam, kaam, city) batai toh usko update/add kar dena.
+4. Agar user ne koi personal info nahi batayi, toh sirf "NONE" likho.
 """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
@@ -358,7 +353,6 @@ Tera kaam:
             now = time.time()
             idx = pick_best_key(now)
             if idx is None or idx in tried:
-                # ⭐ FIX: Log added to know why it failed silently
                 logger.warning(f"⚠️ Summary gen skipped for {user_id}: All API keys busy or in cooldown.")
                 break
             tried.add(idx)
@@ -376,12 +370,18 @@ Tera kaam:
                             model="openai/gpt-oss-20b",
                             messages=messages,
                             temperature=0.2,
-                            max_tokens=300,
+                            max_tokens=60,  # ⭐ FIX: 60 tokens se zyada garbage nahi likhega
                             timeout=10.0
                         )
-                        final_summary = response.choices[0].message.content
+                        final_summary = response.choices[0].message.content.strip()
+                        
+                        # ⭐ FIX: GARBAGE FILTER - Agar AI faltu text likhe, toh save hi mat karo
+                        if not final_summary or len(final_summary) > 150 or "Nayi Baatein" in final_summary or "PROMPT" in final_summary or "RULES" in final_summary or "Analysis" in final_summary or final_summary.upper() == "NONE":
+                            logger.warning(f"⚠️ AI generated garbage or empty summary for {user_id}. Not overwriting memory. Output: {final_summary[:50]}")
+                            return
+                        
                         save_user_summary(user_id, final_summary)
-                        update_key_usage_actual(idx, entry_idx, 150)
+                        update_key_usage_actual(idx, entry_idx, 60)
                         reset_key_429_streak(idx)
                         logger.info(f"📝 User {user_id} ki summary update: {final_summary[:80]}...")
                         return
@@ -974,7 +974,6 @@ def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
     count = user_msg_counter.get(user_id, 0) + 1
     user_msg_counter[user_id] = count
     if count % 15 == 0:
-        # ⭐ FIX: Task ko GC hone se bachane ke liye reference set me rakho
         task = asyncio.create_task(generate_summary(user_id, history))
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
