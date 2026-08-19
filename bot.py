@@ -906,35 +906,40 @@ async def realistic_typing_delay(context: ContextTypes.DEFAULT_TYPE, chat_id: in
         pass
 
 async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int, coro):
+    # Real fast-typer insaan ke hisab se: ~14 characters/second (~170 WPM),
+    # 1.0s se 6.0s ke beech clamp kiya taaki chhote/bade dono replies natural lagein.
     typing_task = asyncio.create_task(_keep_typing(context, chat_id))
     start = time.time()
     try:
         result = await coro
-    finally:
+    except Exception:
         typing_task.cancel()
         try:
             await typing_task
         except asyncio.CancelledError:
             pass
+        raise
 
     elapsed = time.time() - start
-    target_min = 2.5
-    
-    if isinstance(result, str):
-        if len(result) > 100:
-            target_min = 3.5
-        if len(result) > 200:
-            target_min = 4.5
-            
+
+    target_min = 1.0
+    if isinstance(result, str) and result:
+        CHARS_PER_SECOND = 14.0
+        target_min = len(result) / CHARS_PER_SECOND
+        target_min = max(1.0, min(target_min, 6.0))
+
     if elapsed < target_min:
-        remaining = min(target_min - elapsed, 1.5)
-        extra_task = asyncio.create_task(_keep_typing(context, chat_id))
+        remaining = target_min - elapsed
         await asyncio.sleep(remaining)
-        extra_task.cancel()
-        try:
-            await extra_task
-        except asyncio.CancelledError:
-            pass
+
+    # Ab jaake typing indicator band karo — turant iske baad reply bhejna hai,
+    # isliye "typing" se "message aaya" ke beech koi flicker/gap nahi dikhega.
+    typing_task.cancel()
+    try:
+        await typing_task
+    except asyncio.CancelledError:
+        pass
+
     return result
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
