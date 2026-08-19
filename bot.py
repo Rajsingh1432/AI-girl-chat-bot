@@ -373,10 +373,20 @@ STRICT RULES:
                             max_tokens=60,  # ⭐ FIX: 60 tokens se zyada garbage nahi likhega
                             timeout=10.0
                         )
-                        final_summary = response.choices[0].message.content.strip()
+                                                final_summary = response.choices[0].message.content.strip()
                         
-                        # ⭐ FIX: GARBAGE FILTER - Agar AI faltu text likhe, toh save hi mat karo
-                        if not final_summary or len(final_summary) > 150 or "Nayi Baatein" in final_summary or "PROMPT" in final_summary or "RULES" in final_summary or "Analysis" in final_summary or final_summary.upper() == "NONE":
+                        # ⭐ FIX: Case-Insensitive Garbage Filter
+                        lower_summary = final_summary.lower()
+                        if (not final_summary or 
+                            len(final_summary) > 150 or 
+                            "nayi baatein" in lower_summary or 
+                            "purani memory" in lower_summary or 
+                            "prompt" in lower_summary or 
+                            "rules" in lower_summary or 
+                            "analysis" in lower_summary or 
+                            "'role':" in lower_summary or
+                            "main aapki instructions" in lower_summary or
+                            final_summary.upper() == "NONE"):
                             logger.warning(f"⚠️ AI generated garbage or empty summary for {user_id}. Not overwriting memory. Output: {final_summary[:50]}")
                             return
                         
