@@ -205,7 +205,7 @@ user_msg_counter = {}
 _greeted_once = set()
 
 DM_ONLY_REPLIES = [
-    "☃︎ 𝗠𝗮𝗶 𝗦𝗶𝗿𝗳 𝗖𝗵𝗮𝘁𝗶𝗻𝗴 𝗚𝗿𝗼𝘂𝗽𝘀 𝗠𝗲 𝗕𝗮𝘁𝗲𝗻 𝗞𝗮𝗿𝘁𝗶 𝗛𝘂𝗻\n\n🌿 𝗣𝗲𝗿𝘀𝗼𝗻𝗮𝗹 𝗠𝗮𝘀𝘀𝗲𝗴𝗲 𝗠𝗮𝘁 𝗞𝗮𝗿𝗼\n\nᴥ︎︎︎ 𝗠𝘂𝗷𝗵𝘀𝗲 𝗙𝗹𝗶𝗿𝘁,𝗙𝘂𝗻,𝗥𝗼𝗺𝗮𝗻𝘁𝗶𝗰,𝗔𝗻𝗴𝗿𝘆,𝗘𝗺𝗼𝘁𝗶𝗼𝗻𝗮𝗹 𝗕𝗮𝘁𝗲𝗻 𝗞𝗮𝗿𝗻𝗮 𝗵𝗮𝗶 𝘁𝗼 𝗮𝗽𝗻𝗲 𝗴𝗿𝗼𝘂𝗽 𝗺𝗲 𝗮𝗱𝗱 𝗞𝗮𝗿𝗱𝗼\n\n⌨︎ 𝗔𝘂𝗿 𝗠𝗮𝗶 𝗔𝗽𝗸𝗲 𝗖𝗵𝗮𝘁𝗶𝗻𝗴 𝗚𝗿𝗼𝘂𝗽 𝗞𝗼 𝗔𝗰𝘁𝗶𝘃𝗲 𝗥𝗮𝗸𝗵𝘂𝗻𝗴𝗶 𝗦𝗮𝗯𝗵𝗶 𝗡𝗲𝘄 𝗠𝗲𝗺𝗯𝗲𝗿𝘀 𝗔𝗻𝗱 𝗢𝗹𝗱 𝗠𝗲𝗺𝗯𝗲𝗿𝘀 𝗦𝗲 𝗙𝘂𝗻 𝗞𝗮𝗿𝘁𝗶 𝗥𝗮𝗵𝘂𝗻𝗴𝗶\n\n✍︎ 𝗔𝗱𝗺𝗶𝗻 𝗗𝗲𝗻𝗮 𝗠𝗮𝘁 𝗕𝗵𝗼𝗼𝗹𝗻𝗮\n\n\n➪ 𝗡𝗲𝗲𝗖𝗵𝗲 𝗕𝘂𝘁𝘁𝗼𝗻 𝗛𝗮𝗶 𝗡𝗮 𝗕𝗮𝗯𝘆 𝗗𝗮𝗯𝗮𝗼 𝗔𝘂𝗳 𝗠𝘂𝗷𝗵𝗲 𝗞𝗶𝗱𝗻𝗮𝗽 𝗞𝗮𝗿𝗹𝗼 👇",
+    "☃︎ 𝗠𝗮𝗶 𝗦𝗶𝗿𝗳 𝗖𝗵𝗮𝘁𝗶𝗻𝗴 𝗚𝗿𝗼𝘂𝗽𝘀 𝗠𝗲 𝗕𝗮𝘁𝗲𝗻 𝗞𝗮𝗿𝘁𝗶 𝗛𝘂𝗻\n\n🌿 𝗣𝗲𝗿𝘀𝗼𝗻𝗮𝗹 𝗠𝗮𝘀𝘀𝗲𝗴𝗲 𝗠𝗮𝘁 𝗞𝗮𝗿𝗼\n\nᴥ︎︎︎ 𝗠𝘂𝗷𝗵𝘀𝗲 𝗙𝗹𝗶𝗿𝘁,𝗙𝘂𝗻,𝗥𝗼𝗺𝗮𝗻𝘁𝗶𝗰,𝗔𝗻𝗴𝗿𝘆,𝗘𝗺𝗼𝘁𝗶𝗼𝗻𝗮𝗹 𝗕𝗮𝘁𝗲𝗻 𝗞𝗮𝗿𝗻𝗮 𝗵𝗮𝗶 𝘁𝗼 𝗮𝗽𝗻𝗲 𝗴𝗿𝗼𝘂𝗽 𝗺𝗲 𝗮𝗱𝗱 𝗞𝗮𝗿𝗱𝗼\n\n⌨︎ 𝗔𝘂𝗿 𝗠𝗮𝗶 𝗔𝗽𝗸𝗲 𝗖𝗵𝗮𝘁𝗶𝗻𝗴 𝗚𝗿𝗼𝘂𝗽 𝗞𝗼 𝗔𝗰𝘁𝗶𝘃𝗲 𝗥𝗮𝗸𝗵𝘂𝗻𝗴𝗶 𝗦𝗮𝗯𝗵𝗶 𝗡𝗲𝘄 𝗠𝗲𝗺𝗯𝗲𝗿𝘀 𝗔𝗻𝗱 𝗢𝗹𝗱 𝗠𝗲𝗺𝗯𝗲𝗿𝘀 𝗦𝗲 𝗙𝘂𝗻 𝗞𝗮𝗿𝘁𝗶 𝗥𝗮𝗵𝗨𝗻𝗴𝗶\n\n✍︎ 𝗔𝗱𝗺𝗶𝗻 𝗗𝗲𝗻𝗮 𝗠𝗮𝘁 𝗕𝗵𝗼𝗼𝗹𝗻𝗮\n\n\n➪ 𝗡𝗲𝗲𝗖𝗵𝗲 𝗕𝘂𝘁𝘁𝗼𝗻 𝗛𝗮𝗶 𝗡𝗮 𝗕𝗮𝗯𝘆 𝗗𝗮𝗯𝗮𝗼 𝗔𝘂𝗳 𝗠𝘂𝗷𝗵𝗲 𝗞𝗶𝗱𝗻𝗮𝗽 𝗞𝗮𝗿𝗹𝗼 👇",
 ]
 
 _welcomed_users = {}
@@ -439,11 +439,11 @@ async def generate_greeting(user_id: int, user_message: str) -> str | None:
 Abhi user ne tujhe "{user_message}" bola hai.
 
 TUJHE KYA KARNA HAI:
-- Memory me jo bhi SPECIFIC cheez pata hai (kaam, city, hobby, padhai), usi ka SEEDHA naam leke poochh, jaise koi purana dost karta hai. Example: "Are kaafi din ho gaye! Bata developer wala kaam kaisa chal raha hai ab?"
+- Memory me jo bhi SPECIFIC cheez pata hai (kaam, city, hobby, padhai), usi ka SEEDLA naam leke poochh, jaise koi purana dost karta hai. Example: "Are kaafi din ho gaye! Bata developer wala kaam kaisa chal raha hai ab?"
 - Agar memory me sirf naam hai koi specific detail nahi, toh naam leke "Kaise ho naam? Bahut din baad!" jaisa bolo.
 - Agar memory me kuch bhi specific nahi hai to seedha friendly "Hey! Kaha the itne din? Kaise ho?" bol.
 - Reply SIRF 1 LINE ka hona chahiye. Kahani ya lamba paragraph mat likho.
-- Hinglish me bol. Koi explanation mat diyo, seedha reply.
+- Hinglish me bol. Koi explanation mat diyo, seedla reply.
 - SIRF AUR SIRIF 1 EMOJI use karna.
 - Apne replies me double quotes, single quotes aur exclamation marks (!) ka use STRICTLY MANA HAI.
 """
@@ -620,7 +620,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     f"<blockquote><tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
     f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">ʀᴀᴊ ᴄʜᴇᴀᴛs ᴏᴡɴᴇʀ</a>\n\n"
 )
-                # ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
+        # ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
         full_keyboard = [
             [InlineKeyboardButton(
                 "ᴋɪᴅɴᴀᴘ ᴍᴇ ʙᴀʙʏ",
@@ -659,6 +659,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         ]
         full_reply_markup = InlineKeyboardMarkup(full_keyboard)
         await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="HTML", reply_markup=full_reply_markup)
+    except Exception as e:
+        logger.error(f"start error: {e}")
+        try:
+            await update.message.reply_text("🌟 Welcome! Bot me aapka swagat hai! Neeche buttons check karo 👇", reply_markup=reply_markup)
         except Exception:
             pass
 
