@@ -605,13 +605,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">ʀᴀᴊ ᴄʜᴇᴀᴛs ᴏᴡɴᴇʀ</a>\n\n"
 )
         full_keyboard = [
-            [InlineKeyboardButton("ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ", url=f"https://t.me/{bot_username}?startgroup=start")],
+            [InlineKeyboardButton("ᴋɪᴅɴᴀᴘ ᴍᴇ ʙᴀʙʏ", url=f"https://t.me/{bot_username}?startgroup=start")],
             [
-                InlineKeyboardButton("ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king"),
-                InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ᴄʜᴀɴɴᴇʟ", url="https://t.me/KnowRajpapa")
+                InlineKeyboardButton("ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king"),
+                InlineKeyboardButton("ɢʀᴏᴜᴘ", url="https://t.me/+0xoXWln4qiM2NTY9"),
+                InlineKeyboardButton("ᴄʜᴀɴɴᴇʟ", url="https://t.me/KnowRajpapa")
             ],
-            [InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+0xoXWln4qiM2NTY9")],
-            [InlineKeyboardButton("🎮 ɢᴀᴍᴇs ᴋʜᴇʟᴏ", callback_data="g_guide")]
+            [InlineKeyboardButton("ᴍɪɴᴅ ɢᴀᴍᴇs ᴋʜᴇʟᴏ", callback_data="g_guide")]
         ]
         full_reply_markup = InlineKeyboardMarkup(full_keyboard)
         await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="HTML", reply_markup=full_reply_markup)
