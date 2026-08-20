@@ -590,7 +590,7 @@ async def end_game_winner(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
                 win_text += f"{i}. {p['name']}: {p['score']} points\n"
                 
     # ⭐ FIX: Premium Emoji & Color Style on Support Button
-    keyboard = [[InlineKeyboardButton("📡 Join Support Group", url=SUPPORT_LINK, style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["support"])]]
+    keyboard = [[InlineKeyboardButton("Join Support Group", url=SUPPORT_LINK, style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["support"])]]
     
     await context.bot.send_message(
         chat_id=chat_id, 
