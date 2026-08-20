@@ -336,16 +336,16 @@ async def generate_summary(user_id: int, history: list):
     
     try:
         old_summary = get_user_summary(user_id)
-        prompt = f"""Tu ek memory bot hai. Neeche purani memory aur nayi chat di gayi hai. Tujhe sirf personal facts save karne hain.
+        prompt = f"""Tu ek memory bot hai. Neeche purani memory aur nayi chat di gayi hai. Tujhe personal facts aur important events/plans save karne hain.
 
 PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
 NAYI CHAT: {str(history[-12:])}
 
 STRICT RULES:
-1. Sirf 1-2 lines me facts likho (jaise: Naam Raj hai, developer hai, cricket pasand hai).
+1. Sirf 1-2 lines me facts likho (jaise: Naam Raj hai, developer hai. Kal Goa trip pe ja raha hai. Neha se pyaar karta hai.).
 2. Koi heading (jaise **Summary:** ya **Nayi Baatein:**) mat likho. Koi analysis mat likho. Prompt ko dobara mat likho.
-3. Purani facts ko rakhna, agar user ne koi nayi baat (naam, kaam, city) batai toh usko update/add kar dena.
-4. Agar user ne koi personal info nahi batayi, toh sirf "NONE" likho.
+3. ⭐ MOST IMPORTANT: Purani memory ke facts aur events/plans ko rakhna. Agar user ne koi nayi baat (naam, kaam, city, trip plan, feelings, romantic talks) batai hai, toh usko update/add kar dena. Purani important baatein mat bhoolna.
+4. Agar user ne koi personal info ya koi important plan/event nahi batayi, toh sirf "NONE" likho.
 """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
