@@ -594,15 +594,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         asyncio.create_task(save_broadcast_user_async(user.id))
         user_name = escape_md_v2(user.first_name or "Buddy")
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
-        welcome_text = (
-    f"<blockquote>✨ <b>ᴏʜ ʜᴇʟʟᴏ {user_name}, ᴀᴀᴋʜɪʀᴋᴀʀ ᴀᴀ ʜɪ ɢᴀʏᴇ ᴛᴜᴍ!</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
+                welcome_text = (
+    f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> ᴏʜ ʜᴇʟʟᴏ {user_name}, ᴀᴀᴋʜɪʀᴋᴀʀ ᴀᴀ ʜɪ ɢᴀʏᴇ ᴛᴜᴍ!</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
     f"<blockquote><b>ᴍᴀɪɴ {bot_name} ʜᴜɴ — ᴛᴜᴍʜᴀʀɪ ᴡᴏ ᴅᴏsᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏᴜᴘs ᴋᴏ ᴢɪɴᴅᴀ ᴋᴀʀ ᴅᴇᴛɪ ʜᴀɪ</b> <tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji><tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>\n"
     f"<b>ᴛʜᴏᴅᴀ ғʟɪʀᴛʏ <tg-emoji emoji-id=\"6318642082126763758\">😘</tg-emoji>, ᴛʜᴏᴅᴀ sᴀᴠᴀɢᴇ <tg-emoji emoji-id=\"6318777236157633080\">😈</tg-emoji>, ᴀᴜʀ ᴘᴜʀᴀ ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji> — ʏᴇʜ ʜᴀɪ ᴍᴇʀᴀ ᴠᴀᴀᴅᴀ</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
-    f"🎯 <b>ᴋᴀɪsᴇ ᴜsᴇ ᴋᴀʀᴏɢᴇ sɪᴍᴘʟᴇ 👇</b>\n"
-    f"<blockquote><b>ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ ᴀᴅᴅ ᴋᴀʀᴏ 👥, ᴀᴅᴍɪɴ ʙᴀɴᴀᴏ <tg-emoji emoji-id=\"6289279495257986194\">👑</tg-emoji></b>\n"
-    f"<b>ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ ʜᴀʀ ᴍᴇssᴀɢᴇ ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ</b> <tg-emoji emoji-id=\"6334360245090915308\">🔥</tg-emoji>⚡</blockquote>\n\n"
-    f"<blockquote>⚡ <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ</b> 🎭</blockquote>\n\n"
-    f"⚡ <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">ʀᴀᴊ ᴄʜᴇᴀᴛs ᴏᴡɴᴇʀ</a> 👨‍💻\n\n"
+    f"<tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji> <b>ᴋᴀɪsᴇ ᴜsᴇ ᴋᴀʀᴏɢᴇ sɪᴍᴘʟᴇ</b> <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>\n"
+    f"<blockquote><b>ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ ᴀᴅᴅ ᴋᴀʀᴏ, ᴀᴅᴍɪɴ ʙᴀɴᴀᴏ <tg-emoji emoji-id=\"6289279495257986194\">👑</tg-emoji></b>\n"
+    f"<b>ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ ʜᴀʀ ᴍᴇssᴀɢᴇ ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ</b> <tg-emoji emoji-id=\"6334360245090915308\">🔥</tg-emoji></blockquote>\n\n"
+    f"<blockquote><tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
+    f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">ʀᴀᴊ ᴄʜᴇᴀᴛs ᴏᴡɴᴇʀ</a>\n\n"
 )
         full_keyboard = [
             [InlineKeyboardButton("ᴀᴅᴅ ᴍᴇ ʙᴀʙʏ", url=f"https://t.me/{bot_username}?startgroup=start")],
