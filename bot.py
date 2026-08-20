@@ -336,14 +336,26 @@ async def generate_summary(user_id: int, history: list):
     
     try:
         old_summary = get_user_summary(user_id)
+
+        # ⭐ FIX: history ko raw Python dict/list format (str(history)) me dene se
+        # model kabhi kabhi wahi {"role":...} format apne reply me echo kar deta tha.
+        # Isliye ab clean, readable "User: ... / Sneha: ..." transcript banate hain.
+        recent = history[-12:]
+        chat_lines = []
+        for msg in recent:
+            speaker = "User" if msg.get("role") == "user" else "Sneha"
+            chat_lines.append(f"{speaker}: {msg.get('content', '')}")
+        chat_text = "\n".join(chat_lines)
+
         prompt = f"""Tu ek memory bot hai. Neeche purani memory aur nayi chat di gayi hai. Tujhe personal facts aur important events/plans save karne hain.
 
 PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
-NAYI CHAT: {str(history[-12:])}
+NAYI CHAT:
+{chat_text}
 
 STRICT RULES:
 1. Sirf 1-2 lines me facts likho (jaise: Naam Raj hai, developer hai. Kal Goa trip pe ja raha hai. Neha se pyaar karta hai.).
-2. Koi heading (jaise **Summary:** ya **Nayi Baatein:**) mat likho. Koi analysis mat likho. Prompt ko dobara mat likho.
+2. Koi heading (jaise **Summary:** ya **Nayi Baatein:**) mat likho. Koi analysis mat likho. Prompt ko dobara mat likho. Sirf plain facts likho, koi code ya format tag nahi.
 3. ⭐ MOST IMPORTANT: Purani memory ke facts aur events/plans ko rakhna. Agar user ne koi nayi baat (naam, kaam, city, trip plan, feelings, romantic talks) batai hai, toh usko update/add kar dena. Purani important baatein mat bhoolna.
 4. Agar user ne koi personal info ya koi important plan/event nahi batayi, toh sirf "NONE" likho.
 """
@@ -370,7 +382,9 @@ STRICT RULES:
                             model="openai/gpt-oss-20b",
                             messages=messages,
                             temperature=0.2,
-                            max_tokens=60,  # ⭐ FIX: 60 tokens se zyada garbage nahi likhega
+                            max_tokens=300,  # ⭐ FIX: reasoning model ko sochne ke liye jagah chahiye, warna content empty aata hai
+                            reasoning_effort="low",
+                            include_reasoning=False,
                             timeout=10.0
                         )
                         final_summary = response.choices[0].message.content.strip()
@@ -445,6 +459,8 @@ TUJHE KYA KARNA HAI:
                         messages=messages,
                         temperature=0.7,
                         max_tokens=200,
+                        reasoning_effort="low",
+                        include_reasoning=False,
                         timeout=8.0
                     )
                     reply = response.choices[0].message.content
@@ -885,6 +901,8 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         temperature=0.7,
                         max_tokens=400,
                         top_p=0.9,
+                        reasoning_effort="low",
+                        include_reasoning=False,
                         timeout=15.0
                     )
                     reply = response.choices[0].message.content
@@ -947,6 +965,8 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                     temperature=0.7,
                                     max_tokens=400,
                                     top_p=0.9,
+                                    reasoning_effort="low",
+                                    include_reasoning=False,
                                     timeout=15.0
                                 )
                                 reply = response.choices[0].message.content
@@ -1438,9 +1458,24 @@ async def main() -> None:
         async def health(r: Request) -> PlainTextResponse:
             return PlainTextResponse("Bot is alive!")
 
+        async def _process_update_safe(update):
+            try:
+                await application.process_update(update)
+            except Exception as e:
+                logger.error(f"🔥 process_update crashed: {e}", exc_info=e)
+
         async def tg_webhook(r: Request) -> PlainTextResponse:
             data = await r.json()
-            await application.update_queue.put(Update.de_json(data, application.bot))
+            update = Update.de_json(data, application.bot)
+            # FIX: pehle update_queue.put() use ho raha tha, jo application ke
+            # internal background processor pe depend karta tha - agar wo processor
+            # kabhi silently ruk jaye (bina khud crash hue), queue me updates jamte
+            # rehte the lekin process nahi hote the, bot "alive" dikhta tha lekin
+            # koi reply nahi aata tha. process_update() seedha aur reliably process
+            # karta hai, bina kisi background-queue-consumer pe depend kiye. Aur
+            # ise ek try/except ke sath background task me chalate hain taaki ek
+            # bhi update ka crash poore webhook response ko block ya fail na kare.
+            asyncio.create_task(_process_update_safe(update))
             return PlainTextResponse("OK")
 
         app = Starlette(routes=[
