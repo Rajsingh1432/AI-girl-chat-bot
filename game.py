@@ -111,18 +111,18 @@ active_games = {}  # chat_id -> game_data
 async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # ⭐ FIX: Premium Emoji & Color Style on Menu Buttons
     keyboard = [
-        [InlineKeyboardButton("🔤 Word Guess", callback_data="g_word", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["sparkle"]),
-         InlineKeyboardButton("🎬 Emoji Puzzle", callback_data="g_puzzle", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])],
-        [InlineKeyboardButton("🧠 Rapid Fire Quiz", callback_data="g_brain", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["commands"])]
+        [InlineKeyboardButton("ᴡᴏʀᴅ ɢᴜᴇss", callback_data="g_word", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["sparkle"]),
+         InlineKeyboardButton("ᴍᴏᴠɪᴇ ɢᴜᴇss", callback_data="g_puzzle", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])],
+        [InlineKeyboardButton("ᴍɪɴᴅ ʀᴀᴘɪᴅ ғɪʀᴇ", callback_data="g_brain", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["commands"])]
     ]
     
     text = (
-        f"<blockquote><b><tg-emoji emoji-id=\"{G_E['game']}\">🎮</tg-emoji> Sneha's Game Arcade <tg-emoji emoji-id=\"{G_E['game']}\">🎮</tg-emoji></b></blockquote>\n\n"
+        f"<blockquote><b><tg-emoji emoji-id=\"{G_E['game']}\"></tg-emoji> Sneha's Game Arcade <tg-emoji emoji-id=\"{G_E['game']}\"></tg-emoji></b></blockquote>\n\n"
         f"Khelne ke liye niche koi bhi game choose karo:\n\n"
-        f"<tg-emoji emoji-id=\"{G_E['word']}\">🔤</tg-emoji> <b>Word Guess</b> - Crossword style dimag lagao\n"
-        f"<tg-emoji emoji-id=\"{G_E['movie']}\">🎬</tg-emoji> <b>Emoji Puzzle</b> - Movie guess karo (10 Rounds)\n"
-        f"<tg-emoji emoji-id=\"{G_E['brain']}\">🧠</tg-emoji> <b>Rapid Fire Quiz</b> - Trivia aur logic (10 Rounds)\n\n"
-        f"<i><tg-emoji emoji-id=\"{G_E['light']}\">💡</tg-emoji> Multiplayer games me 30 seconds ke andar join karna padega! Har sawaal ka time 30 seconds hoga.</i>"
+        f"<tg-emoji emoji-id=\"{G_E['word']}\"></tg-emoji> <b>ᴡᴏʀᴅ ɢᴜᴇss</b> - Crossword style dimag lagao\n"
+        f"<tg-emoji emoji-id=\"{G_E['movie']}\"></tg-emoji> <b>ᴍᴏᴠɪᴇ ᴘᴜᴢᴢʟᴇ</b> - Movie guess karo (10 Rounds)\n"
+        f"<tg-emoji emoji-id=\"{G_E['brain']}\"></tg-emoji> <b>ʀᴀᴘɪᴅ ᴍɪɴᴅ ɢᴀᴍᴇ</b> - Trivia aur logic (10 Rounds)\n\n"
+        f"<i><tg-emoji emoji-id=\"{G_E['light']}\"></tg-emoji> Multiplayer games me 30 seconds ke andar join karna padega! Har sawaal ka time 30 seconds hoga.</i>"
     )
     
     if update.message:
@@ -213,7 +213,7 @@ async def init_join_phase(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
     }
     
     # ⭐ FIX: Premium Emoji & Color Style on Join Button
-    keyboard = [[InlineKeyboardButton("🎯 Join Game", callback_data="g_join", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["player"])]]
+    keyboard = [[InlineKeyboardButton("ᴊᴏɪɴ ɢᴀᴍᴇs", callback_data="g_join", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["player"])]]
     
     await context.bot.send_message(
         chat_id=chat_id,
@@ -272,7 +272,7 @@ async def ask_word(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: 
     
     msg = await context.bot.send_message(
         chat_id=chat_id,
-        text=f"<blockquote><b><tg-emoji emoji-id=\"{G_E['word']}\">🔤</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the word? 🤔\n\n<b>{w['q']}</b>\n\nNiche se sahi jawab dabao!",
+        text=f"<blockquote><b><tg-emoji emoji-id=\"{G_E['word']}\"></tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the word? 🤔\n\n<b>{w['q']}</b>\n\nNiche se sahi jawab dabao!",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -380,7 +380,7 @@ async def ask_puzzle(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     
     msg = await context.bot.send_message(
         chat_id=chat_id,
-        text=f"<blockquote><b><tg-emoji emoji-id=\"{G_E['movie']}\">🎬</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the movie? 🤔\n\n<b>Emojis:</b> {p['e']}\n\nNiche se sahi jawab dabao!",
+        text=f"<blockquote><b><tg-emoji emoji-id=\"{G_E['movie']}\"></tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the movie? 🤔\n\n<b>Emojis:</b> {p['e']}\n\nNiche se sahi jawab dabao!",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
