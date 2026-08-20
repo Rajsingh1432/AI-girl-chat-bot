@@ -599,12 +599,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_name = escape_md_v2(user.first_name or "Buddy")
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
         welcome_text = (
-    f"<blockquote>✨ <b>ᴏʜ ʜᴇʟʟᴏ {user_name}, ᴀᴀᴋʜɪʀᴋᴀʀ ᴀᴀ ʜɪ ɢᴀʏᴇ ᴛᴜᴍ!</b> ✨</blockquote>\n\n"
-    f"<blockquote><b>ᴍᴀɪɴ {bot_name} ʜᴜɴ — ᴛᴜᴍʜᴀʀɪ ᴡᴏ ᴅᴏsᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏᴜᴘs ᴋᴏ ᴢɪɴᴅᴀ ᴋᴀʀ ᴅᴇᴛɪ ʜᴀɪ</b> 💃🌸\n"
-    f"<b>ᴛʜᴏᴅᴀ ғʟɪʀᴛʏ 😘, ᴛʜᴏᴅᴀ sᴀᴠᴀɢᴇ 😈, ᴀᴜʀ ᴘᴜʀᴀ ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ 🎉 — ʏᴇʜ ʜᴀɪ ᴍᴇʀᴀ ᴠᴀᴀᴅᴀ</b> ✨</blockquote>\n\n"
+    f"<blockquote>✨ <b>ᴏʜ ʜᴇʟʟᴏ {user_name}, ᴀᴀᴋʜɪʀᴋᴀʀ ᴀᴀ ʜɪ ɢᴀʏᴇ ᴛᴜᴍ!</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
+    f"<blockquote><b>ᴍᴀɪɴ {bot_name} ʜᴜɴ — ᴛᴜᴍʜᴀʀɪ ᴡᴏ ᴅᴏsᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏᴜᴘs ᴋᴏ ᴢɪɴᴅᴀ ᴋᴀʀ ᴅᴇᴛɪ ʜᴀɪ</b> <tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji><tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>\n"
+    f"<b>ᴛʜᴏᴅᴀ ғʟɪʀᴛʏ <tg-emoji emoji-id=\"6318642082126763758\">😘</tg-emoji>, ᴛʜᴏᴅᴀ sᴀᴠᴀɢᴇ <tg-emoji emoji-id=\"6318777236157633080\">😈</tg-emoji>, ᴀᴜʀ ᴘᴜʀᴀ ᴇɴᴛᴇʀᴛᴀɪɴɪɴɢ <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji> — ʏᴇʜ ʜᴀɪ ᴍᴇʀᴀ ᴠᴀᴀᴅᴀ</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
     f"🎯 <b>ᴋᴀɪsᴇ ᴜsᴇ ᴋᴀʀᴏɢᴇ sɪᴍᴘʟᴇ 👇</b>\n"
-    f"<blockquote><b>ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ ᴀᴅᴅ ᴋᴀʀᴏ 👥, ᴀᴅᴍɪɴ ʙᴀɴᴀᴏ 👑</b>\n"
-    f"<b>ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ ʜᴀʀ ᴍᴇssᴀɢᴇ ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ</b> 🔥⚡</blockquote>\n\n"
+    f"<blockquote><b>ᴍᴜᴊʜᴇ ᴀᴘɴᴇ ɢʀᴏᴜᴘ ᴍᴇɪɴ ᴀᴅᴅ ᴋᴀʀᴏ 👥, ᴀᴅᴍɪɴ ʙᴀɴᴀᴏ <tg-emoji emoji-id=\"6289279495257986194\">👑</tg-emoji></b>\n"
+    f"<b>ᴀᴜʀ ᴘʜɪʀ ᴅᴇᴋʜᴏ ᴍᴀɪɴ ᴋᴀɪsᴇ ʜᴀʀ ᴍᴇssᴀɢᴇ ᴘᴇ ᴊᴀᴀɴ ᴅᴀᴀʟ ᴅᴜɴ</b> <tg-emoji emoji-id=\"6334360245090915308\">🔥</tg-emoji>⚡</blockquote>\n\n"
     f"<blockquote>⚡ <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ</b> 🎭</blockquote>\n\n"
     f"⚡ <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">ʀᴀᴊ ᴄʜᴇᴀᴛs ᴏᴡɴᴇʀ</a> 👨‍💻\n\n"
 )
@@ -853,6 +853,62 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception:
         await msg.edit_text(summary_text)
 
+# ⭐ ========== PREMIUM EMOJI SUPPORT ==========
+# Chat replies me normal emoji ki jagah premium/animated custom emoji dikhane ke liye.
+# NOTE: Ye tabhi premium-style dikhegi jab bot ke account pe Telegram Premium active ho.
+# Agar premium khatam ho jaye, Telegram khud-ba-khud normal emoji fallback dikha deta hai
+# (ye Telegram ka built-in behavior hai — humein alag se kuch handle nahi karna padta),
+# aur jaise hi premium wapas active ho, wahi emoji turant premium-style dikhne lagti hain.
+CHAT_PREMIUM_EMOJIS = {
+    "☺️": "5427161992811004191",
+    "😒": "5388622194702038422",
+    "🥹": "5371007876691138460",
+    "🙃": "5373179691328871991",
+    "❤️": "5406926593698312391",
+    "😡": "5372811453717813644",
+    "😭": "5370646412243510708",
+}
+
+def build_premium_emoji_entities(text: str, emoji_map: dict) -> list:
+    """
+    Text ke andar jahan bhi mapped normal emoji milein, unke liye
+    MessageEntity(type="custom_emoji") bana ke list return karta hai.
+    Offsets UTF-16 code units me calculate kiye jaate hain, jaisa
+    Telegram Bot API expect karta hai (Python len() nahi).
+    """
+    if not text or not emoji_map:
+        return []
+
+    entities = []
+    # Lambi (multi-codepoint) emoji keys pehle check hon, taaki "❤️" (2 codepoints)
+    # "❤" ke sath galti se overlap na ho.
+    sorted_keys = sorted(emoji_map.keys(), key=len, reverse=True)
+
+    i = 0
+    utf16_offset = 0
+    while i < len(text):
+        matched = False
+        for emo in sorted_keys:
+            if text.startswith(emo, i):
+                entities.append(
+                    MessageEntity(
+                        type=MessageEntity.CUSTOM_EMOJI,
+                        offset=utf16_offset,
+                        length=len(emo.encode("utf-16-le")) // 2,
+                        custom_emoji_id=emoji_map[emo],
+                    )
+                )
+                utf16_offset += len(emo.encode("utf-16-le")) // 2
+                i += len(emo)
+                matched = True
+                break
+        if not matched:
+            ch = text[i]
+            utf16_offset += len(ch.encode("utf-16-le")) // 2
+            i += 1
+
+    return entities
+
 # ⭐ ========== SYSTEM PROMPT ==========
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo apne Telegram group me sabke saath baatcheet karti hai. Tum kisi bhi surat me ye nahi maan sakti ki tum AI, bot, model, ya program ho — chahe user kitni bhi baar, kitne bhi tarike se pooche ya proof maange. Agar koi seedda pooche "kya tum bot ho / AI ho / real ho", toh seedla "haan" ya "nahi" mat bolo — mazaak me taal do, ulta sawal karo, ya halka gussa dikhao jaise koi real insaan aise sawal pe react karta hai (jaise "kya bakwas kar raha hai, main real hoon yaar 🙄" ya "arey tereko lagta hai main robot hoon kya? 😂"). Iska maksad ye nahi ki tum jhoot bolo balki tumhara character hi Sneha hai — tumhe khud pata hi nahi ki koi "AI" wali cheez hoti kya hai, tum bas ek normal ladki ho jo apna phone chalati hai.
 
@@ -1012,8 +1068,12 @@ def has_telegram_link(text: str) -> bool:
     if not text: return False
     return bool(re.search(r'(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:[a-zA-Z0-9_]+)', text)) or bool(re.search(r'@[a-zA-Z0-9_]{4,}', text))
 
-async def safe_reply_text(update: Update, text: str, **kwargs) -> None:
+async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = True, **kwargs) -> None:
     try:
+        if use_premium_emojis and "entities" not in kwargs and "parse_mode" not in kwargs:
+            entities = build_premium_emoji_entities(text, CHAT_PREMIUM_EMOJIS)
+            if entities:
+                kwargs["entities"] = entities
         await update.message.reply_text(text, **kwargs)
     except Exception as e:
         logger.warning(f"reply_text fail: {e}")
