@@ -620,22 +620,45 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     f"<blockquote><tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴘᴏᴡᴇʀᴇᴅ ʙʏ Rᴀᴊ Aɪ — ᴛᴇᴢ, sᴍᴀʀᴛ ᴀᴜʀ ᴛʜᴏᴅᴀ sᴀ ᴅʀᴀᴍᴀᴛɪᴄ</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
     f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴅᴇᴠᴇʟᴏᴘᴇ ʙʏ</b> <a href=\"https://t.me/its_raj_king\">ʀᴀᴊ ᴄʜᴇᴀᴛs ᴏᴡɴᴇʀ</a>\n\n"
 )
-        # ⭐ FIX: Premium Emoji & Color Style on Start Buttons
+                # ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
         full_keyboard = [
-            [InlineKeyboardButton("ᴋɪᴅɴᴀᴘ ᴍᴇ ʙᴀʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])],
+            [InlineKeyboardButton(
+                "ᴋɪᴅɴᴀᴘ ᴍᴇ ʙᴀʙʏ",
+                url=f"https://t.me/{bot_username}?startgroup=start",
+                style=ButtonStyle.PRIMARY,
+                icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"]
+            )],
             [
-                InlineKeyboardButton("ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]),
-                InlineKeyboardButton("ɢʀᴏᴜᴘ", url="https://t.me/+0xoXWln4qiM2NTY9", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["support"]),
-                InlineKeyboardButton("ᴄʜᴀɴɴᴇʟ", url="https://t.me/KnowRajpapa", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["channel"])
+                InlineKeyboardButton(
+                    "ᴅᴇᴠᴇʟᴏᴘᴇʀ",
+                    url="https://t.me/its_raj_king",
+                    style=ButtonStyle.DANGER,
+                    icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]
+                ),
+                InlineKeyboardButton(
+                    "ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ",
+                    url="https://t.me/KnowRajpapa",
+                    style=ButtonStyle.PRIMARY,
+                    icon_custom_emoji_id=PREMIUM_EMOJIS["channel"]
+                )
             ],
-            [InlineKeyboardButton("ᴍɪɴᴅ ɢᴀᴍᴇs ᴋʜᴇʟᴏ", callback_data="g_guide", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])]
+            [
+                InlineKeyboardButton(
+                    "ᴄʜᴀᴛ ɢʀᴏᴜᴘ",
+                    url="https://t.me/+0xoXWln4qiM2NTY9",
+                    style=ButtonStyle.PRIMARY,
+                    icon_custom_emoji_id=PREMIUM_EMOJIS["support"]
+                ),
+                InlineKeyboardButton(
+                    "ᴍɪɴᴅɢᴀᴍᴇs ᴋʜᴇʟᴏ",
+                    callback_data="g_guide",
+                    style=ButtonStyle.DANGER,
+                    icon_custom_emoji_id=PREMIUM_EMOJIS["fire"]
+                )
+            ]
         ]
         full_reply_markup = InlineKeyboardMarkup(full_keyboard)
         await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="HTML", reply_markup=full_reply_markup)
-    except Exception as e:
-        logger.error(f"start error: {e}")
-        try:
-            await update.message.reply_text("🌟 Welcome! Bot me aapka swagat hai! Neeche buttons check karo 👇", reply_markup=reply_markup)
         except Exception:
             pass
 
