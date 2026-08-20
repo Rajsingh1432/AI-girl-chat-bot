@@ -536,7 +536,7 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
 conversation_memory = {}
 MAX_HISTORY_MESSAGES = 6
 
-WELCOME_IMAGE_URL = "https://ibb.co/jkt7ZNKB"
+WELCOME_IMAGE_URL = "https://ibb.co/Y7H6hCfD"
 
 WELCOME_MESSAGES = [
     "{name} hello welcome hai aapka! Kaise ho? 😊",
