@@ -1290,7 +1290,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
     is_standalone = True
     if update.message.reply_to_message: is_standalone = False
     if is_bot_mentioned: is_standalone = False
-    if update.message.forward_date: is_standalone = False
+    if update.message.forward_origin: is_standalone = False
 
     async def _maybe_greet_and_reply(is_first_touch_ok: bool):
         msg_count = user_msg_counter.get(user_id, 0)
