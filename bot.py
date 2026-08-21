@@ -30,7 +30,7 @@ except ImportError:
         DANGER = "danger"
     PREMIUM_EMOJIS = {
         "kidnap": "5244710862953941180",
-        "developer": "6156435052986111662",
+        "developer": "5362079447136610876",
         "channel": "5447410216696047103",
         "support": "5280774333243873175",
         "fire": "6037220740967697584"
@@ -439,7 +439,7 @@ async def generate_greeting(user_id: int, user_message: str) -> str | None:
 Abhi user ne tujhe "{user_message}" bola hai.
 
 TUJHE KYA KARNA HAI:
-- Memory me jo bhi SPECIFIC cheez pata hai (kaam, city, hobby, padhai), usi ka SEEDLA naam leke poochh, jaise koi purana dost karta hai. Example: "Are kaafi din ho gaye! Bata developer wala kaam kaisa chal raha hai ab?"
+- Memory me jo bhi SPECIFIC cheez pata hai (kaam, city, hobby, padhai), usi ka seedha naam leke poochh, jaise koi purana dost karta hai. Example: "Are kaafi din ho gaye! Bata developer wala kaam kaisa chal raha hai ab?"
 - Agar memory me sirf naam hai koi specific detail nahi, toh naam leke "Kaise ho naam? Bahut din baad!" jaisa bolo.
 - Agar memory me kuch bhi specific nahi hai to seedha friendly "Hey! Kaha the itne din? Kaise ho?" bol.
 - Reply SIRF 1 LINE ka hona chahiye. Kahani ya lamba paragraph mat likho.
@@ -895,10 +895,10 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
 # ⭐ FIX: Sirf tumhare diye gaye 7 Premium Emoji IDs use kiye gaye hain
 CHAT_PREMIUM_EMOJIS = {
     "☺️": "5427161992811004191",
-    "😒": "5388622194702038422",
+    "😒": "6037218073793007354",
     "🥹": "5371007876691138460",
     "🙃": "5373179691328871991",
-    "❤️": "5406926593698312391",
+    "❤️": "5366286462092323271",
     "😡": "5372811453717813644",
     "😭": "5370646412243510708",
     "😅": "5373015670822804395",
