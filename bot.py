@@ -611,12 +611,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_name = escape_md_v2(user.first_name or "Buddy")
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
         welcome_text = (
-            f"\n   <tg-emoji emoji-id=\"6163339676770898063\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji> <tg-emoji emoji-id=\"6163557319943655131\">💃</tg-emoji> <tg-emoji emoji-id=\"6163683922694639930\">💃</tg-emoji> <tg-emoji emoji-id=\"6163517544251527522\">💃</tg-emoji> <tg-emoji emoji-id=\"6163349155763719715\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji>\n\n"
-            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> 𝐎ʜ 𝐇ᴇʟʟᴏ {user_name}, 𝐀ᴋʜɪʀᴋᴀʀ 𝐀𝴀 𝐇ɪ 𝐆ᴀʏᴇ 𝐓ᴜᴍ!</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
-            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> 𝐌ᴀɪɴ {bot_name} 𝐇ᴜɴ — 𝐓ᴜᴍʜᴀʀɪ 𝐖𝴏 𝐃ᴏsᴛ 𝐉ᴏ 𝐁𝴏ʀɪɴɢ 𝐆ʀᴏᴜᴘs 𝐊ᴏ 𝐙ɪɴᴅᴀ 𝐊ᴀʀ 𝐃ᴇᴛɪ 𝐇ᴀɪ</b></blockquote>\n\n"
-            f"<blockquote><b>𝐌𝐮𝐣ʜᴇ 𝐀ᴘɴᴇ 𝐆ʀᴏᴜᴘ 𝐌ᴇɪɴ 𝐀ᴅᴅ 𝐊ᴀʀᴏ, 𝐀ᴅᴍɪɴ 𝐁ᴀɴᴀᴏ 𝐌ᴀɪ 𝐃ʜᴏᴏᴍ 𝐌ᴀᴄʜᴀ 𝐃ᴜɴɢɪ <tg-emoji emoji-id=\"6289279495257986194\">👑</tg-emoji></b>\n"
-            f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>𝐏ᴏᴡᴇʀᴇᴅ 𝐁ʏ 𝐑𝴀ᴊ 𝐀ɪ — 𝐓ᴇᴢ, 𝐒ᴍᴀʀᴛ 𝐀ᴜʀ 𝐓ʜᴏᴅᴀ 𝐒ᴀ 𝐃ʀᴀᴍᴀᴛɪᴄ</b> <tg-emoji emoji-id=\"5366073534793671550\">✨</tg-emoji></blockquote>\n\n"
-            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>𝐃ᴇᴠᴇʟᴏᴘᴇ 𝐁ʏ</b> <a href=\"https://t.me/its_raj_king\">𝐑𝴀ᴊ 𝐂ʜᴇᴀᴛs 𝐎ᴡɴᴇʀ</a>\n\n"
+            f"\n‎ ‎‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎<blockquote><tg-emoji emoji-id=\"6163339676770898063\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji> <tg-emoji emoji-id=\"6163557319943655131\">💃</tg-emoji> <tg-emoji emoji-id=\"6163683922694639930\">💃</tg-emoji> <tg-emoji emoji-id=\"6163517544251527522\">💃</tg-emoji> <tg-emoji emoji-id=\"6163349155763719715\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji></blockquote>\n\n"
+            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> 𝐎ʜ 𝐇ᴇʟʟᴏ {user_name}, 𝐀ᴋʜɪʀᴋᴀʀ 𝐀ᴀ 𝐇ɪ 𝐆ᴀʏᴇ 𝐓ᴜᴍ!</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
+            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> 𝐌ᴀɪɴ {bot_name} 𝐇ᴜɴ — 𝐓ᴜᴍʜᴀʀɪ 𝐖ᴏ 𝐃ᴏsᴛ 𝐉ᴏ 𝐁ᴏʀɪɴɢ 𝐆ʀᴏᴜᴘs 𝐊ᴏ 𝐙ɪɴᴅᴀ 𝐊ᴀʀ 𝐃ᴇᴛɪ 𝐇ᴀɪ</b></blockquote>\n\n"
+            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> 𝐌𝐮𝐣ʜᴇ 𝐀ᴘɴᴇ 𝐆ʀᴏᴜᴘ 𝐌ᴇɪɴ 𝐀ᴅᴅ 𝐊ᴀʀᴏ, 𝐀ᴅᴍɪɴ 𝐁ᴀɴᴀᴏ 𝐌ᴀɪ 𝐃ʜᴏᴏᴍ 𝐌ᴀᴄʜᴀ 𝐃ᴜɴɢɪ</b>\n"
+            f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>𝐏ᴏᴡᴇʀᴇᴅ 𝐁ʏ 𝐑ᴀᴊ 𝐀ɪ — 𝐓ᴇᴢ, 𝐒ᴍᴀʀᴛ 𝐀ᴜʀ 𝐓ʜᴏᴅᴀ 𝐒ᴀ 𝐃ʀᴀᴍᴀᴛɪᴄ</b> <tg-emoji emoji-id=\"5366073534793671550\">✨</tg-emoji></blockquote>\n\n"
+            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>𝐃ᴇᴠᴇʟᴏᴘᴇ 𝐁ʏ</b> <a href=\"https://t.me/its_raj_king\">𝐑ᴀᴊ 𝐂ʜᴇᴀᴛs 𝐎ᴡɴᴇʀ</a>\n\n"
         )
         # ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
         full_keyboard = [
