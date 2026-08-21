@@ -610,7 +610,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         asyncio.create_task(save_broadcast_user_async(user.id))
         user_name = escape_md_v2(user.first_name or "Buddy")
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
-                welcome_text = (
+        welcome_text = (
             f"\n<tg-emoji emoji-id=\"6163339676770898063\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji> <tg-emoji emoji-id=\"6163557319943655131\">💃</tg-emoji> <tg-emoji emoji-id=\"6163683922694639930\">💃</tg-emoji> <tg-emoji emoji-id=\"6163517544251527522\">💃</tg-emoji> <tg-emoji emoji-id=\"6163349155763719715\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji>\n\n"
             f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> 𝐎ʜ 𝐇ᴇʟʟᴏ {user_name}, 𝐀ᴋʜɪʀᴋᴀʀ 𝐀𝴀 𝐇ɪ 𝐆ᴀʏᴇ 𝐓ᴜᴍ!</b> <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji></blockquote>\n\n"
             f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> 𝐌ᴀɪɴ {bot_name} 𝐇ᴜɴ — 𝐓ᴜᴍʜᴀʀɪ 𝐖𝴏 𝐃ᴏsᴛ 𝐉ᴏ 𝐁𝴏ʀɪɴɢ 𝐆ʀᴏᴜᴘs 𝐊ᴏ 𝐙ɪɴᴅᴀ 𝐊ᴀʀ 𝐃ᴇᴛɪ 𝐇ᴀɪ</b></blockquote>\n\n"
