@@ -29,11 +29,11 @@ except ImportError:
         PRIMARY = "primary"
         DANGER = "danger"
     PREMIUM_EMOJIS = {
-        "kidnap": "5244710862953941180",
+        "kidnap": "6001154049452283936",
         "developer": "5362079447136610876",
-        "channel": "5447410216696047103",
-        "support": "5280774333243873175",
-        "fire": "6037220740967697584"
+        "channel": "6257898707551785373",
+        "support": "5359622339296256165",
+        "fire": "5280588940980542826"
     }
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
