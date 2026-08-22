@@ -140,7 +140,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         players_list = "\n".join([f"- {p['name']}" for p in game['players'].values()])
         await query.edit_message_text(
-            f"<blockquote><b>⏳ {game['type']} Shuru Ho Raha Hai!</b></blockquote>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>30 seconds</b> hain.\n\n<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> <b>Players Joined:</b>\n{players_list}",
+            f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji> {game['type']} Shuru Ho Raha Hai!</b></blockquote>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>30 seconds</b> hain.\n\n<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> <b>Players Joined:</b>\n{players_list}",
             reply_markup=query.message.reply_markup,
             parse_mode="HTML"
         )
@@ -192,7 +192,7 @@ async def init_join_phase(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
     
     await context.bot.send_message(
         chat_id=chat_id,
-        text=f"<blockquote><b>⏳ {active_games[chat_id]['type']} Shuru Ho Raha Hai!</b></blockquote>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>30 seconds</b> hain.\n\n<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> <b>Players Joined:</b>\n- {user.first_name}",
+        text=f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji> {active_games[chat_id]['type']} Shuru Ho Raha Hai!</b></blockquote>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>30 seconds</b> hain.\n\n<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> <b>Players Joined:</b>\n- {user.first_name}",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -242,11 +242,11 @@ async def ask_word(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: 
     game['answered'] = set()
     game['round_ended'] = False
     
-    keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_wans_{i}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["sparkle"])] for i, opt in enumerate(opts)]
+    keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_wans_{i}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["flower"])] for i, opt in enumerate(opts)]
     
     msg = await context.bot.send_message(
         chat_id=chat_id,
-        text=f"<blockquote><b>⏳ ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the word? <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n<b>{w['q']}</b>\n\nNiche se sahi jawab dabao!",
+        text=f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the word? <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n<b>{w['q']}</b>\n\nNiche se sahi jawab dabao!",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -264,9 +264,9 @@ async def word_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     
     game['round_ended'] = True
     roasts = [
-        f"⏳ Time up! Kisi ka dimag nahi chala? <tg-emoji emoji-id=\"{GAME_EMOJIS['devil']}\">😈</tg-emoji> Sahi jawab tha:",
-        "⏳ 30 second khatam! Bade khiladi lagte ho? 😭 Sahi jawab tha:",
-        "⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji> Time up! Kisi ka dimag nahi chala? Sahi jawab tha:",
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji> 30 second khatam! Bade khiladi lagte ho? Sahi jawab tha:",
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji> Arey bhai, itna easy sawaal tha! Sahi jawab:"
     ]
     await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
     
@@ -323,7 +323,7 @@ async def handle_word_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
         await ask_word(update, context, chat_id)
     else:
         await query.answer("❌ Galat Jawab! Koi aur try karega.", show_alert=True)
-        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! 🤔", parse_mode="HTML")
+        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! <tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji>", parse_mode="HTML")
 
 
 # ==========================================
@@ -353,7 +353,7 @@ async def ask_puzzle(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     
     msg = await context.bot.send_message(
         chat_id=chat_id,
-        text=f"<blockquote><b>⏳ ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the movie? <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n<b>Emojis:</b> {p['e']}\n\nNiche se sahi jawab dabao!",
+        text=f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the movie? <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n<b>Emojis:</b> {p['e']}\n\nNiche se sahi jawab dabao!",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -371,9 +371,9 @@ async def puzzle_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_
     
     game['round_ended'] = True
     roasts = [
-        f"⏳ Time up! Kisi ka dimag nahi chala? <tg-emoji emoji-id=\"{GAME_EMOJIS['devil']}\">😈</tg-emoji> Sahi jawab tha:",
-        "⏳ 30 second khatam! Bade khiladi lagte ho? 😭 Sahi jawab tha:",
-        "⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> Time up! Kisi ka dimag nahi chala? Sahi jawab tha:",
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> 30 second khatam! Bade khiladi lagte ho? Sahi jawab tha:",
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> Arey bhai, itna easy sawaal tha! Sahi jawab:"
     ]
     await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
     
@@ -430,7 +430,7 @@ async def handle_puzzle_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         await ask_puzzle(update, context, chat_id)
     else:
         await query.answer("❌ Galat Jawab! Koi aur try karega.", show_alert=True)
-        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! 🤔", parse_mode="HTML")
+        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! <tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji>", parse_mode="HTML")
 
 
 # ==========================================
@@ -460,7 +460,7 @@ async def ask_brain(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id:
     
     msg = await context.bot.send_message(
         chat_id=chat_id,
-        text=f"<blockquote><b>⏳ ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\n❓ <b>Sawaal:</b> {q_data['q']}\n\nNiche se sahi jawab dabao!",
+        text=f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\n<tg-emoji emoji-id=\"{GAME_EMOJIS['devil']}\">😈</tg-emoji> <b>Sawaal:</b> {q_data['q']}\n\nNiche se sahi jawab dabao!",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -479,9 +479,9 @@ async def brain_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_i
         
     game['round_ended'] = True
     roasts = [
-        f"⏳ Time up! Koi point nahi mila? <tg-emoji emoji-id=\"{GAME_EMOJIS['devil']}\">😈</tg-emoji> Sahi jawab tha:",
-        "⏳ 30 second khatam! Bade dimag wale lagte ho? 😭 Sahi jawab tha:",
-        "⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> Time up! Koi point nahi mila? Sahi jawab tha:",
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> 30 second khatam! Bade dimag wale lagte ho? Sahi jawab tha:",
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> Arey bhai, itna easy sawaal tha! Sahi jawab:"
     ]
     await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
     
@@ -538,7 +538,7 @@ async def handle_brain_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, c
         await ask_brain(update, context, chat_id)
     else:
         await query.answer("❌ Galat Jawab! Koi aur try karega.", show_alert=True)
-        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! 🤔", parse_mode="HTML")
+        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! <tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji>", parse_mode="HTML")
 
 # ==========================================
 # 7. WINNER ANNOUNCEMENT
@@ -569,4 +569,3 @@ async def end_game_winner(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
-    
