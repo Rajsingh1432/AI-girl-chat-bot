@@ -7,53 +7,22 @@ from questions import EMOJI_PUZZLES, BRAIN_QUESTIONS, WORD_PUZZLES
 
 SUPPORT_LINK = "https://t.me/+0xoXWln4qiM2NTY9"
 
-# ⭐ FIX: Premium Emoji & Button Style Imports (Fallback to prevent NameError)
-try:
-    from config import PREMIUM_EMOJIS, ButtonStyle
-except ImportError:
-    class ButtonStyle:
-        PRIMARY = "primary"
-        DANGER = "danger"
-    PREMIUM_EMOJIS = {
-        "kidnap": "5244710862953941180",
-        "commands": "5364026733769027361",
-        "channel": "5447410216696047103",
-        "support": "5280774333243873175",
-        "developer": "6156435052986111662",
-        "player": "5228845129208438288",
-        "sparkle": "5242311354919963946",
-        "fire": "6037220740967697584",
-        "warning": "6256031629433638926",
-        "title": "6145207501668225894",
-        "offer": "6269180384047533905"
-    }
+# ⭐ ========== PREMIUM EMOJI + COLOR BUTTON STYLING ==========
+# bot.py se independent rakha gaya hai (koi circular import na ho).
+class ButtonStyle:
+    PRIMARY = "primary"
+    DANGER = "danger"
 
-# ⭐ FIX: Premium Emojis for Captions
-# (Saare text me jo standard emojis the, wo ab premium animated ban chuke hain
-G_E = { # G_E means Game Emojis
-    "game": "6145207501668225894", # title
-    "word": "5242311354919963946", # sparkle
-    "movie": "5217933090483098080", # music_note
-    "brain": "5364026733769027361", # commands
-    "light": "5242311354919963946", # sparkle
-    "timer": "6199684634922458394", # checking
-    "target": "6037220740967697584", # fire
-    "celebrate": "5228845129208438288", # player
-    "trophy": "6145207501668225894", # title
-    "crown": "6145207501668225894", # title
-    "stats": "5364026733769027361", # commands
-    "radio": "5447410216696047103", # channel
-    "sad": "5399684634922458394", # stopped
-    "shake": "5280774333243873175", # support
-    "angry": "6256031629433638926", # warning
-    "roll": "6256031629433638926", # warning
-    "smirk": "5364026733769027361", # commands
-    "cry": "5280774333243873175", # support
-    "happy": "5228845129208438288", # player
-    "blush": "5280774333243873175", # support
-    "fire": "6037220740967697584", # fire
-    "ok": "5242311354919963946", # sparkle
-    "cross": "6256031629433638926", # warning
+# Caption-emoji IDs (bot.py ke welcome-caption me use hui wahi 8 IDs)
+GAME_EMOJIS = {
+    "dance": "6332268261010315734",   # 💃
+    "flower": "6332617871348210023",  # 🌸
+    "kiss": "6318642082126763758",    # 😘
+    "devil": "6318777236157633080",   # 😈
+    "party": "5801018335919347111",   # 🎉
+    "sparkle": "6143155267509948558", # ✨
+    "crown": "6289279495257986194",   # 👑
+    "fire": "6334360245090915308",    # 🔥
 }
 
 # ⭐ DUPLICATE QUESTIONS REMOVE KARNE KA HELPER
@@ -77,6 +46,7 @@ BRAIN_QUESTIONS = _dedupe_questions(BRAIN_QUESTIONS)
 WORD_PUZZLES = _dedupe_questions(WORD_PUZZLES)
 
 # ⭐ GLOBAL POOL SYSTEM: Ye list poore bot ke lifetime ke liye yaad rakhega
+# Jab tak ye khaali nahi hogi, koi question repeat nahi hoga (chahe 100 game khel lo)
 GLOBAL_P_POOL = []
 GLOBAL_B_POOL = []
 GLOBAL_W_POOL = []
@@ -109,26 +79,32 @@ active_games = {}  # chat_id -> game_data
 # 1. MAIN MENU
 # ==========================================
 async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # ⭐ FIX: Premium Emoji & Color Style on Menu Buttons
     keyboard = [
-        [InlineKeyboardButton("ᴡᴏʀᴅ ɢᴜᴇss", callback_data="g_word", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["sparkle"]),
-         InlineKeyboardButton("ᴍᴏᴠɪᴇ ɢᴜᴇss", callback_data="g_puzzle", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])],
-        [InlineKeyboardButton("ᴍɪɴᴅ ʀᴀᴘɪᴅ ғɪʀᴇ", callback_data="g_brain", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["commands"])]
+        [InlineKeyboardButton("Word Guess", callback_data="g_word", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["sparkle"]),
+         InlineKeyboardButton("Emoji Puzzle", callback_data="g_puzzle", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["party"])],
+        [InlineKeyboardButton("Rapid Fire Quiz", callback_data="g_brain", style=ButtonStyle.DANGER, icon_custom_emoji_id=GAME_EMOJIS["fire"])]
     ]
     
     text = (
-        f"<blockquote><b><tg-emoji emoji-id=\"{G_E['game']}\"></tg-emoji> Sneha's Game Arcade <tg-emoji emoji-id=\"{G_E['game']}\"></tg-emoji></b></blockquote>\n\n"
-        f"Khelne ke liye niche koi bhi game choose karo:\n\n"
-        f"<tg-emoji emoji-id=\"{G_E['word']}\"></tg-emoji> <b>ᴡᴏʀᴅ ɢᴜᴇss</b> - Crossword style dimag lagao\n"
-        f"<tg-emoji emoji-id=\"{G_E['movie']}\"></tg-emoji> <b>ᴍᴏᴠɪᴇ ᴘᴜᴢᴢʟᴇ</b> - Movie guess karo (10 Rounds)\n"
-        f"<tg-emoji emoji-id=\"{G_E['brain']}\"></tg-emoji> <b>ʀᴀᴘɪᴅ ᴍɪɴᴅ ɢᴀᴍᴇ</b> - Trivia aur logic (10 Rounds)\n\n"
-        f"<i><tg-emoji emoji-id=\"{G_E['light']}\"></tg-emoji> Multiplayer games me 30 seconds ke andar join karna padega! Har sawaal ka time 30 seconds hoga.</i>"
+        f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji> Sneha's Game Arcade <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji></b></blockquote>\n\n"
+        "Khelne ke liye niche koi bhi game choose karo:\n\n"
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji> <b>Word Guess</b> - Crossword style dimag lagao\n"
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> <b>Emoji Puzzle</b> - Movie guess karo (10 Rounds)\n"
+        f"<tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> <b>Rapid Fire Quiz</b> - Trivia aur logic (10 Rounds)\n\n"
+        f"<i><tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji> Multiplayer games me 30 seconds ke andar join karna padega! Har sawaal ka time 30 seconds hoga.</i>"
     )
     
     if update.message:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     elif update.callback_query:
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        try:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        except Exception:
+            # ⭐ FIX: Agar original message photo/caption wala hai (jaise /start ka
+            # welcome image), to edit_message_text fail ho jaata hai kyunki us
+            # message me "text" hota hi nahi, sirf "caption" hota hai. Us case
+            # me edit karne ki bajaye naya message bhej dete hain.
+            await update.callback_query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 # ==========================================
 # 2. BUTTON ROUTER
@@ -164,7 +140,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         players_list = "\n".join([f"- {p['name']}" for p in game['players'].values()])
         await query.edit_message_text(
-            f"⏳ <b>{game['type']} Shuru Ho Raha Hai!</b>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>30 seconds</b> hain.\n\n👥 <b>Players Joined:</b>\n{players_list}",
+            f"<blockquote><b>⏳ {game['type']} Shuru Ho Raha Hai!</b></blockquote>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>30 seconds</b> hain.\n\n<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> <b>Players Joined:</b>\n{players_list}",
             reply_markup=query.message.reply_markup,
             parse_mode="HTML"
         )
@@ -212,12 +188,11 @@ async def init_join_phase(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
         "timer_task": None
     }
     
-    # ⭐ FIX: Premium Emoji & Color Style on Join Button
-    keyboard = [[InlineKeyboardButton("ᴊᴏɪɴ ɢᴀᴍᴇs", callback_data="g_join", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["player"])]]
+    keyboard = [[InlineKeyboardButton("Join Game", callback_data="g_join", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["fire"])]]
     
     await context.bot.send_message(
         chat_id=chat_id,
-        text=f"⏳ <b>{active_games[chat_id]['type']} Shuru Ho Raha Hai!</b>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>30 seconds</b> hain.\n\n👥 <b>Players Joined:</b>\n- {user.first_name}",
+        text=f"<blockquote><b>⏳ {active_games[chat_id]['type']} Shuru Ho Raha Hai!</b></blockquote>\n\nNiche <b>Join</b> button dabao!\nTumhare paas <b>30 seconds</b> hain.\n\n<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> <b>Players Joined:</b>\n- {user.first_name}",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -267,12 +242,11 @@ async def ask_word(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: 
     game['answered'] = set()
     game['round_ended'] = False
     
-    # ⭐ FIX: Premium Emoji & Color Style on Answer Buttons
-    keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_wans_{i}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["sparkle"])] for i, opt in enumerate(opts)]
+    keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_wans_{i}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["sparkle"])] for i, opt in enumerate(opts)]
     
     msg = await context.bot.send_message(
         chat_id=chat_id,
-        text=f"<blockquote><b><tg-emoji emoji-id=\"{G_E['word']}\"></tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the word? 🤔\n\n<b>{w['q']}</b>\n\nNiche se sahi jawab dabao!",
+        text=f"<blockquote><b>⏳ ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the word? <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n<b>{w['q']}</b>\n\nNiche se sahi jawab dabao!",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -290,9 +264,9 @@ async def word_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     
     game['round_ended'] = True
     roasts = [
-        f"⏳ Time up! Kisi ka dimag nahi chala? 😏 Sahi jawab tha:",
-        f"⏳ 30 second khatam! Bade khiladi lagte ho? 😭 Sahi jawab tha:",
-        f"⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
+        f"⏳ Time up! Kisi ka dimag nahi chala? <tg-emoji emoji-id=\"{GAME_EMOJIS['devil']}\">😈</tg-emoji> Sahi jawab tha:",
+        "⏳ 30 second khatam! Bade khiladi lagte ho? 😭 Sahi jawab tha:",
+        "⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
     ]
     await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
     
@@ -342,7 +316,7 @@ async def handle_word_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
             pass
             
         await query.answer("✅ Bilkul Sahi!", show_alert=True)
-        await context.bot.send_message(chat_id, f"🎉 Wah! <b>{user.first_name}</b> ne sahi word pakda! 🎯\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
+        await context.bot.send_message(chat_id, f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> Wah! <b>{user.first_name}</b> ne sahi word pakda! <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
         
         await asyncio.sleep(2)
         game['round'] += 1
@@ -375,12 +349,11 @@ async def ask_puzzle(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     game['answered'] = set()
     game['round_ended'] = False
     
-    # ⭐ FIX: Premium Emoji & Color Style on Answer Buttons
-    keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_pans_{i}", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])] for i, opt in enumerate(opts)]
+    keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_pans_{i}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["party"])] for i, opt in enumerate(opts)]
     
     msg = await context.bot.send_message(
         chat_id=chat_id,
-        text=f"<blockquote><b><tg-emoji emoji-id=\"{G_E['movie']}\"></tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the movie? 🤔\n\n<b>Emojis:</b> {p['e']}\n\nNiche se sahi jawab dabao!",
+        text=f"<blockquote><b>⏳ ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the movie? <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n<b>Emojis:</b> {p['e']}\n\nNiche se sahi jawab dabao!",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -398,9 +371,9 @@ async def puzzle_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_
     
     game['round_ended'] = True
     roasts = [
-        f"⏳ Time up! Kisi ka dimag nahi chala? 😏 Sahi jawab tha:",
-        f"⏳ 30 second khatam! Bade khiladi lagte ho? 😭 Sahi jawab tha:",
-        f"⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
+        f"⏳ Time up! Kisi ka dimag nahi chala? <tg-emoji emoji-id=\"{GAME_EMOJIS['devil']}\">😈</tg-emoji> Sahi jawab tha:",
+        "⏳ 30 second khatam! Bade khiladi lagte ho? 😭 Sahi jawab tha:",
+        "⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
     ]
     await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
     
@@ -450,7 +423,7 @@ async def handle_puzzle_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             pass
             
         await query.answer("✅ Bilkul Sahi!", show_alert=True)
-        await context.bot.send_message(chat_id, f"🎉 Wah! <b>{user.first_name}</b> ne sahi jawab de diya! 🎯\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
+        await context.bot.send_message(chat_id, f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> Wah! <b>{user.first_name}</b> ne sahi jawab de diya! <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
         
         await asyncio.sleep(2)
         game['round'] += 1
@@ -483,12 +456,11 @@ async def ask_brain(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id:
     game['answered'] = set()
     game['round_ended'] = False
     
-    # ⭐ FIX: Premium Emoji & Color Style on Answer Buttons
-    keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_bans_{i}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["commands"])] for i, opt in enumerate(opts)]
+    keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_bans_{i}", style=ButtonStyle.DANGER, icon_custom_emoji_id=GAME_EMOJIS["fire"])] for i, opt in enumerate(opts)]
     
     msg = await context.bot.send_message(
         chat_id=chat_id,
-        text=f"<blockquote><b><tg-emoji emoji-id=\"{G_E['timer']}\">⏳</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\n❓ <b>Sawaal:</b> {q_data['q']}\n\nNiche se sahi jawab dabao!",
+        text=f"<blockquote><b>⏳ ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\n❓ <b>Sawaal:</b> {q_data['q']}\n\nNiche se sahi jawab dabao!",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -507,9 +479,9 @@ async def brain_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_i
         
     game['round_ended'] = True
     roasts = [
-        f"⏳ Time up! Koi point nahi mila? 😏 Sahi jawab tha:",
-        f"⏳ 30 second khatam! Bade dimag wale lagte ho? 😭 Sahi jawab tha:",
-        f"⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
+        f"⏳ Time up! Koi point nahi mila? <tg-emoji emoji-id=\"{GAME_EMOJIS['devil']}\">😈</tg-emoji> Sahi jawab tha:",
+        "⏳ 30 second khatam! Bade dimag wale lagte ho? 😭 Sahi jawab tha:",
+        "⏳ Arey bhai, itna easy sawaal tha! 🙄 Sahi jawab:"
     ]
     await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
     
@@ -559,7 +531,7 @@ async def handle_brain_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, c
             pass
             
         await query.answer("✅ Bilkul Sahi!", show_alert=True)
-        await context.bot.send_message(chat_id, f"🎯 <b>{user.first_name}</b> ne dimag lagaya aur sahi jawab diya!\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
+        await context.bot.send_message(chat_id, f"<tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> <b>{user.first_name}</b> ne dimag lagaya aur sahi jawab diya!\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
         
         await asyncio.sleep(2)
         game['round'] += 1
@@ -584,13 +556,12 @@ async def end_game_winner(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
         if len(scores) > 1 and scores[0]['score'] == scores[1]['score']:
             win_text = "🤝 Yeh game tie raha! Dono ne bahut achha khela."
         else:
-            win_text = f"<blockquote><b>🏆 GAME KHATAM! WINNER IS... 🏆</b></blockquote>\n\n👑 <b>{winner['name']}</b> ne jeet liya with <b>{winner['score']}</b> points!\n\n"
-            win_text += "📊 <b>Final Scores:</b>\n"
+            win_text = f"<blockquote><b>🏆 GAME KHATAM! WINNER IS... 🏆</b></blockquote>\n\n<tg-emoji emoji-id=\"{GAME_EMOJIS['crown']}\">👑</tg-emoji> <b>{winner['name']}</b> ne jeet liya with <b>{winner['score']}</b> points!\n\n"
+            win_text += f"<tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji> <b>Final Scores:</b>\n"
             for i, p in enumerate(scores, 1):
                 win_text += f"{i}. {p['name']}: {p['score']} points\n"
                 
-    # ⭐ FIX: Premium Emoji & Color Style on Support Button
-    keyboard = [[InlineKeyboardButton("Join Support Group", url=SUPPORT_LINK, style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["support"])]]
+    keyboard = [[InlineKeyboardButton("Join Support Group", url=SUPPORT_LINK, style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["flower"])]]
     
     await context.bot.send_message(
         chat_id=chat_id, 
@@ -598,3 +569,4 @@ async def end_game_winner(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
+    
