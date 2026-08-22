@@ -539,28 +539,28 @@ MAX_HISTORY_MESSAGES = 6
 WELCOME_IMAGE_URL = "https://ibb.co/Y7H6hCfD"
 
 WELCOME_MESSAGES = [
-    "{name} hello welcome hai aapka! Kaise ho? 😊",
-    "{name} welcome dude! Kya haal chaal hain? 👋",
-    "Woow {name} aa gaye, swagat hai aapka! 🎉",
-    "{name} arey aap aa gaye! Welcome to the group 💕",
-    "Hii {name}! Group me swagat hai tumhara 🥳",
-    "{name} welcome welcome! Mazaa aayega ab yahan 😄",
-    "Oye {name} aa gaya! Kaisa hai tu? 👋",
-    "{name} ji aapka hardik swagat hai group me! 🌸",
-    "Naya member! {name} welcome to the family 🎊",
-    "{name} hey! Kaise ho, sab badhiya? 😊",
-    "Welcome {name}! Ab masti shuru hogi 😜",
-    "{name} aa gaye aap! Group me maza aayega ab 🔥",
-    "Hello {name}! Group join karne ke liye shukriya 💫",
-    "{name} welcome! Sabse mil lo, sab friendly hain yahan 🤗",
-    "Are wah {name}! Swagat hai tumhara yahan 🌟",
-    "{name} kaise ho? Welcome to our group! 👋",
-    "Yayy {name} aa gaye! Ab group aur mazedaar 🎈",
-    "{name} welcome dost! Enjoy karo yahan 💛",
-    "Hey {name}! Naye member ka swagat hai 🙌",
-    "{name} aapka is group me dil se swagat hai! 💖",
-    "Salaam {name}! Group me aane ke liye welcome 🌺",
-    "{name} welcome yaar! Kaisa chal raha hai sab? 😎",
+    "{name} hello welcome hai aapka! Kaise ho? <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "{name} welcome dude! Kya haal chaal hain? <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "Woow {name} aa gaye, swagat hai aapka! <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji>",
+    "{name} arey aap aa gaye! Welcome to the group <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>",
+    "Hii {name}! Group me swagat hai tumhara <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji>",
+    "{name} welcome welcome! Mazaa aayega ab yahan <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "Oye {name} aa gaya! Kaisa hai tu? <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "{name} ji aapka hardik swagat hai group me! <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>",
+    "Naya member! {name} welcome to the family <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji>",
+    "{name} hey! Kaise ho, sab badhiya? <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "Welcome {name}! Ab masti shuru hogi <tg-emoji emoji-id=\"6318642082126763758\">😘</tg-emoji>",
+    "{name} aa gaye aap! Group me maza aayega ab <tg-emoji emoji-id=\"6334360245090915308\">🔥</tg-emoji>",
+    "Hello {name}! Group join karne ke liye shukriya <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "{name} welcome! Sabse mil lo, sab friendly hain yahan <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>",
+    "Are wah {name}! Swagat hai tumhara yahan <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "{name} kaise ho? Welcome to our group! <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "Yayy {name} aa gaye! Ab group aur mazedaar <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji>",
+    "{name} welcome dost! Enjoy karo yahan <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>",
+    "Hey {name}! Naye member ka swagat hai <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji>",
+    "{name} aapka is group me dil se swagat hai! <tg-emoji emoji-id=\"6318642082126763758\">😘</tg-emoji>",
+    "Salaam {name}! Group me aane ke liye welcome <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>",
+    "{name} welcome yaar! Kaisa chal raha hai sab? <tg-emoji emoji-id=\"6334360245090915308\">🔥</tg-emoji>",
 ]
 
 def get_welcome_message(name: str) -> str:
@@ -579,24 +579,7 @@ async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYP
     
     if data == "g_guide":
         await query.answer()
-        guide_text = (
-            "<blockquote><b>🎮 Sneha's Game Arcade 🎮</b></blockquote>\n\n"
-            "Group me khelne ke liye bas <code>/games</code> type karo, ya kisi bhi message ka reply karke <code>/games</code> likho! 👇\n\n"
-            "Available Games:\n"
-            "1️⃣ <b>Truth & Dare</b> - Sach bolo ya task karo\n"
-            "2️⃣ <b>Emoji Puzzle</b> - Emojis dekh ke movie guess karo\n"
-            "3️⃣ <b>Rapid Fire Quiz</b> - Dimag lagao aur jeeto\n\n"
-            "💡 <b>Niyam:</b> Multiplayer games me 30 seconds ke andar 'Join' button dabana padega. "
-            "Jo sabse pehle sahi jawab dega, usko point milega aur uske baad buttons lock ho jayenge! 🔒"
-        )
-        # ⭐ FIX: Premium Emoji & Color Style on Support Buttons
-        keyboard = [
-            [
-                InlineKeyboardButton("ʙᴏᴛ ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]),
-                InlineKeyboardButton("sᴜᴘᴘᴏʀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+0xoXWln4qiM2NTY9", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["support"])
-            ]
-        ]
-        await query.message.reply_text(guide_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        await games_menu(update, context)
         return
         
     await button_router(update, context)
@@ -1409,7 +1392,7 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 name = f"@{new_user.username}"
                 welcome_text = get_welcome_message(name)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
-                await update.message.reply_text(welcome_text)
+                await update.message.reply_text(welcome_text, parse_mode="HTML")
             else:
                 display_name = new_user.first_name or "Dost"
                 mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
@@ -1448,7 +1431,7 @@ async def chat_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE
             name = f"@{new_user.username}"
             welcome_text = get_welcome_message(name)
             await asyncio.sleep(random.uniform(0.5, 1.5))
-            await context.bot.send_message(chat_id=chat.id, text=welcome_text)
+            await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML")
         else:
             display_name = new_user.first_name or "Dost"
             mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
@@ -1589,3 +1572,4 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"🔥 main() crashed, restarting in 5s: {e}", exc_info=e)
             time.sleep(5)
+
