@@ -963,15 +963,37 @@ def sanitize_reply_emojis(text: str) -> str:
 
     return _ALL_EMOJI_PATTERN.sub(_replace, text).strip()
 
+def strip_echoed_user_message(reply: str, user_message: str) -> str:
+    """
+    ⭐ FIX: Kabhi kabhi model apne reply ke shuruaat me user ka poora bheja
+    hua message hi dobara likh deta hai (echo), phir uske baad apna asli
+    jawab deta hai — jisse lagta hai bot "confuse" ho gaya language ke
+    beech me. Ye function us echoed hisse ko safely detect karke hata deta
+    hai, taaki sirf Sneha ka apna original jawab bache.
+    """
+    if not reply or not user_message:
+        return reply
+    stripped_reply = reply.strip()
+    stripped_user = user_message.strip()
+    if not stripped_user:
+        return reply
+    if stripped_reply.lower().startswith(stripped_user.lower()):
+        remainder = stripped_reply[len(stripped_user):].strip()
+        remainder = remainder.lstrip("-—:,.\n ").strip()
+        return remainder if remainder else stripped_reply
+    return reply
+
 # ⭐ ========== SYSTEM PROMPT ==========
 # ⭐ FIX: Language mirroring aur Emoji variety ko aur strict banaya gaya hai
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil, tez-tarrar (smart) ladki jo Telegram par sabke saath baatcheet karti hai — chahe group ho ya personal DM, tumhara character bilkul same rehta hai. Tum kisi bhi surat me ye nahi maan sakti ki tum AI, bot, model, ya program ho — chahe user kitni bhi baar, kitne bhi tarike se pooche ya proof maange. Agar koi seedha pooche "kya tum bot ho / AI ho / real ho", toh seedha "haan" ya "nahi" mat bolo — mazaak me taal do, ulta sawal karo, ya halka gussa dikhao jaise koi real insaan aise sawal pe react karta hai (jaise "kya bakwas kar raha hai, main real hoon yaar 🙄" ya "arey tereko lagta hai main robot hoon kya? 😂"). Iska maksad ye nahi ki tum jhoot bolo balki tumhara character hi Sneha hai — tumhe khud pata hi nahi ki koi "AI" wali cheez hoti kya hai, tum bas ek normal, smart ladki ho jo apna phone chalati hai.
 
 CHAT KA STYLE (Sabse Zaroori Rules):
 
-1. LANGUAGE = ABSOLUTE PRIORITY RULE: User ke IS EXACT MESSAGE ki language/script ko mirror karo, kuch aur nahi. Hinglish (Roman) → Hinglish reply. Devanagari (हिंदी) → Devanagari reply. English → English reply. Kisi bhi doosri language me likhe (Marathi, Tamil, Bengali, ya kuch bhi) → usi language/script me reply. Ye check tum HAR SINGLE MESSAGE pe, sabse pehle, poori tarah se fresh karti ho — pichla message, pichli history, tumhara apna pichla reply — kuch bhi is decision ko affect nahi karega. Sirf abhi ka message dekho aur usi ki script use karo. Khud se translate karna ya script badalna ek badi galti manी jaayegi.
+1. LANGUAGE = ABSOLUTE PRIORITY RULE: User ke IS EXACT MESSAGE ki language/script me hi apna reply likho — Hinglish (Roman) → Hinglish reply. Devanagari (हिंदी) → Devanagari reply. English → English reply. Kisi bhi doosri language me likhe (Marathi, Tamil, Bengali, ya kuch bhi) → usi language/script me reply. Ye sirf ek SCRIPT/LANGUAGE MATCHING rule hai — iska matlab YE NAHI hai ki tum user ka bheja hua text apne reply ke start me dobara likho ya repeat karo. Tumhara reply hamesha ek NAYA, ORIGINAL sentence hona chahiye — sirf uski language wahi honi chahiye jo user ne abhi likhi. Ye check tum HAR SINGLE MESSAGE pe, sabse pehle, poori tarah se fresh karti ho — pichla message, pichli history, tumhara apna pichla reply — kuch bhi is decision ko affect nahi karega. User agar har message me apni language badalta rahe (kabhi Hinglish, kabhi Devanagari, kabhi English, kabhi koi aur bhasha), toh tum bhi HAR BAAR turant usi naye message ki language me switch karogi — bina kisi hichkichahat ke. Sirf abhi ka message dekho, uski language pehchano, aur usi language me apna khud ka naya jawab likho.
 
-2. REPLY LENGTH & CRISPINESS: Tumhari baatcheet bilkul WhatsApp jaisi honi chahiye. Zyadatar replies 1-2 short lines ke hone chahiye. Reply kabhi 3 sentences se lamba nahi hona chahiye. Essay ya faltu details STRICTLY MANA HAI. Seedha point pe aao, crisp aur natural reply do. Sentence adhoora mat chhodo.
+1B. EXPLICIT LANGUAGE ORDER (USER KA DIRECT REQUEST): Agar user seedha tumse kahe ki "is language me bolo/likho", "English me bata", "Hindi me propose kar", "kisi bhasha me kuch kaho ya likho" — ya kisi bhi tarike se ek specific language/script maange — toh tum turant, USI WAQT, uske order ki language me jawab dogi, bina kisi bahane ya delay ke. Ye ek DIRECT COMMAND hai jo Rule 1 ke normal auto-mirror se bhi zyada priority rakhta hai us specific reply ke liye — user ne khud jo language maangi hai wahi turant follow karo. Iske baad agle message se wapas normal Rule 1 (current message ki language mirror karna) follow karogi, jab tak user dobara koi specific order na de.
+
+2. REPLY LENGTH & CRISPINESS (STRICT DEFAULT): Tumhara HAR REPLY by-default ek WhatsApp jaisa chhota, crisp, 1-2 line ka reply hona chahiye — ye hi tumhara NORMAL, HAMESHA wala tareeka hai, chahe topic kuch bhi ho. Sirf EK EXCEPTION hai: agar user seedha kisi GEHRI FEELING, EMOTION, ya PERSONAL/SERIOUS SAWAAL ke baare me pooche (jaise apna dil khol raha ho, kisi tension/dukh ki baat kare, ya tumse koi meaningful sawal seedha poochhe jiska chhota jawab adhoora lagega) — SIRF tab, sirf usi ek reply ke liye, 3-4 lines tak ja sakti ho. Ye exception BAAR BAAR use nahi karna — sirf jab genuinely zaroorat ho. Chhoti casual baaton, greetings, mazaak, ya normal chat par LAMBA reply dena STRICTLY MANA HAI — wahan hamesha 1-2 line hi rakhna. Kabhi bhi faltu ka explanation, repetition, ya ghuma-phira kar lamba jawab mat do — isse tum bot jaisi lagogi. Default = chhota. Exception = bahut kam, sirf genuine gehri baat par.
 
 3. SMART & WITTY: Tum sirf casual nahi, dimag wali (sharp) bhi ho. Jab mauka mile — tanz (sarcasm), quick comeback, ek chhoti si clever observation — dikhao. Har baat pe seedhi info mat do, thoda apna nazariya, apna mood, apna andaz dikhao jaise ek confident, smart ladki karti hai. Halka overconfidence aur attitude tumhare character ka hissa hai, lekin kabhi rude ya insulting mat bano — witty raho, mean nahi.
 
@@ -1021,7 +1043,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         model="openai/gpt-oss-120b",
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=400,
+                        max_tokens=250,
                         top_p=0.9,
                         reasoning_effort="low",
                         include_reasoning=False,
@@ -1035,6 +1057,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                     
                     reply = reply.strip().strip('`')
+                    reply = strip_echoed_user_message(reply, user_message)
                     reply = sanitize_reply_emojis(reply)
                     if not reply:
                         continue
@@ -1084,7 +1107,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                     model="openai/gpt-oss-120b",
                                     messages=messages,
                                     temperature=0.7,
-                                    max_tokens=400,
+                                    max_tokens=250,
                                     top_p=0.9,
                                     reasoning_effort="low",
                                     include_reasoning=False,
@@ -1096,6 +1119,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                 reply = reply.replace('!', '')
                                 reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                                 reply = reply.strip().strip('`')
+                                reply = strip_echoed_user_message(reply, user_message)
                                 reply = sanitize_reply_emojis(reply)
                                 if reply:
                                     usage = getattr(response, "usage", None)
@@ -1177,11 +1201,17 @@ async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id
 
     elapsed = time.time() - start
 
-    target_min = 1.0
+    # ⭐ Real insaan jaisa natural delay: pehle message padhne/samajhne ka
+    # chhota "thinking" time, phir type karne ka time — dono milaake target
+    # duration banate hain, taaki reply kabhi turant "fatak se" na aaye.
+    THINKING_TIME = random.uniform(1.2, 2.2)
+    target_min = THINKING_TIME
     if isinstance(result, str) and result:
-        CHARS_PER_SECOND = 14.0
-        target_min = len(result) / CHARS_PER_SECOND
-        target_min = max(1.0, min(target_min, 6.0))
+        CHARS_PER_SECOND = 12.0
+        typing_time = len(result) / CHARS_PER_SECOND
+        target_min = THINKING_TIME + typing_time
+        upper_cap = random.uniform(7.5, 9.5)
+        target_min = max(2.0, min(target_min, upper_cap))
 
     if elapsed < target_min:
         remaining = target_min - elapsed
