@@ -596,12 +596,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         welcome_text = (
             f"\n‎ ‎‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ <tg-emoji emoji-id=\"5789593740091857906\">💃</tg-emoji> <tg-emoji emoji-id=\"5792001889600022897\">💃</tg-emoji> <tg-emoji emoji-id=\"5789579686958865077\">💃</tg-emoji> <tg-emoji emoji-id=\"5789419819686173268\">💃</tg-emoji> <tg-emoji emoji-id=\"5789588379972671766\">💃</tg-emoji> <tg-emoji emoji-id=\"5791677275971787880\">💃</tg-emoji> <tg-emoji emoji-id=\"5792001889600022897\">💃</tg-emoji>\n\n"
             f"<blockquote>"
-            f"<b><tg-emoji emoji-id=\"5363905353698275608\">💃</tg-emoji>• ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b>\n\n"
-            f"<b><tg-emoji emoji-id=\"5363905353698275608\">💃</tg-emoji>• ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b>\n\n"
-            f"<b><tg-emoji emoji-id=\"5363905353698275608\">💃</tg-emoji>• ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ꜰυʟʟ ɢʀᴏυᴘ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴧᴛυʀєꜱ</b>\n"
+            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b>\n\n"
+            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b>\n\n"
+            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ꜰυʟʟ ɢʀᴏυᴘ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴧᴛυʀєꜱ</b>\n"
             f"</blockquote>\n\n"
-            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>• ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ᴧɪ</a>\n\n"
-            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>• ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
+            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ɴєυʀᴧʟ ϙυᴧɴᴛυϻ ᴄʜɪᴘ</a>\n\n"
+            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
            )
 # ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
         full_keyboard = [
