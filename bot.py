@@ -594,12 +594,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_name = escape_md_v2(user.first_name or "Buddy")
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
         welcome_text = (
-            f"\n‎ ‎‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ <tg-emoji emoji-id=\"6163339676770898063\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji> <tg-emoji emoji-id=\"6163557319943655131\">💃</tg-emoji> <tg-emoji emoji-id=\"6163683922694639930\">💃</tg-emoji> <tg-emoji emoji-id=\"6163517544251527522\">💃</tg-emoji> <tg-emoji emoji-id=\"6163349155763719715\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji>\n\n"
-            f"<blockquote><b><tg-emoji emoji-id=\"6163339676770898063\">💃</tg-emoji> ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b></blockquote>\n"
-            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b></blockquote>\n"
-            f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴘᴏᴡєʀєᴅ ʙʏ ʀᴧᴊ ᴧɪ</b> <tg-emoji emoji-id=\"5366073534793671550\">✨</tg-emoji>\n"
-            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n\n"
-        )
+            f"\n‎ ‎‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ <tg-emoji emoji-id=\"5789474632058804098\">💃</tg-emoji> <tg-emoji emoji-id=\"5789573356177070616\">💃</tg-emoji> <tg-emoji emoji-id=\"5789833154453837885\">💃</tg-emoji> <tg-emoji emoji-id=\"5789632570891180593\">💃</tg-emoji> <tg-emoji emoji-id=\"5789514467880476619\">💃</tg-emoji> <tg-emoji emoji-id=\"5789636934577957880\">💃</tg-emoji> <tg-emoji emoji-id=\"5789573356177070616\">💃</tg-emoji>\n\n"
+            f"<blockquote>"
+            f"<b><tg-emoji emoji-id=\"5363905353698275608\">💃</tg-emoji> ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b>\n"
+            f"<b><tg-emoji emoji-id=\"5363905353698275608\">💃</tg-emoji> ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b>\n"
+            f"<tg-emoji emoji-id=\"5363905353698275608\">✨</tg-emoji> <b>ᴘᴏᴡєʀєᴅ ʙʏ ʀᴧᴊ — ᴧɪ</b> <tg-emoji emoji-id=\"5366073534793671550\">✨</tg-emoji>\n"
+            f"</blockquote>\n\n"
+            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
+           )
 # ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
         full_keyboard = [
             [InlineKeyboardButton(
