@@ -536,7 +536,7 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
 conversation_memory = {}
 MAX_HISTORY_MESSAGES = 6
 
-WELCOME_IMAGE_URL = "https://ibb.co/7H2zgCT"
+WELCOME_IMAGE_URL = "https://ibb.co/4n9zssK3"
 
 WELCOME_MESSAGES = [
     "{name} hello welcome hai aapka! Kaise ho? <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
