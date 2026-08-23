@@ -594,13 +594,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user_name = escape_md_v2(user.first_name or "Buddy")
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
         welcome_text = (
-            f"\n‎ ‎‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ <tg-emoji emoji-id=\"5789474632058804098\">💃</tg-emoji> <tg-emoji emoji-id=\"5789573356177070616\">💃</tg-emoji> <tg-emoji emoji-id=\"5789833154453837885\">💃</tg-emoji> <tg-emoji emoji-id=\"5789632570891180593\">💃</tg-emoji> <tg-emoji emoji-id=\"5789514467880476619\">💃</tg-emoji> <tg-emoji emoji-id=\"5789636934577957880\">💃</tg-emoji> <tg-emoji emoji-id=\"5789573356177070616\">💃</tg-emoji>\n\n"
+            f"\n‎ ‎‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ <tg-emoji emoji-id=\"5789593740091857906\">💃</tg-emoji> <tg-emoji emoji-id=\"5792001889600022897\">💃</tg-emoji> <tg-emoji emoji-id=\"5789579686958865077\">💃</tg-emoji> <tg-emoji emoji-id=\"5789419819686173268\">💃</tg-emoji> <tg-emoji emoji-id=\"5789588379972671766\">💃</tg-emoji> <tg-emoji emoji-id=\"5791677275971787880\">💃</tg-emoji> <tg-emoji emoji-id=\"5792001889600022897\">💃</tg-emoji>\n\n"
             f"<blockquote>"
-            f"<b><tg-emoji emoji-id=\"5363905353698275608\">💃</tg-emoji> ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b>\n"
-            f"<b><tg-emoji emoji-id=\"5363905353698275608\">💃</tg-emoji> ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b>\n"
-            f"<tg-emoji emoji-id=\"5363905353698275608\">✨</tg-emoji> <b>ᴘᴏᴡєʀєᴅ ʙʏ ʀᴧᴊ — ᴧɪ</b> <tg-emoji emoji-id=\"5366073534793671550\">✨</tg-emoji>\n"
+            f"<b><tg-emoji emoji-id=\"5363905353698275608\">💃</tg-emoji>• ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b>\n\n"
+            f"<b><tg-emoji emoji-id=\"5363905353698275608\">💃</tg-emoji>• ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b>\n\n"
+            f"<b><tg-emoji emoji-id=\"5363905353698275608\">💃</tg-emoji>• ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ꜰυʟʟ ɢʀᴏυᴘ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴧᴛυʀєꜱ</b>\n"
             f"</blockquote>\n\n"
-            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
+            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>• ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ᴧɪ</a>\n\n"
+            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>• ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
            )
 # ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
         full_keyboard = [
