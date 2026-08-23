@@ -595,29 +595,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
         welcome_text = (
             f"\n‎ ‎‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ <tg-emoji emoji-id=\"6163339676770898063\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji> <tg-emoji emoji-id=\"6163557319943655131\">💃</tg-emoji> <tg-emoji emoji-id=\"6163683922694639930\">💃</tg-emoji> <tg-emoji emoji-id=\"6163517544251527522\">💃</tg-emoji> <tg-emoji emoji-id=\"6163349155763719715\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji>\n\n"
-            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> 𝐎ʜ 𝐇ᴇʟʟᴏ {user_name}, 𝐀ᴋʜɪʀᴋᴀʀ 𝐀ᴀ 𝐆ʏᴇ 𝐀ᴀᴘ !</b></blockquote>\n\n"
-            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> 𝐌ᴀɪɴ {bot_name}  𝐇ᴜɴ — 𝐓ᴜᴍʜᴀʀɪ 𝐖ᴏ 𝐃ᴏsᴛ 𝐉ᴏ 𝐁ᴏʀɪɴɢ 𝐆ʀᴏᴜᴘs 𝐊ᴏ 𝐙ɪɴᴅᴀ 𝐊ᴀʀ 𝐃ᴇᴛɪ 𝐇ᴀɪ</b></blockquote>\n\n"
-            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> 𝐌ᴜᴊʜᴇ 𝐀ᴘɴᴇ 𝐆ʀᴏᴜᴘ 𝐌ᴇɪɴ 𝐀ᴅᴅ 𝐊ᴀʀᴏ, 𝐀ᴅᴍɪɴ 𝐁ᴀɴᴀᴏ 𝐌ᴀɪ 𝐃ʜᴏᴏᴍ 𝐌ᴀᴄʜᴀ 𝐃ᴜɴɢɪ</b>\n"
-            f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>𝐏ᴏᴡᴇʀᴇᴅ 𝐁ʏ 𝐑ᴀᴊ 𝐀ɪ — 𝐓ᴇᴢ, 𝐒ᴍᴀʀᴛ 𝐀ᴜʀ 𝐓ʜᴏᴅᴀ 𝐒ᴀ 𝐃ʀᴀᴍᴀᴛɪᴄ</b> <tg-emoji emoji-id=\"5366073534793671550\">✨</tg-emoji></blockquote>\n\n"
-            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>𝐃ᴇᴠᴇʟᴏᴘᴇ 𝐁ʏ —</b> <a href=\"https://t.me/its_raj_king\">𝐑ᴀᴊ 𝐂ʜᴇᴀᴛs 𝐎ᴡɴᴇʀ</a>\n\n"
+            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> ᴏʜ ʜєʟʟᴏ {user_name}, ᴧᴋʜɪʀᴋᴧʀ ᴧᴧ ɢʏє ᴧᴧᴘ !</b></blockquote>\n\n"
+            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> ϻᴧɪɴ {bot_name}  ʜυɴ — ᴛυϻʜᴧʀɪ ᴡᴏ ᴅᴏꜱᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏυᴘꜱ ᴋᴏ ᴢɪɴᴅᴧ ᴋᴧʀ ᴅєᴛɪ ʜᴧɪ</b></blockquote>\n\n"
+            f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴘᴏᴡєʀєᴅ ʙʏ ʀᴧᴊ ᴧɪ — ᴛєᴢ, ꜱϻᴧʀᴛ ᴧυʀ ᴛʜᴏᴅᴧ ꜱᴧ ᴅʀᴧϻᴧᴛɪᴄ</b> <tg-emoji emoji-id=\"5366073534793671550\">✨</tg-emoji></blockquote>\n\n"
+            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n\n"
         )
-        # ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
+# ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
         full_keyboard = [
             [InlineKeyboardButton(
-                "ᴋɪᴅɴᴀᴘ ᴍᴇ ʙᴀʙʏ",
+                "ᴋɪᴅɴᴧᴘ ϻє ʙᴧʙʏ",
                 url=f"https://t.me/{bot_username}?startgroup=start",
                 style=ButtonStyle.PRIMARY,
                 icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"]
             )],
             [
                 InlineKeyboardButton(
-                    "ᴅᴇᴠᴇʟᴏᴘᴇʀ",
+                    "ᴅєᴠєʟᴏᴘєʀ",
                     url="https://t.me/its_raj_king",
                     style=ButtonStyle.DANGER,
                     icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]
                 ),
                 InlineKeyboardButton(
-                    "ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ",
+                    "ᴊᴏɪɴ ᴄʜᴧɴɴєʟ",
                     url="https://t.me/KnowRajpapa",
                     style=ButtonStyle.PRIMARY,
                     icon_custom_emoji_id=PREMIUM_EMOJIS["channel"]
@@ -625,13 +624,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ],
             [
                 InlineKeyboardButton(
-                    "ᴄʜᴀᴛ ɢʀᴏᴜᴘ",
+                    "ᴄʜᴧᴛ ɢʀᴏυᴘ",
                     url="https://t.me/+0xoXWln4qiM2NTY9",
                     style=ButtonStyle.PRIMARY,
                     icon_custom_emoji_id=PREMIUM_EMOJIS["support"]
                 ),
                 InlineKeyboardButton(
-                    "ᴍɪɴᴅɢᴀᴍᴇs ᴋʜᴇʟᴏ",
+                    "ϻɪɴᴅɢᴧϻєꜱ ᴋʜєʟᴏ",
                     callback_data="g_guide",
                     style=ButtonStyle.DANGER,
                     icon_custom_emoji_id=PREMIUM_EMOJIS["fire"]
