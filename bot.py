@@ -607,7 +607,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 # ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
         full_keyboard = [
             [InlineKeyboardButton(
-                "ᴋɪᴅɴᴧᴘ ϻє ʙᴧʙʏ",
+                "ᴧᴅᴅ ϻє ʙᴧʙʏ",
                 url=f"https://t.me/{bot_username}?startgroup=start",
                 style=ButtonStyle.PRIMARY,
                 icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"]
@@ -634,7 +634,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     icon_custom_emoji_id=PREMIUM_EMOJIS["support"]
                 ),
                 InlineKeyboardButton(
-                    "ϻɪɴᴅɢᴧϻєꜱ ᴋʜєʟᴏ",
+                    "ϻɪɴᴅɢᴧϻєꜱ",
                     callback_data="g_guide",
                     style=ButtonStyle.DANGER,
                     icon_custom_emoji_id=PREMIUM_EMOJIS["fire"]
