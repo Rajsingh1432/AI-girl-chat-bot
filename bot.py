@@ -595,10 +595,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
         welcome_text = (
             f"\n‎ ‎‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ <tg-emoji emoji-id=\"6163339676770898063\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji> <tg-emoji emoji-id=\"6163557319943655131\">💃</tg-emoji> <tg-emoji emoji-id=\"6163683922694639930\">💃</tg-emoji> <tg-emoji emoji-id=\"6163517544251527522\">💃</tg-emoji> <tg-emoji emoji-id=\"6163349155763719715\">💃</tg-emoji> <tg-emoji emoji-id=\"6163642261511869957\">💃</tg-emoji>\n\n"
-            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> ᴏʜ ʜєʟʟᴏ {user_name}, ᴧᴋʜɪʀᴋᴧʀ ᴧᴧ ɢʏє ᴧᴧᴘ !</b></blockquote>\n\n"
-            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> ϻᴧɪɴ {bot_name}  ʜυɴ — ᴛυϻʜᴧʀɪ ᴡᴏ ᴅᴏꜱᴛ ᴊᴏ ʙᴏʀɪɴɢ ɢʀᴏυᴘꜱ ᴋᴏ ᴢɪɴᴅᴧ ᴋᴧʀ ᴅєᴛɪ ʜᴧɪ</b></blockquote>\n\n"
-            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> ϻυᴊʜє ᴧᴘɴє ɢʀᴏυᴘ ϻєɪɴ ᴧᴅᴅ ᴋᴧʀᴏ, ᴧᴅϻɪɴ ʙᴧɴᴧᴏ ϻᴧɪ ᴅʜᴏᴏϻ ϻᴧᴄʜᴧ ᴅυɴɢɪ</b>\n"
-            f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴘᴏᴡєʀєᴅ ʙʏ ʀᴧᴊ ᴧɪ — ᴛєᴢ, ꜱϻᴧʀᴛ ᴧυʀ ᴛʜᴏᴅᴧ ꜱᴧ ᴅʀᴧϻᴧᴛɪᴄ</b> <tg-emoji emoji-id=\"5366073534793671550\">✨</tg-emoji></blockquote>\n\n"
+            f"<blockquote><b><tg-emoji emoji-id=\"6163339676770898063\">💃</tg-emoji> ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b></blockquote>\n"
+            f"<blockquote><b><tg-emoji emoji-id=\"6332268261010315734\">💃</tg-emoji> ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b></blockquote>\n"
+            f"<tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji> <b>ᴘᴏᴡєʀєᴅ ʙʏ ʀᴧᴊ ᴧɪ</b> <tg-emoji emoji-id=\"5366073534793671550\">✨</tg-emoji>\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b>ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n\n"
         )
 # ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
