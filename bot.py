@@ -535,7 +535,12 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
     return "ok"
 
 conversation_memory = {}
-MAX_HISTORY_MESSAGES = 6
+# ⭐ FIX: Pehle ye 6 tha, jabki summary sirf 15th message pe trigger hoti thi —
+# matlab history summary banne se PEHLE hi trim ho jaati thi, aur beech ke
+# 9 messages ka data hamesha permanently kho jaata tha, bina kabhi DB me
+# jaane ke. Ab isse itna bada rakha hai ki summary-trigger (neeche wala
+# SUMMARY_TRIGGER_EVERY) se pehle koi data na kate.
+MAX_HISTORY_MESSAGES = 24
 
 WELCOME_IMAGE_URL = "https://ibb.co/7H2zgCT"
 
@@ -604,23 +609,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ϙυᴧɴᴛυϻ ᴄᴏʀє</a>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
            )
-# ⭐ FIX: Premium Emoji & Color Style on Start Buttons (Mobile-Friendly Layout)
         full_keyboard = [
             [InlineKeyboardButton(
-                "ᴧᴅᴅ ϻє ʙᴧʙʏ",
+                "ᴋɪᴅɴᴀᴘ ᴍᴇ ʙᴀʙʏ",
                 url=f"https://t.me/{bot_username}?startgroup=start",
                 style=ButtonStyle.PRIMARY,
                 icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"]
             )],
             [
                 InlineKeyboardButton(
-                    "ᴅєᴠєʟᴏᴘєʀ",
+                    "ᴅᴇᴠᴇʟᴏᴘᴇʀ",
                     url="https://t.me/its_raj_king",
                     style=ButtonStyle.DANGER,
                     icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]
                 ),
                 InlineKeyboardButton(
-                    "ᴊᴏɪɴ ᴄʜᴧɴɴєʟ",
+                    "ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ",
                     url="https://t.me/KnowRajpapa",
                     style=ButtonStyle.PRIMARY,
                     icon_custom_emoji_id=PREMIUM_EMOJIS["channel"]
@@ -628,13 +632,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             ],
             [
                 InlineKeyboardButton(
-                    "ᴄʜᴧᴛ ɢʀᴏυᴘ",
+                    "ᴄʜᴀᴛ ɢʀᴏᴜᴘ",
                     url="https://t.me/+0xoXWln4qiM2NTY9",
                     style=ButtonStyle.PRIMARY,
                     icon_custom_emoji_id=PREMIUM_EMOJIS["support"]
                 ),
                 InlineKeyboardButton(
-                    "ϻɪɴᴅɢᴧϻєꜱ",
+                    "ᴍɪɴᴅɢᴀᴍᴇꜱ",
                     callback_data="g_guide",
                     style=ButtonStyle.DANGER,
                     icon_custom_emoji_id=PREMIUM_EMOJIS["fire"]
@@ -1140,6 +1144,8 @@ def get_history(user_id: int) -> list:
     return conversation_memory.get(user_id, [])
 
 _background_tasks = set()
+_last_activity = {}          # user_id -> last message timestamp
+_last_summarized_count = {}  # user_id -> message-count jab tak summary already ban chuki
 
 def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
     history = conversation_memory.setdefault(user_id, [])
@@ -1149,10 +1155,17 @@ def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
         conversation_memory[user_id] = history[-MAX_HISTORY_MESSAGES:]
     count = user_msg_counter.get(user_id, 0) + 1
     user_msg_counter[user_id] = count
-    if count % 15 == 0:
+    _last_activity[user_id] = time.time()
+    # ⭐ FIX: Pehle 15 tha — matlab jab tak user 15 messages na kare, uski
+    # koi memory hi DB me nahi jaati thi. Chhoti/casual conversations
+    # (5-10 messages) ka data hamesha kho jaata tha. Ab har 6th message pe
+    # hi summary-attempt hota hai, taaki chhoti baatein bhi jaldi save hon.
+    SUMMARY_TRIGGER_EVERY = 6
+    if count % SUMMARY_TRIGGER_EVERY == 0:
         task = asyncio.create_task(generate_summary(user_id, history))
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
+        _last_summarized_count[user_id] = count
 
 def has_telegram_link(text: str) -> bool:
     if not text: return False
@@ -1570,9 +1583,41 @@ async def daily_reset_watcher():
             logger.error(f"daily_reset_watcher error: {e}", exc_info=e)
         await asyncio.sleep(60)
 
+async def idle_memory_flush_watcher():
+    """
+    ⭐ FIX: Agar user 6 messages ka multiple poora kiye bina hi baat karna
+    band kar de (jaise sirf 2-5 messages bolke chala jaaye), to uski memory
+    kabhi bhi DB me save nahi hoti thi — bot use agli baar "bhool" jaata.
+    Ye background watcher har 60s me check karta hai: jo bhi user 3+ minute
+    se inactive hai AUR uske paas naya (abhi tak summarize na hua) chat-data
+    hai, uski summary bhi turant generate kar deta hai — taaki chhoti se
+    chhoti conversation bhi permanently save ho jaaye.
+    """
+    IDLE_SECONDS = 180
+    while True:
+        try:
+            now = time.time()
+            for user_id, last_time in list(_last_activity.items()):
+                if now - last_time < IDLE_SECONDS:
+                    continue
+                count = user_msg_counter.get(user_id, 0)
+                if count <= _last_summarized_count.get(user_id, 0):
+                    continue
+                history = conversation_memory.get(user_id, [])
+                if len(history) < 4:
+                    continue
+                task = asyncio.create_task(generate_summary(user_id, history))
+                _background_tasks.add(task)
+                task.add_done_callback(_background_tasks.discard)
+                _last_summarized_count[user_id] = count
+        except Exception as e:
+            logger.error(f"idle_memory_flush_watcher error: {e}", exc_info=e)
+        await asyncio.sleep(60)
+
 async def main() -> None:
     init_db()
     asyncio.create_task(daily_reset_watcher())
+    asyncio.create_task(idle_memory_flush_watcher())
     application = (
         Application.builder()
         .token(BOT_TOKEN)
