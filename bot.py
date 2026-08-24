@@ -370,6 +370,7 @@ STRICT RULES:
 2. Koi heading (jaise **Summary:** ya **Nayi Baatein:**) mat likho. Koi analysis mat likho. Prompt ko dobara mat likho. Sirf plain facts likho, koi code ya format tag nahi.
 3. ⭐ MOST IMPORTANT: Purani memory ke facts aur events/plans ko rakhna. Agar user ne koi nayi baat (naam, kaam, city, trip plan, feelings, romantic talks) batai hai, toh usko update/add kar dena. Purani important baatein mat bhoolna.
 4. Agar user ne koi personal info ya koi important plan/event nahi batayi, toh sirf "NONE" likho.
+5. ⭐ SCRIPT RULE (BAHUT ZAROORI): Chahe NAYI CHAT kisi bhi language/script me hui ho (Hindi/Devanagari, English, Marathi, ya kuch bhi), tumhara pura output HAMESHA sirf HINGLISH (Roman/English letters me likhi Hindi) me hona chahiye. Devanagari (हिंदी) script ya kisi bhi doosri script ka use STRICTLY MANA HAI. Sirf English alphabet (a-z) use karo, jaise "Naam Priya hai, Mumbai me rehti hai" — kabhi "नाम प्रिया है" jaisa mat likho.
 """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
@@ -402,6 +403,7 @@ STRICT RULES:
                         final_summary = response.choices[0].message.content.strip()
                         
                         lower_summary = final_summary.lower()
+                        has_devanagari = any('\u0900' <= ch <= '\u097F' for ch in final_summary)
                         if (not final_summary or 
                             len(final_summary) > 150 or 
                             "nayi baatein" in lower_summary or 
@@ -411,8 +413,9 @@ STRICT RULES:
                             "analysis" in lower_summary or 
                             "'role':" in lower_summary or
                             "main aapki instructions" in lower_summary or
+                            has_devanagari or
                             final_summary.upper() == "NONE"):
-                            logger.warning(f"⚠️ AI generated garbage or empty summary for {user_id}. Not overwriting memory. Output: {final_summary[:50]}")
+                            logger.warning(f"⚠️ AI generated garbage/wrong-script summary for {user_id}. Not overwriting memory. Output: {final_summary[:50]}")
                             return
                         
                         save_user_summary(user_id, final_summary)
@@ -967,6 +970,24 @@ def sanitize_reply_emojis(text: str) -> str:
 
     return _ALL_EMOJI_PATTERN.sub(_replace, text).strip()
 
+def detect_message_script(text: str) -> str:
+    """
+    ⭐ FIX: Current message ki script/language ko mechanically detect karta
+    hai (Devanagari / Latin(Hinglish or English) / Other), taaki model ko
+    poori history/memory ke context me confuse hue bina explicitly bataya
+    ja sake ki ABHI ke message ki language kya hai — sirf prompt-instruction
+    par depend karne ki bajaye, ek clear, code-level signal deta hai.
+    """
+    if not text:
+        return "hinglish"
+    devanagari_count = sum(1 for ch in text if '\u0900' <= ch <= '\u097F')
+    latin_count = sum(1 for ch in text if ch.isalpha() and ch.isascii())
+    if devanagari_count > 0 and devanagari_count >= latin_count:
+        return "devanagari"
+    if latin_count > 0:
+        return "hinglish_or_english"
+    return "hinglish_or_english"
+
 def strip_echoed_user_message(reply: str, user_message: str) -> str:
     """
     ⭐ FIX: Kabhi kabhi model apne reply ke shuruaat me user ka poora bheja
@@ -1025,7 +1046,17 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     messages = [{"role": "system", "content": SYSTEM_PROMPT + memory_context}]
     if history:
         messages.extend(history)
-    messages.append({"role": "user", "content": user_message})
+    # ⭐ FIX: Poori history/memory Devanagari ya kisi aur language me ho sakti
+    # hai, jisse model kabhi confuse ho jaata tha aur current Hinglish/English
+    # message ka reply bhi purani language me de deta tha. Ab har naye user
+    # message ke saath ek explicit, mechanical script-detection tag attach
+    # karte hain — taaki model ko ye guess na karna pade, seedha bataya jaaye.
+    script = detect_message_script(user_message)
+    if script == "devanagari":
+        tagged_message = f"{user_message}\n\n[SCRIPT NOTE: Ye message Devanagari (हिंदी) script me hai. Apna reply BHI Devanagari script me hi likho, chahe history/memory kisi aur script me ho.]"
+    else:
+        tagged_message = f"{user_message}\n\n[SCRIPT NOTE: Ye message Roman/Latin letters (Hinglish ya English) me hai. Apna reply BHI Roman/Latin letters me hi likho — Devanagari (हिंदी) script bilkul use mat karo, chahe history/memory me Devanagari ho.]"
+    messages.append({"role": "user", "content": tagged_message})
     tried = set()
     for _ in range(len(clients)):
         now = time.time()
