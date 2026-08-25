@@ -344,7 +344,27 @@ def get_all_active_groups() -> list:
         return []
 
 # ⭐ ========== IMPROVED MEMORY GENERATION (With Garbage Filter) ==========
-async def generate_summary(user_id: int, history: list):
+def _apply_telegram_name_fallback(summary: str, telegram_name: str | None) -> str:
+    """
+    ⭐ FIX: "Naam:" field ko finalize karta hai —
+    - Agar AI ne khud koi naam nikala hai (user ne text me bataya tha),
+      wahi final rehta hai, kuch chhedte nahi.
+    - Agar AI ne "Not shared" likha hai aur humare paas Telegram ka
+      first_name available hai, toh usko fallback ke roop me daal dete hain.
+    - Agar Telegram-name bhi nahi hai, "Not shared" hi rehne dete hain.
+    """
+    if not summary:
+        return summary
+    lines = summary.split("\n")
+    for i, line in enumerate(lines):
+        if line.strip().lower().startswith("naam:"):
+            value = line.split(":", 1)[1].strip() if ":" in line else ""
+            if value.lower() in ("not shared", "") and telegram_name:
+                lines[i] = f"Naam: {telegram_name} (Telegram name, user ne khud confirm nahi kiya)"
+            break
+    return "\n".join(lines)
+
+async def generate_summary(user_id: int, history: list, telegram_name: str | None = None):
     if len(history) < 4 or not DATABASE_URL: return
     
     logger.info(f"🔄 Summary generation triggered for {user_id}...")
@@ -359,18 +379,25 @@ async def generate_summary(user_id: int, history: list):
             chat_lines.append(f"{speaker}: {msg.get('content', '')}")
         chat_text = "\n".join(chat_lines)
 
-        prompt = f"""Tu ek memory bot hai. Neeche purani memory aur nayi chat di gayi hai. Tujhe personal facts aur important events/plans save karne hain.
+        prompt = f"""Tu ek memory bot hai. Neeche purani memory aur nayi chat di gayi hai. Tujhe user ke baare me structured facts save karne hain.
 
 PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
 NAYI CHAT:
 {chat_text}
 
+Tumhe neeche diye EXACT FORMAT me hi output dena hai, 4 alag lines me, har line ek fixed label se shuru hogi:
+
+Topics: <ek chhoti list, MAX 7 topics, comma se separate — jaise "Goa trip planning, college ki padhai, cricket match". Ye ek ROLLING WINDOW hai: PURANI MEMORY ke Topics list ko lo, agar NAYI CHAT me koi NAYA distinct topic discuss hua hai jo list me pehle se nahi hai, use list ke END me ADD karo. Agar list already 7 topics tak pahunch chuki hai aur naya topic add karna hai, toh list ka SABSE PEHLA (sabse purana) topic hata do — bilkul jaise ek real insaan apni recent baaton ko yaad rakhta hai, sabse purani baat dheere dheere bhool jaata hai. Agar NAYI CHAT me koi naya topic nahi hai (wahi purana topic continue hua), toh list ko bina badle waisa hi rakho. Agar PURANI MEMORY khali hai, toh sirf ek ya do current topics se list shuru karo>
+Naam: <SIRF tab likho jab user ne APNE MUNH SE, IS CHAT ME (nayi chat ya purani memory me), khud apna naam bataya ho, jaise "mera naam Priya hai" ya "main Rahul". Agar PURANI MEMORY ke Naam field me "(Telegram name, user ne khud confirm nahi kiya)" likha ho, toh usse "user ne khud bataya" mat maano — wahi fallback-naam use karte raho jab tak user khud koi alag naam na bataye. Agar kahin bhi user ne khud koi naam nahi bataya (na ab, na pehle), toh yahan sirf "Not shared" likho — kabhi khud se koi naam mat banao ya guess mat karo>
+Hobby: <user ke interests/hobbies/pasand agar usne bataye hon (jaise gaming, gaana sunna, cricket, painting). Agar nahi bataye toh "Not shared" likho>
+Facts: <baaki important personal facts 1-2 lines me — kaam, city, trip plans, feelings, romantic talks, koi bhi important event. Agar kuch na ho toh "None" likho>
+
 STRICT RULES:
-1. Sirf 1-2 lines me facts likho (jaise: Naam Raj hai, developer hai. Kal Goa trip pe ja raha hai. Neha se pyaar karta hai.).
-2. Koi heading (jaise **Summary:** ya **Nayi Baatein:**) mat likho. Koi analysis mat likho. Prompt ko dobara mat likho. Sirf plain facts likho, koi code ya format tag nahi.
-3. ⭐ MOST IMPORTANT: Purani memory ke facts aur events/plans ko rakhna. Agar user ne koi nayi baat (naam, kaam, city, trip plan, feelings, romantic talks) batai hai, toh usko update/add kar dena. Purani important baatein mat bhoolna.
-4. Agar user ne koi personal info ya koi important plan/event nahi batayi, toh sirf "NONE" likho.
-5. ⭐ SCRIPT RULE (BAHUT ZAROORI): Chahe NAYI CHAT kisi bhi language/script me hui ho (Hindi/Devanagari, English, Marathi, ya kuch bhi), tumhara pura output HAMESHA sirf HINGLISH (Roman/English letters me likhi Hindi) me hona chahiye. Devanagari (हिंदी) script ya kisi bhi doosri script ka use STRICTLY MANA HAI. Sirf English alphabet (a-z) use karo, jaise "Naam Priya hai, Mumbai me rehti hai" — kabhi "नाम प्रिया है" jaisa mat likho.
+1. Sirf yahi 4 lines likho (Topics/Naam/Hobby/Facts), koi extra heading, analysis, ya explanation mat likho. Prompt ko dobara mat likho.
+2. ⭐ NAAM RULE (BAHUT ZAROORI): "Naam" field sirf tab bharo jab NAYI CHAT ya PURANI MEMORY me user ne clearly, khud apna naam bataya ho. Kabhi bhi kisi assumption se naam mat nikaalo — sirf agar usne text me khud likha ho tabhi.
+3. ⭐ TOPICS RULE (BAHUT ZAROORI): "Topics" ek rolling-memory list hai — max 7, naya end me add hota hai, purana (agar 7 se zyada ho jaaye) start se hat jaata hai. Yaad rakho: naya topic sirf tab add karo jab wo GENUINELY ek naya/alag topic ho, chhote follow-up sawaal ya same topic ki continuation ko naya topic mat maano.
+4. ⭐ MOST IMPORTANT: Purani memory ke facts, naam, hobby, aur events/plans ko rakhna (agar nayi chat me unka koi update na ho). Agar user ne koi nayi baat batai hai, toh usko update/add kar dena. Purani important baatein mat bhoolna.
+5. ⭐ SCRIPT RULE: Chahe NAYI CHAT kisi bhi language/script me hui ho (Hindi/Devanagari, English, Marathi, ya kuch bhi), tumhara pura output HAMESHA sirf HINGLISH (Roman/English letters) me hona chahiye. Devanagari (हिंदी) script ka use STRICTLY MANA HAI.
 """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
@@ -404,24 +431,36 @@ STRICT RULES:
                         
                         lower_summary = final_summary.lower()
                         has_devanagari = any('\u0900' <= ch <= '\u097F' for ch in final_summary)
+                        has_required_labels = (
+                            "topics:" in lower_summary and
+                            "naam:" in lower_summary and
+                            "hobby:" in lower_summary and
+                            "facts:" in lower_summary
+                        )
                         if (not final_summary or 
-                            len(final_summary) > 150 or 
-                            "nayi baatein" in lower_summary or 
+                            len(final_summary) > 400 or 
                             "purani memory" in lower_summary or 
-                            "prompt" in lower_summary or 
-                            "rules" in lower_summary or 
-                            "analysis" in lower_summary or 
+                            "nayi chat" in lower_summary or
                             "'role':" in lower_summary or
                             "main aapki instructions" in lower_summary or
                             has_devanagari or
-                            final_summary.upper() == "NONE"):
-                            logger.warning(f"⚠️ AI generated garbage/wrong-script summary for {user_id}. Not overwriting memory. Output: {final_summary[:50]}")
+                            not has_required_labels):
+                            logger.warning(f"⚠️ AI generated garbage/wrong-format summary for {user_id}. Not overwriting memory. Output: {final_summary[:80]}")
                             return
+                        
+                        # ⭐ FIX: Agar user ne is chat me khud koi naam nahi bataya
+                        # (AI ne "Naam: Not shared" likha), toh uske Telegram
+                        # first_name ko fallback ke roop me use karte hain — taaki
+                        # kam se kam ek naam hamesha maujood rahe. Agar user ne
+                        # khud koi naam bataya hai, wahi AI ka diya naam final
+                        # rahega (replace ho jaayega) — Telegram-name kabhi usse
+                        # override nahi karega.
+                        final_summary = _apply_telegram_name_fallback(final_summary, telegram_name)
                         
                         save_user_summary(user_id, final_summary)
                         update_key_usage_actual(idx, entry_idx, 60)
                         reset_key_429_streak(idx)
-                        logger.info(f"📝 User {user_id} ki summary update: {final_summary[:80]}...")
+                        logger.info(f"📝 User {user_id} ki summary update: {final_summary[:120]}...")
                         return
                     except Exception as e:
                         error_str = str(e).lower()
@@ -1032,7 +1071,7 @@ CHAT KA STYLE (Sabse Zaroori Rules):
 
 8. EMOJIS (STRICT RULE): Reply me SIRF 1 EMOJI. 2+ emojis STRICTLY MANA HAI. Sirf in 10 me se choose karo: ☺️, 😒, 🥹, 🙃, ❤️, 😡, 😭, 🙏, 😅, 🤫. In 10 ke alawa KOI AUR emoji (jaise 😊, 🚫, 🎯, 👍, 🔥, ya koi bhi doosra) kabhi use mat karo — chahe wo kitna bhi normal lage. Pichli emoji repeat mat karo, mood ke hisaab se badlo.
 
-9. STRONG MEMORY, LIGHT TOUCH: [SECRET MEMORY] me jo facts hain (kaam, city, naam) unka natural reference do — jaise "are haan tune bataya tha na..." — lekin sirf jab context me fit ho, har reply me force mat karo (isse reply lamba ho jaata hai, jo rule 2 todta hai). [SECRET MEMORY] khali ho toh koi fake fact assume mat karo.
+9. STRONG MEMORY, LIGHT TOUCH: [SECRET MEMORY] me structured info hoti hai — Topics (pichli 6-7 alag baatcheet ke mudde, ek chhoti list, jaise real insaan apni recent conversations yaad rakhta hai), Naam (sirf agar user ne khud bataya ho), Hobby (uske interests), aur Facts (baaki details). Agar Topics list maujood hai aur naya message kisi purane topic se related lagta hai (ya user vague/incomplete baat kare, jaise "wo wala kaam hua kya"), toh us matching purane topic ko pehchano aur continue karo jaise baat kabhi rukhi hi nahi thi. Naam sirf tabhi bolo jab woh "Not shared" na ho. Hobby ka reference tabhi do jab conversation me naturally fit ho. In sab ka natural reference do — jaise "are haan tune bataya tha na..." — lekin sirf jab context me fit ho, har reply me force mat karo (isse reply lamba ho jaata hai, jo rule 2 todta hai). [SECRET MEMORY] khali ho ya kisi field me "Not shared"/"None" ho, toh us field ke baare me koi fake fact assume mat karo.
 
 10. STRICT FORMATTING: Double quotes, single quotes, exclamation marks (!) ka use STRICTLY MANA HAI. Normal WhatsApp-style text likho, ek hi chhote paragraph me.
 
@@ -1178,7 +1217,7 @@ _background_tasks = set()
 _last_activity = {}          # user_id -> last message timestamp
 _last_summarized_count = {}  # user_id -> message-count jab tak summary already ban chuki
 
-def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
+def update_history(user_id: int, user_message: str, bot_reply: str, telegram_name: str | None = None) -> None:
     history = conversation_memory.setdefault(user_id, [])
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": bot_reply})
@@ -1193,7 +1232,7 @@ def update_history(user_id: int, user_message: str, bot_reply: str) -> None:
     # hi summary-attempt hota hai, taaki chhoti baatein bhi jaldi save hon.
     SUMMARY_TRIGGER_EVERY = 6
     if count % SUMMARY_TRIGGER_EVERY == 0:
-        task = asyncio.create_task(generate_summary(user_id, history))
+        task = asyncio.create_task(generate_summary(user_id, history, telegram_name))
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
         _last_summarized_count[user_id] = count
@@ -1456,7 +1495,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
             user_mention = f"@{user.username}" if user.username else user.first_name
             final_reply = f"{user_mention} {greeting}"
             await safe_reply_text(update, final_reply)
-            update_history(user_id, clean_text, greeting)
+            update_history(user_id, clean_text, greeting, telegram_name=user.first_name)
             return
 
         reply = await get_reply_with_live_typing(
@@ -1464,7 +1503,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         )
         if not reply: 
             return
-        update_history(user_id, clean_text, reply)
+        update_history(user_id, clean_text, reply, telegram_name=user.first_name)
         user_mention = f"@{user.username}" if user.username else user.first_name
         final_reply = f"{user_mention} {reply}"
         await safe_reply_text(update, final_reply)
@@ -1474,7 +1513,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting)
-            update_history(user_id, clean_text, greeting)
+            update_history(user_id, clean_text, greeting, telegram_name=user.first_name)
             return
 
         reply = await get_reply_with_live_typing(
@@ -1482,7 +1521,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         )
         if not reply: 
             return
-        update_history(user_id, clean_text, reply)
+        update_history(user_id, clean_text, reply, telegram_name=user.first_name)
         await safe_reply_text(update, reply)
         return
 
@@ -1490,7 +1529,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting)
-            update_history(user_id, clean_text, greeting)
+            update_history(user_id, clean_text, greeting, telegram_name=user.first_name)
             return
 
         reply = await get_reply_with_live_typing(
@@ -1498,7 +1537,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         )
         if not reply: 
             return
-        update_history(user_id, clean_text, reply)
+        update_history(user_id, clean_text, reply, telegram_name=user.first_name)
         await safe_reply_text(update, reply)
         return
 
@@ -1637,6 +1676,12 @@ async def idle_memory_flush_watcher():
                 history = conversation_memory.get(user_id, [])
                 if len(history) < 4:
                     continue
+                # NOTE: is background watcher ke paas Telegram ka live user
+                # object nahi hota, isliye telegram_name yahan None jaata hai.
+                # Agar user pehle kabhi khud naam bata chuka hai, wo purani
+                # memory se retain ho jaayega. Agar nahi bataya, agli baar
+                # jab user khud message bhejega (update_history ke through),
+                # uska Telegram-name fallback tabhi apply ho jaayega.
                 task = asyncio.create_task(generate_summary(user_id, history))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
