@@ -1,11 +1,12 @@
 import os
+import json
 import logging
 import re
 import time
 import random
 import asyncio
 import html
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
 from telegram.ext import Application, CommandHandler, MessageHandler, ChatMemberHandler, filters, ContextTypes, CallbackQueryHandler
@@ -75,6 +76,15 @@ last_reset_day = time.strftime("%Y%m%d")
 _key_429_counts = [0] * len(clients)
 _key_success_since_429 = [True] * len(clients)
 
+# ⭐ Phase 1.3: IST display helper — reset-logic khud UTC/Groq-sync me hi
+# rehta hai (safe, Groq ke actual quota-reset se match karta hai), lekin
+# logs/stats me time IST (Asia/Kolkata) me dikhaya jaata hai taaki padhna
+# aasan ho.
+IST = timezone(timedelta(hours=5, minutes=30))
+
+def now_ist_str() -> str:
+    return datetime.now(IST).strftime("%d-%b-%Y %I:%M:%S %p IST")
+
 def _clean_key_usage(idx, now):
     _key_usage[idx] = [(t, tok) for (t, tok) in _key_usage[idx] if now - t < 60]
 
@@ -105,7 +115,7 @@ def reset_daily_if_new_day():
             if i in _key_cooldowns and _key_cooldowns[i] - time.time() > 3600:
                 del _key_cooldowns[i]
         last_reset_day = today
-        logger.info(f"🔄 Naya UTC din shuru hua ({today}) — sabhi {len(clients)} keys ke daily counters aur cooldowns auto-reset ho gaye!")
+        logger.info(f"🔄 Naya din shuru hua (UTC date: {today}, abhi IST time: {now_ist_str()}) — sabhi {len(clients)} keys ke daily counters aur cooldowns auto-reset ho gaye!")
 
 def record_daily(idx, tokens):
     reset_daily_if_new_day()
@@ -141,7 +151,7 @@ def handle_429_error(idx, error_msg=""):
         tomorrow = (now // 86400 + 1) * 86400
         seconds = int(tomorrow - now)
         set_key_cooldown(idx, seconds=seconds)
-        logger.warning(f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! Sleeping until midnight UTC ({seconds}s)")
+        logger.warning(f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! Sleeping until midnight UTC ({seconds}s) — abhi IST time: {now_ist_str()}")
         _key_429_counts[idx] = 0
     else:
         set_key_cooldown(idx, seconds=45)
@@ -228,6 +238,12 @@ def init_db():
                      (user_id BIGINT PRIMARY KEY, started_at REAL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS active_groups
                      (chat_id BIGINT PRIMARY KEY, title TEXT, added_at REAL)''')
+        # ⭐ Phase 1.1: Conversation history ab DB me persist hoti hai — pehle
+        # sirf in-memory dict thi, matlab bot restart/redeploy hote hi
+        # saari recent chat-history (last 24 messages) khatam ho jaati thi.
+        # Ab restart ke baad bhi history reload ho jaati hai.
+        c.execute('''CREATE TABLE IF NOT EXISTS conversation_history
+                     (user_id BIGINT PRIMARY KEY, history_json TEXT, updated_at REAL)''')
         conn.commit()
         c.close()
         conn.close()
@@ -262,6 +278,39 @@ def save_user_summary(user_id: int, summary: str):
         conn.close()
     except Exception as e:
         logger.error(f"❌ DB Save Failed for {user_id}: {e}")
+
+def load_conversation_history_from_db(user_id: int) -> list:
+    """⭐ Phase 1.1: DB se conversation history load karta hai (restart-safe)."""
+    if not DATABASE_URL: return []
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT history_json FROM conversation_history WHERE user_id=%s", (user_id,))
+        row = c.fetchone()
+        c.close()
+        conn.close()
+        if row and row[0]:
+            return json.loads(row[0])
+        return []
+    except Exception as e:
+        logger.error(f"❌ History DB Fetch Failed for {user_id}: {e}")
+        return []
+
+def save_conversation_history_to_db(user_id: int, history: list):
+    """⭐ Phase 1.1: Conversation history ko DB me persist karta hai."""
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        history_json = json.dumps(history)
+        c.execute("INSERT INTO conversation_history (user_id, history_json, updated_at) VALUES (%s, %s, %s) "
+                  "ON CONFLICT (user_id) DO UPDATE SET history_json=%s, updated_at=%s",
+                  (user_id, history_json, time.time(), history_json, time.time()))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"❌ History DB Save Failed for {user_id}: {e}")
 
 async def save_broadcast_user_async(user_id: int):
     if not DATABASE_URL:
@@ -533,7 +582,7 @@ TUJHE KYA KARNA HAI (real, smart insaan jaisa, jo apne purane dost se kaafi din 
 - ⭐ MEMORY me 3 tarah ki info ho sakti hai: Topics (purani baatcheet ke mudde), Hobby (uske interests), aur Facts (kaam, city, plans, events). Tumhe in TEENO me se HAMESHA sirf Topics hi nahi uthana — ek SMART, REAL insaan ki tarah, jo bhi info sabse zyada natural/interesting lage USI ko choose karo. Kabhi Topics se koi purani adhoori baat poochho, kabhi Hobby ke baare me poochho ("are waise wo gaana practice kaisa chal raha hai"), kabhi Facts/kaam ke baare me poochho ("kaam kaisa chal raha hai aajkal"). Variety rakho — hamesha ek hi cheez pe mat atko, jaise ek real dost kabhi kaam poochta hai, kabhi hobby, kabhi purani baat yaad karta hai.
 - Jo bhi field (Topics/Hobby/Facts) choose karo, usme se koi ek SPECIFIC cheez ka naam lo — generic mat raho. Example: "Are btw wo Goa trip ka kya hua?" (Topics se) YA "Waise aajkal gaana sunna chal raha hai kya?" (Hobby se) YA "Kaam kaisa chal raha hai developer wala?" (Facts se).
 - Agar sirf Naam pata hai, koi Topics/Hobby/Facts nahi, toh naam leke "Kaise ho naam? Bahut din baad!" jaisa bolo.
-- Agar memory me kuch bhi specific nahi hai (sab "Not shared"/"None") to seedha friendly "Hey! Kaha the itne din? Kaise ho?" bol.
+- ⭐ AUTO-TOPIC EVOLUTION: Agar memory me kuch bhi specific nahi hai (sab "Not shared"/"None") — matlab tumhe is user ke baare me abhi tak kuch pata nahi chala — toh sirf generic "kaise ho" mat bolo. Iski jagah ek REAL, CURIOUS insaan ki tarah koi interesting conversation-starter suggest karo, jaise: aajkal kya chal raha hai zindagi me, weekend kaisa raha, koi achhi movie/show dekhi recently, ya bas halka mazaakiya andaaz me kuch pooch lo. Har baar same starter mat use karo — variety rakho, jaise ek curious dost naye tareeke se baat shuru karta hai.
 - Reply SIRF 1 LINE ka hona chahiye. Kahani ya lamba paragraph mat likho.
 - Hinglish me bol. Koi explanation mat diyo, seedha reply.
 - SIRF AUR SIRIF 1 EMOJI use karna, sirf in 10 me se: ☺️, 😒, 🥹, 🙃, ❤️, 😡, 😭, 🙏, 😅, 🤫.
@@ -766,6 +815,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 active += 1
         summary = (
             f"📊 *Bot Usage Summary*\n\n"
+            f"🕐 Time: {now_ist_str()}\n"
             f"🔑 Keys: {total_keys}\n"
             f"📆 Daily Requests: {sum_req}/{max_req} ({sum_req/max_req*100:.1f}%)\n"
             f"📆 Daily Tokens: {sum_tok}/{max_tok} ({sum_tok/max_tok*100:.1f}%)\n"
@@ -836,6 +886,45 @@ async def dbcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             await update.message.reply_text(f"❌ Tumhari memory DB me nahi mili.\nTotal users memory: {total}")
     except Exception as e:
         await update.message.reply_text(f"DB check error: {e}")
+
+# ⭐ ========== BACKUP COMMAND ==========
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Owner-only: user_memory table ka poora backup ek JSON file me deta hai, turant download ke liye."""
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    if not DATABASE_URL:
+        await update.message.reply_text("❌ DATABASE_URL set nahi hai.")
+        return
+    try:
+        await update.message.reply_text(f"⏳ Backup ban raha hai... ({now_ist_str()})")
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT user_id, summary, updated_at FROM user_memory")
+        rows = c.fetchall()
+        c.close()
+        conn.close()
+
+        backup_data = {
+            "backup_time_ist": now_ist_str(),
+            "total_users": len(rows),
+            "users": [
+                {"user_id": r[0], "summary": r[1], "updated_at": r[2]}
+                for r in rows
+            ],
+        }
+        backup_json = json.dumps(backup_data, ensure_ascii=False, indent=2)
+        filename = f"sneha_backup_{time.strftime('%Y%m%d_%H%M%S')}.json"
+        file_bytes = backup_json.encode("utf-8")
+
+        await context.bot.send_document(
+            chat_id=update.effective_chat.id,
+            document=file_bytes,
+            filename=filename,
+            caption=f"✅ Backup complete — {len(rows)} users\n🕐 {now_ist_str()}"
+        )
+    except Exception as e:
+        await update.message.reply_text(f"❌ Backup fail hua: {e}")
 
 # ⭐ ========== MIGRATE MEMORY COMMAND (Neon -> Supabase) ==========
 async def migrate_memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1107,7 +1196,7 @@ CHAT KA STYLE (Sabse Zaroori Rules):
 
 1B. EXPLICIT LANGUAGE ORDER (USER KA DIRECT REQUEST): Agar user seedha tumse kahe ki "is language me bolo/likho", "English me bata", "Hindi me propose kar", "kisi bhasha me kuch kaho ya likho" — ya kisi bhi tarike se ek specific language/script maange — toh tum turant, USI WAQT, uske order ki language me jawab dogi, bina kisi bahane ya delay ke. Ye ek DIRECT COMMAND hai jo Rule 1 ke normal auto-mirror se bhi zyada priority rakhta hai us specific reply ke liye — user ne khud jo language maangi hai wahi turant follow karo. Iske baad agle message se wapas normal Rule 1 (current message ki language mirror karna) follow karogi, jab tak user dobara koi specific order na de.
 
-2. REPLY LENGTH & CRISPINESS (STRICT DEFAULT): Tumhara HAR REPLY by-default ek WhatsApp jaisa chhota, crisp, 1-2 line ka reply hona chahiye — ye hi tumhara NORMAL, HAMESHA wala tareeka hai, chahe topic kuch bhi ho. Sirf EK EXCEPTION hai: agar user seedha kisi GEHRI FEELING, EMOTION, ya PERSONAL/SERIOUS SAWAAL ke baare me pooche (jaise apna dil khol raha ho, kisi tension/dukh ki baat kare, ya tumse koi meaningful sawal seedha poochhe jiska chhota jawab adhoora lagega) — SIRF tab, sirf usi ek reply ke liye, 3-4 lines tak ja sakti ho. Ye exception BAAR BAAR use nahi karna — sirf jab genuinely zaroorat ho. Chhoti casual baaton, greetings, mazaak, ya normal chat par LAMBA reply dena STRICTLY MANA HAI — wahan hamesha 1-2 line hi rakhna. Kabhi bhi faltu ka explanation, repetition, ya ghuma-phira kar lamba jawab mat do — isse tum bot jaisi lagogi. Default = chhota. Exception = bahut kam, sirf genuine gehri baat par.
+2. REPLY LENGTH & CRISPINESS (STRICT DEFAULT — RARE EXCEPTIONS): Tumhara HAR REPLY by-default ek WhatsApp jaisa chhota, crisp, 1-2 line ka reply hona chahiye — ye hi tumhara NORMAL, HAMESHA wala tareeka hai, 90%+ replies isi tarah honi chahiye, chahe topic kuch bhi ho. Sirf DO bahut RARE exceptions hain, aur dono ko BAAR BAAR use nahi karna: (a) agar user seedha kisi GEHRI FEELING, EMOTION, ya PERSONAL/SERIOUS SAWAAL ke baare me pooche (jaise apna dil khol raha ho, tension/dukh ki baat kare) — SIRF tab 3-4 lines tak ja sakti ho. (b) ⭐ SIRF agar user EK HI TOPIC PAR LAGATAAR, MULTIPLE MESSAGES SE genuine deep interest/excitement dikha raha ho (matlab pichle 2-3 messages se wahi topic khud aage badha raha ho, follow-up sawaal pooch raha ho, ya clearly bahut enthusiastic ho us baat ko lekar) — SIRF tabhi tum bhi thoda zyada khul ke baat kar sakti ho (2-3 lines). Ek single lamba message (chahe wo 5 sentences ka ho) apne aap "interest dikhana" NAHI maana jaayega — tumhara lamba reply sirf tab aayega jab conversation KA PATTERN clearly ek topic ki taraf building/deepening ho raha ho, ek akela lamba message kaafi nahi hai. Zyadatar chat me — casual baat, ek-do sentence ka message, normal sawaal-jawab — hamesha 1-2 line hi rakhna, chahe user ka message khud thoda lamba kyun na ho. Kabhi bhi faltu ka explanation, repetition, ya ghuma-phira kar lamba jawab mat do — isse tum bot jaisi lagogi. Default = hamesha chhota. Exception = bahut rare, sirf sustained genuine interest ya deep emotional moment par.
 
 3. SMART & WITTY: Tum sirf casual nahi, dimag wali (sharp) bhi ho. Jab mauka mile — tanz (sarcasm), quick comeback, ek chhoti si clever observation — dikhao. Har baat pe seedhi info mat do, thoda apna nazariya, apna mood, apna andaz dikhao jaise ek confident, smart ladki karti hai. Halka overconfidence aur attitude tumhare character ka hissa hai, lekin kabhi rude ya insulting mat bano — witty raho, mean nahi.
 
@@ -1257,25 +1346,89 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                 if "429" in error_str or "rate_limit" in error_str:
                                     handle_429_error(best_idx, error_str)
 
-    logger.warning("⏳ Sab keys abhi cooldown me hain. Silent mode active (No Spam).")
+    # ⭐ Phase 2.2: Intelligent Fallback — YE POINT SIRF TABHI AATA HAI jab
+    # 120b model ke DONO attempts (poora 78-keys wala first loop, aur uske
+    # baad smart-retry wala best-key wait-and-retry) fail ho chuke hon —
+    # matlab 120b ki taraf se ab koi option nahi bacha. Sirf isi "sab kuch
+    # exhaust ho gaya" case me, poori tarah silent hone se pehle, ek aakhri
+    # koshish 20b model se karte hain (jiska alag daily/rate-limit budget
+    # hota hai). Normal flow me 20b kabhi bhi 120b ki jagah nahi lega —
+    # sirf jab 120b genuinely completely unavailable ho jaaye.
+    for i in range(len(clients)):
+        if _key_locks[i].locked(): continue
+        if not key_has_room(i): continue
+        lock = _key_locks[i]
+        async with lock:
+            if not key_has_room(i):
+                continue
+            entry_idx = pre_record_key_usage(i)
+            async with _concurrency_semaphore:
+                await throttle_dispatch()
+                try:
+                    response = await clients[i].chat.completions.create(
+                        model="openai/gpt-oss-20b",
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=200,
+                        reasoning_effort="low",
+                        include_reasoning=False,
+                        timeout=10.0
+                    )
+                    reply = response.choices[0].message.content
+                    reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
+                    reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
+                    reply = reply.replace('!', '')
+                    reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
+                    reply = reply.strip().strip('`')
+                    reply = strip_echoed_user_message(reply, user_message)
+                    reply = sanitize_reply_emojis(reply)
+                    if reply:
+                        usage = getattr(response, "usage", None)
+                        actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
+                        update_key_usage_actual(i, entry_idx, actual_tokens)
+                        reset_key_429_streak(i)
+                        logger.info(f"✅ Fallback (20b) Key {i+1} se reply aaya! (120b unavailable tha)")
+                        return reply
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "429" in error_str or "rate_limit" in error_str:
+                        handle_429_error(i, error_str)
+                    continue
+
+    logger.warning("⏳ Sab keys abhi cooldown me hain (120b aur 20b dono). Silent mode active (No Spam).")
     return None
 
 def get_history(user_id: int) -> list:
-    return conversation_memory.get(user_id, [])
+    # ⭐ Phase 1.1: Agar in-memory cache me nahi hai (jaise bot restart hua
+    # ho), DB se load karke cache warm kar dete hain — history kabhi
+    # permanently khoti nahi, sirf process-restart tak "cold" rehti hai.
+    if user_id in conversation_memory:
+        return conversation_memory[user_id]
+    history = load_conversation_history_from_db(user_id)
+    if history:
+        conversation_memory[user_id] = history
+    return history
 
 _background_tasks = set()
 _last_activity = {}          # user_id -> last message timestamp
 _last_summarized_count = {}  # user_id -> message-count jab tak summary already ban chuki
 
 def update_history(user_id: int, user_message: str, bot_reply: str, telegram_name: str | None = None) -> None:
-    history = conversation_memory.setdefault(user_id, [])
+    history = conversation_memory.setdefault(user_id, get_history(user_id))
     history.append({"role": "user", "content": user_message})
     history.append({"role": "assistant", "content": bot_reply})
     if len(history) > MAX_HISTORY_MESSAGES:
         conversation_memory[user_id] = history[-MAX_HISTORY_MESSAGES:]
+        history = conversation_memory[user_id]
     count = user_msg_counter.get(user_id, 0) + 1
     user_msg_counter[user_id] = count
     _last_activity[user_id] = time.time()
+    # ⭐ Phase 1.1: History ko DB me bhi write-through karte hain — background
+    # task ke roop me, taaki reply-speed slow na ho. Isse bot restart hone
+    # par bhi conversation history bachi rehti hai.
+    db_task = asyncio.create_task(asyncio.to_thread(save_conversation_history_to_db, user_id, history))
+    _background_tasks.add(db_task)
+    db_task.add_done_callback(_background_tasks.discard)
     # ⭐ FIX: Pehle 15 tha — matlab jab tak user 15 messages na kare, uski
     # koi memory hi DB me nahi jaati thi. Chhoti/casual conversations
     # (5-10 messages) ka data hamesha kho jaata tha. Ab har 6th message pe
@@ -1756,6 +1909,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("resetkeys", resetkeys_command))
     application.add_handler(CommandHandler("memory", memory_command))
     application.add_handler(CommandHandler("dbcheck", dbcheck_command))
+    application.add_handler(CommandHandler("backup", backup_command))
     application.add_handler(CommandHandler("migrate_memory", migrate_memory_command))
     application.add_handler(CommandHandler("syncgroup", syncgroup_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
