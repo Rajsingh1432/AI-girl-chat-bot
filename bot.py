@@ -344,6 +344,47 @@ def get_all_active_groups() -> list:
         return []
 
 # ⭐ ========== IMPROVED MEMORY GENERATION (With Garbage Filter) ==========
+def _parse_summary_fields(summary: str) -> dict:
+    """Summary text ko {label: value} dict me todta hai (Topics/Naam/Hobby/Facts)."""
+    fields = {}
+    if not summary:
+        return fields
+    for line in summary.split("\n"):
+        if ":" in line:
+            label, _, value = line.partition(":")
+            fields[label.strip().lower()] = value.strip()
+    return fields
+
+def _protect_permanent_fields(new_summary: str, old_summary: str) -> str:
+    """
+    ⭐ FIX: "Topics" field rolling-window hai (purana hatna chahiye), lekin
+    "Naam", "Hobby", "Facts" hamesha PERMANENT hone chahiye. Agar kabhi AI
+    galti se in permanent fields ko "Not shared"/"None" kar de (jabki purani
+    memory me unme actual data tha), toh unhe purani memory se restore kar
+    dete hain — taaki koi bhi AI-galti se personal info kabhi na khoye.
+    Sirf Topics field ko is protection se explicitly bahar rakha hai, kyunki
+    wahi genuinely rolling/trimming honi chahiye.
+    """
+    if not old_summary:
+        return new_summary
+    old_fields = _parse_summary_fields(old_summary)
+    new_fields = _parse_summary_fields(new_summary)
+    permanent_labels = ["naam", "hobby", "facts"]
+    empty_values = ("not shared", "none", "")
+
+    lines = new_summary.split("\n")
+    for i, line in enumerate(lines):
+        if ":" not in line:
+            continue
+        label = line.split(":", 1)[0].strip().lower()
+        if label not in permanent_labels:
+            continue
+        new_value = new_fields.get(label, "").lower()
+        old_value = old_fields.get(label, "")
+        if new_value in empty_values and old_value and old_value.lower() not in empty_values:
+            lines[i] = f"{line.split(':', 1)[0]}: {old_value}"
+    return "\n".join(lines)
+
 def _apply_telegram_name_fallback(summary: str, telegram_name: str | None) -> str:
     """
     ⭐ FIX: "Naam:" field ko finalize karta hai —
@@ -394,10 +435,11 @@ Facts: <baaki important personal facts 1-2 lines me — kaam, city, trip plans, 
 
 STRICT RULES:
 1. Sirf yahi 4 lines likho (Topics/Naam/Hobby/Facts), koi extra heading, analysis, ya explanation mat likho. Prompt ko dobara mat likho.
-2. ⭐ NAAM RULE (BAHUT ZAROORI): "Naam" field sirf tab bharo jab NAYI CHAT ya PURANI MEMORY me user ne clearly, khud apna naam bataya ho. Kabhi bhi kisi assumption se naam mat nikaalo — sirf agar usne text me khud likha ho tabhi.
-3. ⭐ TOPICS RULE (BAHUT ZAROORI): "Topics" ek rolling-memory list hai — max 7, naya end me add hota hai, purana (agar 7 se zyada ho jaaye) start se hat jaata hai. Yaad rakho: naya topic sirf tab add karo jab wo GENUINELY ek naya/alag topic ho, chhote follow-up sawaal ya same topic ki continuation ko naya topic mat maano.
-4. ⭐ MOST IMPORTANT: Purani memory ke facts, naam, hobby, aur events/plans ko rakhna (agar nayi chat me unka koi update na ho). Agar user ne koi nayi baat batai hai, toh usko update/add kar dena. Purani important baatein mat bhoolna.
-5. ⭐ SCRIPT RULE: Chahe NAYI CHAT kisi bhi language/script me hui ho (Hindi/Devanagari, English, Marathi, ya kuch bhi), tumhara pura output HAMESHA sirf HINGLISH (Roman/English letters) me hona chahiye. Devanagari (हिंदी) script ka use STRICTLY MANA HAI.
+2. ⭐ FIELD ISOLATION RULE (BAHUT ZAROORI): Har field (Topics, Naam, Hobby, Facts) EK DOOSRE SE BILKUL ALAG/INDEPENDENT hai. "Topics" field ka rolling-window/delete-logic SIRF Topics field tak limited hai — isse Naam, Hobby, ya Facts field PAR KOI ASAR NAHI PADEGA. Naam, Hobby, aur Facts hamesha PERMANENT hote hain jab tak user khud koi naya update na de — inhe kabhi bhi "purana hai isliye hata do" karke delete mat karo, sirf Topics list rolling hoti hai, baaki 3 fields nahi.
+3. ⭐ NAAM RULE (BAHUT ZAROORI): "Naam" field sirf tab bharo jab NAYI CHAT ya PURANI MEMORY me user ne clearly, khud apna naam bataya ho. Kabhi bhi kisi assumption se naam mat nikaalo — sirf agar usne text me khud likha ho tabhi.
+4. ⭐ TOPICS RULE (BAHUT ZAROORI): "Topics" ek rolling-memory list hai — max 7, naya end me add hota hai, purana (agar 7 se zyada ho jaaye) start se hat jaata hai. Yaad rakho: naya topic sirf tab add karo jab wo GENUINELY ek naya/alag topic ho, chhote follow-up sawaal ya same topic ki continuation ko naya topic mat maano. Ye trimming SIRF isi field tak limited hai.
+5. ⭐ MOST IMPORTANT: Purani memory ke Naam, Hobby, aur Facts ko HAMESHA rakhna (agar nayi chat me unka koi naya update na ho, unhe waise hi copy kar do, hatana MAT). Agar user ne koi nayi baat batai hai, toh usko update/add kar dena. Purani important baatein kabhi mat bhoolna.
+6. ⭐ SCRIPT RULE: Chahe NAYI CHAT kisi bhi language/script me hui ho (Hindi/Devanagari, English, Marathi, ya kuch bhi), tumhara pura output HAMESHA sirf HINGLISH (Roman/English letters) me hona chahiye. Devanagari (हिंदी) script ka use STRICTLY MANA HAI.
 """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
@@ -448,6 +490,13 @@ STRICT RULES:
                             logger.warning(f"⚠️ AI generated garbage/wrong-format summary for {user_id}. Not overwriting memory. Output: {final_summary[:80]}")
                             return
                         
+                        # ⭐ FIX: Naam, Hobby, Facts fields ko permanent rakhte
+                        # hain — agar AI ne galti se inhe "Not shared"/"None"
+                        # kar diya (jabki purani memory me actual data tha), to
+                        # yahan unhe wapas restore kar dete hain. Sirf Topics
+                        # field genuinely rolling/trim hoti hai, baaki 3 nahi.
+                        final_summary = _protect_permanent_fields(final_summary, old_summary)
+                        
                         # ⭐ FIX: Agar user ne is chat me khud koi naam nahi bataya
                         # (AI ne "Naam: Not shared" likha), toh uske Telegram
                         # first_name ko fallback ke roop me use karte hain — taaki
@@ -480,10 +529,10 @@ async def generate_greeting(user_id: int, user_message: str) -> str | None:
     prompt = f"""Tu Sneha hai. Ye user tujhse pehle bhi baat kar chuka hai. Teri memory ke mutabiq is user ke baare me ye pata hai: "{summary}"
 Abhi user ne tujhe "{user_message}" bola hai — ye ek generic/casual opener hai (jaise "hi", "hello", "kya kar rahi ho").
 
-TUJHE KYA KARNA HAI (real insaan jaisa, jo apne purane dost se kaafi din baad milta hai):
-- ⭐ MEMORY ke "Topics" field me jo purani baatcheet ke mudde hain, unme se SABSE RECENT/RELEVANT ek topic uthao aur seedha USI KE BAARE ME poochho — jaise ek real dost karta hai jab wo tumhe kaafi din baad milta hai aur turant purani adhoori baat pe wapas aata hai. Example: agar Topics me "Goa trip planning" hai, toh bolo jaise "Are btw wo Goa trip ka kya hua, gaye ki nahi?" — seedha us cheez ka naam lo, generic mat raho.
-- Agar Topics khali/empty hai lekin koi Hobby pata hai, toh uske hobby ke baare me poochh sakti ho.
-- Agar Topics aur Hobby dono khali hain lekin Naam pata hai, toh naam leke "Kaise ho naam? Bahut din baad!" jaisa bolo.
+TUJHE KYA KARNA HAI (real, smart insaan jaisa, jo apne purane dost se kaafi din baad milta hai):
+- ⭐ MEMORY me 3 tarah ki info ho sakti hai: Topics (purani baatcheet ke mudde), Hobby (uske interests), aur Facts (kaam, city, plans, events). Tumhe in TEENO me se HAMESHA sirf Topics hi nahi uthana — ek SMART, REAL insaan ki tarah, jo bhi info sabse zyada natural/interesting lage USI ko choose karo. Kabhi Topics se koi purani adhoori baat poochho, kabhi Hobby ke baare me poochho ("are waise wo gaana practice kaisa chal raha hai"), kabhi Facts/kaam ke baare me poochho ("kaam kaisa chal raha hai aajkal"). Variety rakho — hamesha ek hi cheez pe mat atko, jaise ek real dost kabhi kaam poochta hai, kabhi hobby, kabhi purani baat yaad karta hai.
+- Jo bhi field (Topics/Hobby/Facts) choose karo, usme se koi ek SPECIFIC cheez ka naam lo — generic mat raho. Example: "Are btw wo Goa trip ka kya hua?" (Topics se) YA "Waise aajkal gaana sunna chal raha hai kya?" (Hobby se) YA "Kaam kaisa chal raha hai developer wala?" (Facts se).
+- Agar sirf Naam pata hai, koi Topics/Hobby/Facts nahi, toh naam leke "Kaise ho naam? Bahut din baad!" jaisa bolo.
 - Agar memory me kuch bhi specific nahi hai (sab "Not shared"/"None") to seedha friendly "Hey! Kaha the itne din? Kaise ho?" bol.
 - Reply SIRF 1 LINE ka hona chahiye. Kahani ya lamba paragraph mat likho.
 - Hinglish me bol. Koi explanation mat diyo, seedha reply.
