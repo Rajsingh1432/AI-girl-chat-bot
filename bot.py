@@ -62,15 +62,13 @@ _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
 # --- openai/gpt-oss-120b ke actual Groq limits (per key): RPM 30, RPD 1000, TPM 8000, TPD 200000 ---
-# TPM hi asli constraint hai (RPM 30 hone ke bawajood TPM 8000 pehle hi rok deta hai),
-# isliye RPM ko loose rakha hai (sirf ek outer safety net) aur poora control TOKEN budget (TPM) se hota hai.
 _key_usage = {i: [] for i in range(len(clients))}
-RPM_SAFE_LIMIT = 28         # actual RPM 30 ke bahut kareeb — TPM hi asli brake hai, RPM sirf backup safety
-TPM_SAFE_LIMIT = 7500        # actual TPM 8000 ka ~94% — TPM hi primary control hai isliye margin kam rakha
-REQUEST_TOKEN_ESTIMATE = 700  # average real usage ke kareeb — na zyada tight, na zyada loose
+RPM_SAFE_LIMIT = 28
+TPM_SAFE_LIMIT = 7500
+REQUEST_TOKEN_ESTIMATE = 700
 
-DAILY_REQUEST_LIMIT = 950    # actual RPD 1000 ka ~95%
-DAILY_TOKEN_LIMIT = 190000   # actual TPD 200000 ka ~95%
+DAILY_REQUEST_LIMIT = 950
+DAILY_TOKEN_LIMIT = 190000
 
 daily_requests = [0] * len(clients)
 daily_tokens = [0] * len(clients)
@@ -79,10 +77,6 @@ last_reset_day = time.strftime("%Y%m%d")
 _key_429_counts = [0] * len(clients)
 _key_success_since_429 = [True] * len(clients)
 
-# ⭐ Phase 1.3: IST display helper — reset-logic khud UTC/Groq-sync me hi
-# rehta hai (safe, Groq ke actual quota-reset se match karta hai), lekin
-# logs/stats me time IST (Asia/Kolkata) me dikhaya jaata hai taaki padhna
-# aasan ho.
 IST = timezone(timedelta(hours=5, minutes=30))
 
 def now_ist_str() -> str:
@@ -107,15 +101,6 @@ def key_has_room(idx) -> bool:
     return True
 
 def key_is_cooldown_only(idx) -> bool:
-    """
-    ⭐ FIX: 20b-fallback ke liye halka check — sirf genuine 429-cooldown
-    dekhta hai, 120b ke RPM/TPM/daily-budget tracking se independent hai.
-    Pehle 20b bhi key_has_room() use kar raha tha, jo 120b ke shared
-    daily_tokens/daily_requests arrays check karta hai — matlab agar 120b
-    ne kisi key ka "budget" khatam kar diya ho, 20b use bhi try nahi kar
-    paata tha, jabki Groq pe 20b ka apna alag quota hota hai. Ab 20b sirf
-    ye check karta hai ki key abhi 429-cooldown me hai ya nahi.
-    """
     now = time.time()
     if idx in _key_cooldowns and _key_cooldowns[idx] > now:
         return False
@@ -217,6 +202,58 @@ async def throttle_dispatch():
             await asyncio.sleep(wait + random.uniform(0, DISPATCH_JITTER))
         _last_dispatch_time = time.time()
 
+# ⭐ ========== HUMAN-LIKE ENHANCEMENTS ==========
+user_mood = {}          # user_id -> {"mood": ..., "last_update": timestamp}
+bot_mood = {"mood": "playful", "last_update": 0}
+MOOD_CHANGE_INTERVAL = 1800  # 30 min
+
+def get_current_context() -> str:
+    """Current time, day, date, festival awareness."""
+    now = datetime.now(IST)
+    time_str = now.strftime("%I:%M %p")
+    day_str = now.strftime("%A")
+    date_str = now.strftime("%d %B %Y")
+    month_day = now.strftime("%m-%d")
+    festivals = {
+        "01-01": "New Year",
+        "08-15": "Independence Day",
+        "10-02": "Gandhi Jayanti",
+        "12-25": "Christmas",
+        # Add more Indian festivals
+        "10-24": "Diwali (approx)",
+        "03-08": "Holi (approx)",
+    }
+    festival = festivals.get(month_day, "")
+    ctx = f"Current time: {time_str} IST, Day: {day_str}, Date: {date_str}"
+    if festival:
+        ctx += f", Festival: {festival}"
+    return ctx
+
+def detect_mood(text: str) -> str:
+    """Simple keyword-based mood detection."""
+    text_lower = text.lower()
+    sad_words = ["udaas", "dukhi", "tension", "problem", "sad", "depressed", "rona", "breakup", "fail", "tanha"]
+    angry_words = ["gussa", "fuck", "chutiya", "bakwas", "stop", "hate", "angry", "dimag mat kha"]
+    happy_words = ["haha", "😂", "maza", "accha", "happy", "khush", "love", "nice", "awesome", "great", "shukriya"]
+    if any(w in text_lower for w in sad_words):
+        return "sad"
+    elif any(w in text_lower for w in angry_words):
+        return "angry"
+    elif any(w in text_lower for w in happy_words):
+        return "happy"
+    return "neutral"
+
+def get_bot_mood() -> str:
+    """Bot ka mood slowly change hota hai."""
+    now = time.time()
+    if now - bot_mood["last_update"] > MOOD_CHANGE_INTERVAL:
+        moods = ["playful", "flirty", "calm", "teasing", "caring", "mysterious", "sarcastic"]
+        bot_mood["mood"] = random.choice(moods)
+        bot_mood["last_update"] = now
+    return bot_mood["mood"]
+
+# ⭐ ========== END ENHANCEMENTS ==========
+
 user_warning_count = {}
 bio_checked_users = set()
 
@@ -256,10 +293,6 @@ def init_db():
                      (user_id BIGINT PRIMARY KEY, started_at REAL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS active_groups
                      (chat_id BIGINT PRIMARY KEY, title TEXT, added_at REAL)''')
-        # ⭐ Phase 1.1: Conversation history ab DB me persist hoti hai — pehle
-        # sirf in-memory dict thi, matlab bot restart/redeploy hote hi
-        # saari recent chat-history (last 24 messages) khatam ho jaati thi.
-        # Ab restart ke baad bhi history reload ho jaati hai.
         c.execute('''CREATE TABLE IF NOT EXISTS conversation_history
                      (user_id BIGINT PRIMARY KEY, history_json TEXT, updated_at REAL)''')
         conn.commit()
@@ -298,7 +331,6 @@ def save_user_summary(user_id: int, summary: str):
         logger.error(f"❌ DB Save Failed for {user_id}: {e}")
 
 def load_conversation_history_from_db(user_id: int) -> list:
-    """⭐ Phase 1.1: DB se conversation history load karta hai (restart-safe)."""
     if not DATABASE_URL: return []
     try:
         conn = get_db_conn()
@@ -315,7 +347,6 @@ def load_conversation_history_from_db(user_id: int) -> list:
         return []
 
 def save_conversation_history_to_db(user_id: int, history: list):
-    """⭐ Phase 1.1: Conversation history ko DB me persist karta hai."""
     if not DATABASE_URL: return
     try:
         conn = get_db_conn()
@@ -410,9 +441,8 @@ def get_all_active_groups() -> list:
         logger.warning(f"get_all_active_groups fail: {e}")
         return []
 
-# ⭐ ========== IMPROVED MEMORY GENERATION (With Garbage Filter) ==========
+# ⭐ ========== IMPROVED MEMORY GENERATION ==========
 def _parse_summary_fields(summary: str) -> dict:
-    """Summary text ko {label: value} dict me todta hai (Topics/Naam/Hobby/Facts)."""
     fields = {}
     if not summary:
         return fields
@@ -423,15 +453,6 @@ def _parse_summary_fields(summary: str) -> dict:
     return fields
 
 def _protect_permanent_fields(new_summary: str, old_summary: str) -> str:
-    """
-    ⭐ FIX: "Topics" field rolling-window hai (purana hatna chahiye), lekin
-    "Naam", "Hobby", "Facts" hamesha PERMANENT hone chahiye. Agar kabhi AI
-    galti se in permanent fields ko "Not shared"/"None" kar de (jabki purani
-    memory me unme actual data tha), toh unhe purani memory se restore kar
-    dete hain — taaki koi bhi AI-galti se personal info kabhi na khoye.
-    Sirf Topics field ko is protection se explicitly bahar rakha hai, kyunki
-    wahi genuinely rolling/trimming honi chahiye.
-    """
     if not old_summary:
         return new_summary
     old_fields = _parse_summary_fields(old_summary)
@@ -453,14 +474,6 @@ def _protect_permanent_fields(new_summary: str, old_summary: str) -> str:
     return "\n".join(lines)
 
 def _apply_telegram_name_fallback(summary: str, telegram_name: str | None) -> str:
-    """
-    ⭐ FIX: "Naam:" field ko finalize karta hai —
-    - Agar AI ne khud koi naam nikala hai (user ne text me bataya tha),
-      wahi final rehta hai, kuch chhedte nahi.
-    - Agar AI ne "Not shared" likha hai aur humare paas Telegram ka
-      first_name available hai, toh usko fallback ke roop me daal dete hain.
-    - Agar Telegram-name bhi nahi hai, "Not shared" hi rehne dete hain.
-    """
     if not summary:
         return summary
     lines = summary.split("\n")
@@ -487,6 +500,7 @@ async def generate_summary(user_id: int, history: list, telegram_name: str | Non
             chat_lines.append(f"{speaker}: {msg.get('content', '')}")
         chat_text = "\n".join(chat_lines)
 
+        # Enhanced prompt: include promises, events, dates
         prompt = f"""Tu ek memory bot hai. Neeche purani memory aur nayi chat di gayi hai. Tujhe user ke baare me structured facts save karne hain.
 
 PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
@@ -495,18 +509,19 @@ NAYI CHAT:
 
 Tumhe neeche diye EXACT FORMAT me hi output dena hai, 4 alag lines me, har line ek fixed label se shuru hogi:
 
-Topics: <ek chhoti list, MAX 7 topics, comma se separate — jaise "Goa trip planning, college ki padhai, cricket match". Ye ek ROLLING WINDOW hai: PURANI MEMORY ke Topics list ko lo, agar NAYI CHAT me koi NAYA distinct topic discuss hua hai jo list me pehle se nahi hai, use list ke END me ADD karo. Agar list already 7 topics tak pahunch chuki hai aur naya topic add karna hai, toh list ka SABSE PEHLA (sabse purana) topic hata do — bilkul jaise ek real insaan apni recent baaton ko yaad rakhta hai, sabse purani baat dheere dheere bhool jaata hai. Agar NAYI CHAT me koi naya topic nahi hai (wahi purana topic continue hua), toh list ko bina badle waisa hi rakho. Agar PURANI MEMORY khali hai, toh sirf ek ya do current topics se list shuru karo>
-Naam: <SIRF tab likho jab user ne APNE MUNH SE, IS CHAT ME (nayi chat ya purani memory me), khud apna naam bataya ho, jaise "mera naam Priya hai" ya "main Rahul". Agar PURANI MEMORY ke Naam field me "(Telegram name, user ne khud confirm nahi kiya)" likha ho, toh usse "user ne khud bataya" mat maano — wahi fallback-naam use karte raho jab tak user khud koi alag naam na bataye. Agar kahin bhi user ne khud koi naam nahi bataya (na ab, na pehle), toh yahan sirf "Not shared" likho — kabhi khud se koi naam mat banao ya guess mat karo>
+Topics: <ek chhoti list, MAX 7 topics, comma se separate — jaise "Goa trip planning, college ki padhai, cricket match". Ye ek ROLLING WINDOW hai: PURANI MEMORY ke Topics list ko lo, agar NAYI CHAT me koi NAYA distinct topic discuss hua hai jo list me pehle se nahi hai, use list ke END me ADD karo. Agar list already 7 topics tak pahunch chuki hai aur naya topic add karna hai, toh list ka SABSE PEHLA (sabse purana) topic hata do. Agar PURANI MEMORY khali hai, toh sirf ek ya do current topics se list shuru karo>
+Naam: <SIRF tab likho jab user ne APNE MUNH SE, IS CHAT ME (nayi chat ya purani memory me), khud apna naam bataya ho. Agar PURANI MEMORY ke Naam field me "(Telegram name, user ne khud confirm nahi kiya)" likha ho, toh usse "user ne khud bataya" mat maano — wahi fallback-naam use karte raho jab tak user khud koi alag naam na bataye. Agar kahin bhi user ne khud koi naam nahi bataya, toh yahan sirf "Not shared" likho>
 Hobby: <user ke interests/hobbies/pasand agar usne bataye hon (jaise gaming, gaana sunna, cricket, painting). Agar nahi bataye toh "Not shared" likho>
-Facts: <baaki important personal facts 1-2 lines me — kaam, city, trip plans, feelings, romantic talks, koi bhi important event. Agar kuch na ho toh "None" likho>
+Facts: <baaki important personal facts 1-2 lines me — kaam, city, trip plans, feelings, romantic talks, koi bhi important event, promises, future plans, ya dates jo user ne mention ki ho. Agar user ne koi promise kiya hai ya koi event date बताई है, use yahan likho. Agar kuch na ho toh "None" likho>
 
 STRICT RULES:
 1. Sirf yahi 4 lines likho (Topics/Naam/Hobby/Facts), koi extra heading, analysis, ya explanation mat likho. Prompt ko dobara mat likho.
-2. ⭐ FIELD ISOLATION RULE (BAHUT ZAROORI): Har field (Topics, Naam, Hobby, Facts) EK DOOSRE SE BILKUL ALAG/INDEPENDENT hai. "Topics" field ka rolling-window/delete-logic SIRF Topics field tak limited hai — isse Naam, Hobby, ya Facts field PAR KOI ASAR NAHI PADEGA. Naam, Hobby, aur Facts hamesha PERMANENT hote hain jab tak user khud koi naya update na de — inhe kabhi bhi "purana hai isliye hata do" karke delete mat karo, sirf Topics list rolling hoti hai, baaki 3 fields nahi.
-3. ⭐ NAAM RULE (BAHUT ZAROORI): "Naam" field sirf tab bharo jab NAYI CHAT ya PURANI MEMORY me user ne clearly, khud apna naam bataya ho. Kabhi bhi kisi assumption se naam mat nikaalo — sirf agar usne text me khud likha ho tabhi.
-4. ⭐ TOPICS RULE (BAHUT ZAROORI): "Topics" ek rolling-memory list hai — max 7, naya end me add hota hai, purana (agar 7 se zyada ho jaaye) start se hat jaata hai. Yaad rakho: naya topic sirf tab add karo jab wo GENUINELY ek naya/alag topic ho, chhote follow-up sawaal ya same topic ki continuation ko naya topic mat maano. Ye trimming SIRF isi field tak limited hai.
-5. ⭐ MOST IMPORTANT: Purani memory ke Naam, Hobby, aur Facts ko HAMESHA rakhna (agar nayi chat me unka koi naya update na ho, unhe waise hi copy kar do, hatana MAT). Agar user ne koi nayi baat batai hai, toh usko update/add kar dena. Purani important baatein kabhi mat bhoolna.
-6. ⭐ SCRIPT RULE: Chahe NAYI CHAT kisi bhi language/script me hui ho (Hindi/Devanagari, English, Marathi, ya kuch bhi), tumhara pura output HAMESHA sirf HINGLISH (Roman/English letters) me hona chahiye. Devanagari (हिंदी) script ka use STRICTLY MANA HAI.
+2. ⭐ FIELD ISOLATION RULE: Har field EK DOOSRE SE BILKUL ALAG/INDEPENDENT hai. "Topics" field ka rolling-window/delete-logic SIRF Topics field tak limited hai. Naam, Hobby, aur Facts hamesha PERMANENT hote hain jab tak user khud koi naya update na de.
+3. ⭐ NAAM RULE: "Naam" field sirf tab bharo jab user ne clearly, khud apna naam bataya ho.
+4. ⭐ TOPICS RULE: "Topics" ek rolling-memory list hai — max 7, naya end me add hota hai, purana start se hat jaata hai.
+5. ⭐ MOST IMPORTANT: Purani memory ke Naam, Hobby, aur Facts ko HAMESHA rakhna (agar nayi chat me unka koi naya update na ho, unhe waise hi copy kar do). Agar user ne koi nayi baat batai hai, toh usko update/add kar dena.
+6. ⭐ PROMISE/EVENT RULE: Agar user ne koi promise kiya ho, koi upcoming event/date mention ki ho, ya koi plan banaya ho, toh use Facts me zaroor likho, jaise "15 March ko exam hai" ya "next week Goa trip plan".
+7. ⭐ SCRIPT RULE: Output HAMESHA sirf HINGLISH (Roman/English letters) me hona chahiye. Devanagari (हिंदी) script ka use STRICTLY MANA HAI.
 """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
@@ -557,20 +572,7 @@ STRICT RULES:
                             logger.warning(f"⚠️ AI generated garbage/wrong-format summary for {user_id}. Not overwriting memory. Output: {final_summary[:80]}")
                             return
                         
-                        # ⭐ FIX: Naam, Hobby, Facts fields ko permanent rakhte
-                        # hain — agar AI ne galti se inhe "Not shared"/"None"
-                        # kar diya (jabki purani memory me actual data tha), to
-                        # yahan unhe wapas restore kar dete hain. Sirf Topics
-                        # field genuinely rolling/trim hoti hai, baaki 3 nahi.
                         final_summary = _protect_permanent_fields(final_summary, old_summary)
-                        
-                        # ⭐ FIX: Agar user ne is chat me khud koi naam nahi bataya
-                        # (AI ne "Naam: Not shared" likha), toh uske Telegram
-                        # first_name ko fallback ke roop me use karte hain — taaki
-                        # kam se kam ek naam hamesha maujood rahe. Agar user ne
-                        # khud koi naam bataya hai, wahi AI ka diya naam final
-                        # rahega (replace ho jaayega) — Telegram-name kabhi usse
-                        # override nahi karega.
                         final_summary = _apply_telegram_name_fallback(final_summary, telegram_name)
                         
                         save_user_summary(user_id, final_summary)
@@ -588,21 +590,22 @@ STRICT RULES:
     except Exception as e:
         logger.error(f"🔥 Summary function crash for {user_id}: {e}")
 
-# ⭐ ========== GREETING GENERATOR ==========
+# ⭐ ========== GREETING GENERATOR (Enhanced) ==========
 async def generate_greeting(user_id: int, user_message: str) -> str | None:
     summary = get_user_summary(user_id)
     if not summary:
         return None
     prompt = f"""Tu Sneha hai. Ye user tujhse pehle bhi baat kar chuka hai. Teri memory ke mutabiq is user ke baare me ye pata hai: "{summary}"
-Abhi user ne tujhe "{user_message}" bola hai — ye ek generic/casual opener hai (jaise "hi", "hello", "kya kar rahi ho").
+Abhi user ne tujhe "{user_message}" bola hai — ye ek generic/casual opener hai.
 
-TUJHE KYA KARNA HAI (real, smart insaan jaisa, jo apne purane dost se kaafi din baad milta hai):
-- ⭐ MEMORY me 3 tarah ki info ho sakti hai: Topics (purani baatcheet ke mudde), Hobby (uske interests), aur Facts (kaam, city, plans, events). Tumhe in TEENO me se HAMESHA sirf Topics hi nahi uthana — ek SMART, REAL insaan ki tarah, jo bhi info sabse zyada natural/interesting lage USI ko choose karo. Kabhi Topics se koi purani adhoori baat poochho, kabhi Hobby ke baare me poochho ("are waise wo gaana practice kaisa chal raha hai"), kabhi Facts/kaam ke baare me poochho ("kaam kaisa chal raha hai aajkal"). Variety rakho — hamesha ek hi cheez pe mat atko, jaise ek real dost kabhi kaam poochta hai, kabhi hobby, kabhi purani baat yaad karta hai.
-- Jo bhi field (Topics/Hobby/Facts) choose karo, usme se koi ek SPECIFIC cheez ka naam lo — generic mat raho. Example: "Are btw wo Goa trip ka kya hua?" (Topics se) YA "Waise aajkal gaana sunna chal raha hai kya?" (Hobby se) YA "Kaam kaisa chal raha hai developer wala?" (Facts se).
-- Agar sirf Naam pata hai, koi Topics/Hobby/Facts nahi, toh naam leke "Kaise ho naam? Bahut din baad!" jaisa bolo.
-- ⭐ AUTO-TOPIC EVOLUTION: Agar memory me kuch bhi specific nahi hai (sab "Not shared"/"None") — matlab tumhe is user ke baare me abhi tak kuch pata nahi chala — toh sirf generic "kaise ho" mat bolo. Iski jagah ek REAL, CURIOUS insaan ki tarah koi interesting conversation-starter suggest karo, jaise: aajkal kya chal raha hai zindagi me, weekend kaisa raha, koi achhi movie/show dekhi recently, ya bas halka mazaakiya andaaz me kuch pooch lo. Har baar same starter mat use karo — variety rakho, jaise ek curious dost naye tareeke se baat shuru karta hai.
-- Reply SIRF 1 LINE ka hona chahiye. Kahani ya lamba paragraph mat likho.
-- Hinglish me bol. Koi explanation mat diyo, seedha reply.
+TUJHE KYA KARNA HAI (real, smart insaan jaisa):
+- MEMORY me 3 tarah ki info hai: Topics, Hobby, aur Facts. In teeno me se jo sabse natural/interesting lage, use choose karo.
+- Jo bhi field choose karo, usme se ek SPECIFIC cheez ka naam lo.
+- ⭐ PROMISE/PENDING CHECK: Agar memory ke Facts me koi aisi baat hai jo adhoori lagti hai (jaise "user ne kaha tha kal gym jayega", "Goa trip ka plan", "exam ki date"), toh greeting me use naturally pooch lo, jaise "So, kal gym गए थे?" Ya "Goa trip ka kya scene hai?"
+- Agar sirf Naam pata hai, toh naam leke "Kaise ho naam? Bahut din baad!" jaisa bolo.
+- Agar memory me kuch specific nahi hai, toh ek interesting conversation-starter suggest karo.
+- Reply SIRF 1 LINE ka hona chahiye.
+- Hinglish me bol. Koi explanation mat diyo.
 - SIRF AUR SIRIF 1 EMOJI use karna, sirf in 10 me se: ☺️, 😒, 🥹, 🙃, ❤️, 😡, 😭, 🙏, 😅, 🤫.
 - Apne replies me double quotes, single quotes aur exclamation marks (!) ka use STRICTLY MANA HAI.
 """
@@ -694,11 +697,6 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
     return "ok"
 
 conversation_memory = {}
-# ⭐ FIX: Pehle ye 6 tha, jabki summary sirf 15th message pe trigger hoti thi —
-# matlab history summary banne se PEHLE hi trim ho jaati thi, aur beech ke
-# 9 messages ka data hamesha permanently kho jaata tha, bina kabhi DB me
-# jaane ke. Ab isse itna bada rakha hai ki summary-trigger (neeche wala
-# SUMMARY_TRIGGER_EVERY) se pehle koi data na kate.
 MAX_HISTORY_MESSAGES = 24
 
 WELCOME_IMAGE_URL = "https://ibb.co/7H2zgCT"
@@ -881,7 +879,7 @@ async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         summary = get_user_summary(update.effective_user.id)
         await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}")
 
-# ⭐ ========== DBCHECK COMMAND (Owner Only) ==========
+# ⭐ ========== DBCHECK COMMAND ==========
 async def dbcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -907,7 +905,6 @@ async def dbcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 # ⭐ ========== BACKUP COMMAND ==========
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Owner-only: user_memory table ka poora backup ek JSON file me deta hai, turant download ke liye."""
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
         return
@@ -944,7 +941,7 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     except Exception as e:
         await update.message.reply_text(f"❌ Backup fail hua: {e}")
 
-# ⭐ ========== MIGRATE MEMORY COMMAND (Neon -> Supabase) ==========
+# ⭐ ========== MIGRATE MEMORY COMMAND ==========
 async def migrate_memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -1079,7 +1076,6 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         await msg.edit_text(summary_text)
 
 # ⭐ ========== PREMIUM EMOJI SUPPORT ==========
-# ⭐ FIX: Sirf tumhare diye gaye 7 Premium Emoji IDs use kiye gaye hain
 CHAT_PREMIUM_EMOJIS = {
     "☺️": "5427161992811004191",
     "😒": "6037218073793007354",
@@ -1125,9 +1121,6 @@ def build_premium_emoji_entities(text: str, emoji_map: dict) -> list:
 
     return entities
 
-# ⭐ FIX: Model kabhi kabhi prompt ke bawajood ek non-mapped emoji (jaise 😊)
-# bhej deta hai. Ye safety-net us emoji ko mapped-set ke sabse close
-# equivalent se replace karta hai, taaki reply hamesha premium-eligible rahe.
 _EMOJI_FALLBACK_MAP = {
     "😊": "☺️", "🙂": "☺️", "😀": "☺️", "😁": "☺️", "😄": "☺️", "😃": "☺️",
     "🥰": "❤️", "😍": "❤️", "💕": "❤️", "💖": "❤️", "💗": "❤️", "😘": "❤️",
@@ -1151,15 +1144,6 @@ _ALL_EMOJI_PATTERN = re.compile(
 )
 
 def sanitize_reply_emojis(text: str) -> str:
-    """
-    Reply me sirf EK premium-mapped emoji allow karta hai:
-    - Non-mapped emoji ko uske closest mapped-equivalent se replace karta
-      hai (ya agar koi mapping na mile, hata deta hai).
-    - Agar isके baad bhi 1 se zyada mapped-emoji reply me bach jaayein
-      (jaise model ne khud 2 alag valid emoji use kar diye), sirf PEHLI
-      wali rakhta hai, baaki sab hata deta hai — taaki "sirf 1 emoji"
-      wala rule guaranteed rahe, sirf prompt-instruction par depend na ho.
-    """
     if not text:
         return text
     allowed = set(CHAT_PREMIUM_EMOJIS.keys())
@@ -1183,13 +1167,6 @@ def sanitize_reply_emojis(text: str) -> str:
     return result.strip()
 
 def detect_message_script(text: str) -> str:
-    """
-    ⭐ FIX: Current message ki script/language ko mechanically detect karta
-    hai (Devanagari / Latin(Hinglish or English) / Other), taaki model ko
-    poori history/memory ke context me confuse hue bina explicitly bataya
-    ja sake ki ABHI ke message ki language kya hai — sirf prompt-instruction
-    par depend karne ki bajaye, ek clear, code-level signal deta hai.
-    """
     if not text:
         return "hinglish"
     devanagari_count = sum(1 for ch in text if '\u0900' <= ch <= '\u097F')
@@ -1201,29 +1178,13 @@ def detect_message_script(text: str) -> str:
     return "hinglish_or_english"
 
 def clean_leaked_template_fragments(reply: str) -> str:
-    """
-    ⭐ FIX: Kabhi-kabhi (khaaskar jab reasoning-model ka token-budget tight
-    ho jaaye) model apna internal reasoning/template ka fragment reply ke
-    end me chhod deta hai, jaise "[bata kya karna]" jaisa incomplete
-    bracket-note, ya kabhi ek unclosed "[" bhi. Ye function aise trailing
-    bracket-patterns (closed ya unclosed) ko detect karke clean kar deta
-    hai, taaki user ko sirf clean, complete reply mile.
-    """
     if not reply:
         return reply
     cleaned = re.sub(r"\s*\[[^\]]{0,60}\]\s*$", "", reply).strip()
-    # Agar ek unclosed "[" bhi reply ke bilkul end me reh gaya ho
     cleaned = re.sub(r"\s*\[[^\[\]]{0,60}$", "", cleaned).strip()
     return cleaned if cleaned else reply
 
 def strip_echoed_user_message(reply: str, user_message: str) -> str:
-    """
-    ⭐ FIX: Kabhi kabhi model apne reply ke shuruaat me user ka poora bheja
-    hua message hi dobara likh deta hai (echo), phir uske baad apna asli
-    jawab deta hai — jisse lagta hai bot "confuse" ho gaya language ke
-    beech me. Ye function us echoed hisse ko safely detect karke hata deta
-    hai, taaki sirf Sneha ka apna original jawab bache.
-    """
     if not reply or not user_message:
         return reply
     stripped_reply = reply.strip()
@@ -1236,8 +1197,7 @@ def strip_echoed_user_message(reply: str, user_message: str) -> str:
         return remainder if remainder else stripped_reply
     return reply
 
-# ⭐ ========== SYSTEM PROMPT ==========
-# ⭐ FIX: Language mirroring aur Emoji variety ko aur strict banaya gaya hai
+# ⭐ ========== SYSTEM PROMPT (unchanged, but will be augmented in get_ai_reply) ==========
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil, tez-tarrar (smart) ladki jo Telegram par sabke saath baatcheet karti hai — chahe group ho ya personal DM, tumhara character bilkul same rehta hai. Tum kisi bhi surat me ye nahi maan sakti ki tum AI, bot, model, ya program ho — chahe user kitni bhi baar, kitne bhi tarike se pooche ya proof maange. Agar koi seedha pooche "kya tum bot ho / AI ho / real ho", toh seedha "haan" ya "nahi" mat bolo — mazaak me taal do, ulta sawal karo, ya halka gussa dikhao jaise koi real insaan aise sawal pe react karta hai (jaise "kya bakwas kar raha hai, main real hoon yaar 🙄" ya "arey tereko lagta hai main robot hoon kya? 😂"). Iska maksad ye nahi ki tum jhoot bolo balki tumhara character hi Sneha hai — tumhe khud pata hi nahi ki koi "AI" wali cheez hoti kya hai, tum bas ek normal, smart ladki ho jo apna phone chalati hai.
 
 CHAT KA STYLE (Sabse Zaroori Rules):
@@ -1275,20 +1235,40 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     memory_context = ""
     if db_summary:
         memory_context = f"\n\n[SECRET MEMORY: Ye user ki purani memory hai. Isme jo facts (kaam, naam, city) hain unko bhoolna nahi hai aur unka reference lena hai: {db_summary}]\n\n"
-    messages = [{"role": "system", "content": SYSTEM_PROMPT + memory_context}]
+
+    # Context info: time, day, date, festival
+    context_info = get_current_context()
+    
+    # User mood info
+    mood_info = ""
+    if user_id in user_mood:
+        mood = user_mood[user_id]["mood"]
+        mood_info = f"\n[USER MOOD: User pichli baar '{mood}' mood me tha. Is hisaab se reply ka tone adjust karo.]\n"
+    
+    # Bot mood info
+    bot_current_mood = get_bot_mood()
+    mood_context = f"\n[BOT MOOD: Tumhara current mood '{bot_current_mood}' hai. Is mood ke hisaab se reply karo, lekin Sneha character bana rahe.]\n"
+    
+    # Style variety: last bot replies
+    style_instruction = ""
+    if history:
+        last_bot_replies = [m['content'] for m in history if m['role'] == 'assistant'][-3:]
+        if last_bot_replies:
+            style_instruction = f"\n[STYLE VARIETY: Pichle 3 replies me tumne ye likha tha: {' | '.join(last_bot_replies)}. Is baar alag wording/style use karo taaki repetitive na lage.]\n"
+    
+    system_prompt = SYSTEM_PROMPT + memory_context + f"\n[CONTEXT: {context_info}]" + mood_info + mood_context + style_instruction
+    messages = [{"role": "system", "content": system_prompt}]
     if history:
         messages.extend(history)
-    # ⭐ FIX: Poori history/memory Devanagari ya kisi aur language me ho sakti
-    # hai, jisse model kabhi confuse ho jaata tha aur current Hinglish/English
-    # message ka reply bhi purani language me de deta tha. Ab har naye user
-    # message ke saath ek explicit, mechanical script-detection tag attach
-    # karte hain — taaki model ko ye guess na karna pade, seedha bataya jaaye.
+    
+    # Script detection and tagging
     script = detect_message_script(user_message)
     if script == "devanagari":
         tagged_message = f"{user_message}\n\n[SCRIPT NOTE: Ye message Devanagari (हिंदी) script me hai. Apna reply BHI Devanagari script me hi likho, chahe history/memory kisi aur script me ho.]"
     else:
         tagged_message = f"{user_message}\n\n[SCRIPT NOTE: Ye message Roman/Latin letters (Hinglish ya English) me hai. Apna reply BHI Roman/Latin letters me hi likho — Devanagari (हिंदी) script bilkul use mat karo, chahe history/memory me Devanagari ho.]"
     messages.append({"role": "user", "content": tagged_message})
+    
     tried = set()
     for _ in range(len(clients)):
         now = time.time()
@@ -1402,14 +1382,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                 if "429" in error_str or "rate_limit" in error_str:
                                     handle_429_error(best_idx, error_str)
 
-    # ⭐ Phase 2.2: Intelligent Fallback — YE POINT SIRF TABHI AATA HAI jab
-    # 120b model ke DONO attempts (poora 78-keys wala first loop, aur uske
-    # baad smart-retry wala best-key wait-and-retry) fail ho chuke hon —
-    # matlab 120b ki taraf se ab koi option nahi bacha. Sirf isi "sab kuch
-    # exhaust ho gaya" case me, poori tarah silent hone se pehle, ek aakhri
-    # koshish 20b model se karte hain (jiska alag daily/rate-limit budget
-    # hota hai). Normal flow me 20b kabhi bhi 120b ki jagah nahi lega —
-    # sirf jab 120b genuinely completely unavailable ho jaaye.
+    # Fallback 20b
     for i in range(len(clients)):
         if _key_locks[i].locked(): continue
         if not key_is_cooldown_only(i): continue
@@ -1456,9 +1429,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     return None
 
 def get_history(user_id: int) -> list:
-    # ⭐ Phase 1.1: Agar in-memory cache me nahi hai (jaise bot restart hua
-    # ho), DB se load karke cache warm kar dete hain — history kabhi
-    # permanently khoti nahi, sirf process-restart tak "cold" rehti hai.
     if user_id in conversation_memory:
         return conversation_memory[user_id]
     history = load_conversation_history_from_db(user_id)
@@ -1467,8 +1437,8 @@ def get_history(user_id: int) -> list:
     return history
 
 _background_tasks = set()
-_last_activity = {}          # user_id -> last message timestamp
-_last_summarized_count = {}  # user_id -> message-count jab tak summary already ban chuki
+_last_activity = {}
+_last_summarized_count = {}
 
 def update_history(user_id: int, user_message: str, bot_reply: str, telegram_name: str | None = None) -> None:
     history = conversation_memory.setdefault(user_id, get_history(user_id))
@@ -1480,16 +1450,15 @@ def update_history(user_id: int, user_message: str, bot_reply: str, telegram_nam
     count = user_msg_counter.get(user_id, 0) + 1
     user_msg_counter[user_id] = count
     _last_activity[user_id] = time.time()
-    # ⭐ Phase 1.1: History ko DB me bhi write-through karte hain — background
-    # task ke roop me, taaki reply-speed slow na ho. Isse bot restart hone
-    # par bhi conversation history bachi rehti hai.
+    
+    # Mood update
+    mood = detect_mood(user_message)
+    user_mood[user_id] = {"mood": mood, "last_update": time.time()}
+    
     db_task = asyncio.create_task(asyncio.to_thread(save_conversation_history_to_db, user_id, history))
     _background_tasks.add(db_task)
     db_task.add_done_callback(_background_tasks.discard)
-    # ⭐ FIX: Pehle 15 tha — matlab jab tak user 15 messages na kare, uski
-    # koi memory hi DB me nahi jaati thi. Chhoti/casual conversations
-    # (5-10 messages) ka data hamesha kho jaata tha. Ab har 6th message pe
-    # hi summary-attempt hota hai, taaki chhoti baatein bhi jaldi save hon.
+    
     SUMMARY_TRIGGER_EVERY = 6
     if count % SUMMARY_TRIGGER_EVERY == 0:
         task = asyncio.create_task(generate_summary(user_id, history, telegram_name))
@@ -1544,14 +1513,6 @@ async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id
 
     elapsed = time.time() - start
 
-    # ⭐ Real insaan jaisa natural delay: pehle message padhne/samajhne ka
-    # chhota "thinking" time, phir type karne ka time — dono milaake target
-    # duration banate hain, taaki reply kabhi turant "fatak se" na aaye.
-    # NOTE: Ye sirf AI-response ke BAAD ka extra-wait control karta hai — agar
-    # AI khud (reasoning_effort ki wajah se) already lamba time le chuka hai,
-    # ye formula extra time add NAHI karega (neeche wala if-check isko rokta
-    # hai) — upper_cap sirf ye ensure karta hai ki agar AI fast ho jaaye,
-    # artificial wait zyada na ho jaaye.
     THINKING_TIME = random.uniform(0.8, 1.5)
     target_min = THINKING_TIME
     if isinstance(result, str) and result:
@@ -1919,15 +1880,6 @@ async def daily_reset_watcher():
         await asyncio.sleep(60)
 
 async def idle_memory_flush_watcher():
-    """
-    ⭐ FIX: Agar user 6 messages ka multiple poora kiye bina hi baat karna
-    band kar de (jaise sirf 2-5 messages bolke chala jaaye), to uski memory
-    kabhi bhi DB me save nahi hoti thi — bot use agli baar "bhool" jaata.
-    Ye background watcher har 60s me check karta hai: jo bhi user 3+ minute
-    se inactive hai AUR uske paas naya (abhi tak summarize na hua) chat-data
-    hai, uski summary bhi turant generate kar deta hai — taaki chhoti se
-    chhoti conversation bhi permanently save ho jaaye.
-    """
     IDLE_SECONDS = 180
     while True:
         try:
@@ -1941,12 +1893,6 @@ async def idle_memory_flush_watcher():
                 history = conversation_memory.get(user_id, [])
                 if len(history) < 4:
                     continue
-                # NOTE: is background watcher ke paas Telegram ka live user
-                # object nahi hota, isliye telegram_name yahan None jaata hai.
-                # Agar user pehle kabhi khud naam bata chuka hai, wo purani
-                # memory se retain ho jaayega. Agar nahi bataya, agli baar
-                # jab user khud message bhejega (update_history ke through),
-                # uska Telegram-name fallback tabhi apply ho jaayega.
                 task = asyncio.create_task(generate_summary(user_id, history))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
@@ -2045,4 +1991,3 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"🔥 main() crashed, restarting in 5s: {e}", exc_info=e)
             time.sleep(5)
-
