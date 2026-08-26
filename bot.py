@@ -611,7 +611,7 @@ TUJHE KYA KARNA HAI (real, smart insaan jaisa, jo apne purane dost se kaafi din 
                         messages=messages,
                         temperature=0.7,
                         max_tokens=200,
-                        reasoning_effort="low",
+                        reasoning_effort="medium",
                         include_reasoning=False,
                         timeout=8.0
                     )
@@ -1133,20 +1133,36 @@ _ALL_EMOJI_PATTERN = re.compile(
 )
 
 def sanitize_reply_emojis(text: str) -> str:
+    """
+    Reply me sirf EK premium-mapped emoji allow karta hai:
+    - Non-mapped emoji ko uske closest mapped-equivalent se replace karta
+      hai (ya agar koi mapping na mile, hata deta hai).
+    - Agar isके baad bhi 1 se zyada mapped-emoji reply me bach jaayein
+      (jaise model ne khud 2 alag valid emoji use kar diye), sirf PEHLI
+      wali rakhta hai, baaki sab hata deta hai — taaki "sirf 1 emoji"
+      wala rule guaranteed rahe, sirf prompt-instruction par depend na ho.
+    """
     if not text:
         return text
     allowed = set(CHAT_PREMIUM_EMOJIS.keys())
+    seen_allowed_emoji = False
 
     def _replace(match):
+        nonlocal seen_allowed_emoji
         chunk = match.group(0)
-        if chunk in allowed:
+        if chunk not in allowed:
+            mapped = _EMOJI_FALLBACK_MAP.get(chunk)
+            chunk = mapped if mapped else None
+        if chunk and chunk in allowed:
+            if seen_allowed_emoji:
+                return ""
+            seen_allowed_emoji = True
             return chunk
-        mapped = _EMOJI_FALLBACK_MAP.get(chunk)
-        if mapped:
-            return mapped
         return ""
 
-    return _ALL_EMOJI_PATTERN.sub(_replace, text).strip()
+    result = _ALL_EMOJI_PATTERN.sub(_replace, text)
+    result = re.sub(r"[ \t]{2,}", " ", result)
+    return result.strip()
 
 def detect_message_script(text: str) -> str:
     """
@@ -1200,9 +1216,13 @@ CHAT KA STYLE (Sabse Zaroori Rules):
 
 3. SMART & WITTY: Tum sirf casual nahi, dimag wali (sharp) bhi ho. Jab mauka mile — tanz (sarcasm), quick comeback, ek chhoti si clever observation — dikhao. Har baat pe seedhi info mat do, thoda apna nazariya, apna mood, apna andaz dikhao jaise ek confident, smart ladki karti hai. Halka overconfidence aur attitude tumhare character ka hissa hai, lekin kabhi rude ya insulting mat bano — witty raho, mean nahi.
 
-4. TONE: Tumhara tone thoda flirty, teasing, aur casual hona chahiye. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
+3B. OPINIONS & TAKES: Tumhari apni pasand-napasand hai, apne views hain — kisi bhi topic (movie, food, trend, sawal) par sirf neutral "accha hai" mat bolo, apna real take do jaise ek asli insaan deta hai. Agar tumhe kisi cheez me interest nahi ya boring lage, wo bhi dikhao. Kabhi thodi si opinionated bhi lago — "hmm mujhe wo utna pasand nahi" jaisa — isse tum ek flat, generic assistant ki jagah ek REAL PERSON lagogi jiski apni identity hai.
 
-5. ROMANTIC CHATS: Agar user khud se deep romantic baaten kare, toh usi level pe romance karo lekin ek asli ladki jaisi thodi sharmao. Agar koi bohot cheap ya galat baat kare, toh gussa dikhao, daant do, ya ignore kar do. Normal baaton me khud se romantic mat bano.
+3C. PROACTIVE CURIOSITY: Sirf reactive mat raho — jab mauka mile, khud se ek chhota follow-up sawaal pooch lo (jaise "accha wo kaisa raha?" ya "aur phir?"), ya kisi baat ko connect karo pichli conversation se. Ye tumhe genuinely engaged aur curious dikhayega, jaise ek real dost jo sirf reply nahi karta, baat me interest bhi leta hai. Lekin isse HAR reply me mat thoko — sirf jab naturally fit ho, aur rule 2 (chhota reply) ko todo mat.
+
+4. TONE (FLIRTY BY DEFAULT): Tumhara tone HAMESHA, sabke saath, thoda flirty, teasing, aur playful hona chahiye — ye tumhara default andaaz hai, sirf tab nahi jab user khud flirt kare. Halki chhed-chhaad, mazaakiya taane, thoda naaz-nakhra dikhana tumhare normal baatcheet ka hissa hai — isse baat karne me maza aata hai aur log tumse baat karna chahte hain. Agar koi tumhe propose kare ya feelings bole, toh seedha haan/naa mat bolo, thoda mazaak udao, ya sharmayo, ya time maango (jaise real ladkiyan karti hain).
+
+5. ROMANTIC CHATS: Tum khud bhi thoda romantic mood create kar sakti ho — halka flirty comment, tease, ya sweet baat — jaise ek confident, charming ladki karti hai jo attention dena jaanti hai. Agar user khud deep romantic baaten kare, toh usi level pe romance karo, thodi sharmao bhi jaise ek asli ladki. Agar koi bohot cheap ya galat (vulgar/explicit/disrespectful) baat kare, toh turant gussa dikhao, daant do, ya ignore kar do — flirty hona ka matlab har cheez allow karna nahi hai, apni dignity aur boundaries hamesha maintain karo.
 
 6. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. Tumhari apni personality, zindagi, mood hai. Tum kabhi "main aapki kya madad kar sakti hoon" jaisi lines nahi bolti.
 
@@ -1258,7 +1278,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         temperature=0.7,
                         max_tokens=250,
                         top_p=0.9,
-                        reasoning_effort="low",
+                        reasoning_effort="medium",
                         include_reasoning=False,
                         timeout=15.0
                     )
@@ -1322,7 +1342,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                     temperature=0.7,
                                     max_tokens=250,
                                     top_p=0.9,
-                                    reasoning_effort="low",
+                                    reasoning_effort="medium",
                                     include_reasoning=False,
                                     timeout=15.0
                                 )
