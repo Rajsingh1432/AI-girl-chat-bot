@@ -1369,20 +1369,17 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                 reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                                 reply = reply.strip().strip('`')
                                 reply = strip_echoed_user_message(reply, user_message)
-                                reply = clean_leaked_template_fragments(reply)
                                 reply = sanitize_reply_emojis(reply)
                                 filtered_reply = filter_bot_like_reply(reply)
-                                if filtered_reply is None:
-                                    logger.info("Bot-like reply filtered in retry")
-                                continue
+                                if filtered_reply is not None:
                                 reply = filtered_reply
-                                if reply:
-                                    usage = getattr(response, "usage", None)
-                                    actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-                                    update_key_usage_actual(best_idx, entry_idx, actual_tokens)
-                                    reset_key_429_streak(best_idx)
-                                    logger.info(f"✅ Smart Retry se Key {best_idx+1} se reply aaya!")
-                                    return reply
+                                usage = getattr(response, "usage", None)
+                                actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
+                                update_key_usage_actual(best_idx, entry_idx, actual_tokens)
+                                reset_key_429_streak(best_idx)
+                                logger.info(f"✅ Smart Retry se Key {best_idx+1} se reply aaya!")
+                                return reply
+# अगर filtered_reply None है तो कुछ मत करो, नीचे fallback 20b चलेगा
                             except Exception as e:
                                 error_str = str(e).lower()
                                 if "429" in error_str or "rate_limit" in error_str:
