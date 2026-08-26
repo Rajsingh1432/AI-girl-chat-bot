@@ -22,7 +22,7 @@ logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
-# ⭐ FIX: Premium Emoji & Button Style Imports (Fallback to prevent NameError if config.py is missing)
+# Premium Emoji & Button Style Imports (Fallback)
 try:
     from config import PREMIUM_EMOJIS, ButtonStyle
 except ImportError:
@@ -61,12 +61,11 @@ _rr_index = 0
 _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
-# --- openai/gpt-oss-120b ke actual Groq limits (per key): RPM 30, RPD 1000, TPM 8000, TPD 200000 ---
+# Rate limits for openai/gpt-oss-120b
 _key_usage = {i: [] for i in range(len(clients))}
 RPM_SAFE_LIMIT = 28
 TPM_SAFE_LIMIT = 7500
 REQUEST_TOKEN_ESTIMATE = 700
-
 DAILY_REQUEST_LIMIT = 950
 DAILY_TOKEN_LIMIT = 190000
 
@@ -118,7 +117,7 @@ def reset_daily_if_new_day():
             if i in _key_cooldowns and _key_cooldowns[i] - time.time() > 3600:
                 del _key_cooldowns[i]
         last_reset_day = today
-        logger.info(f"🔄 Naya din shuru hua (UTC date: {today}, abhi IST time: {now_ist_str()}) — sabhi {len(clients)} keys ke daily counters aur cooldowns auto-reset ho gaye!")
+        logger.info(f"🔄 Naya din shuru hua — {len(clients)} keys reset")
 
 def record_daily(idx, tokens):
     reset_daily_if_new_day()
@@ -145,20 +144,18 @@ def handle_429_error(idx, error_msg=""):
     _key_success_since_429[idx] = False
     daily_tok = daily_tokens[idx]
     daily_req = daily_requests[idx]
-    
     is_daily = ("daily" in error_msg.lower() or "exhausted" in error_msg.lower() or 
                 daily_tok >= DAILY_TOKEN_LIMIT or daily_req >= DAILY_REQUEST_LIMIT)
-    
     if is_daily:
         now = time.time()
         tomorrow = (now // 86400 + 1) * 86400
         seconds = int(tomorrow - now)
         set_key_cooldown(idx, seconds=seconds)
-        logger.warning(f"🔴 Key {idx+1} DAILY LIMIT EXHAUSTED! Sleeping until midnight UTC ({seconds}s) — abhi IST time: {now_ist_str()}")
+        logger.warning(f"🔴 Key {idx+1} DAILY LIMIT — sleep until midnight")
         _key_429_counts[idx] = 0
     else:
         set_key_cooldown(idx, seconds=45)
-        logger.warning(f"🚫 Key {idx+1} temporary 429 burst! 45s cooldown. (Attempt {_key_429_counts[idx]}/4)")
+        logger.warning(f"🚫 Key {idx+1} 429 burst — 45s cooldown")
 
 def reset_key_429_streak(idx):
     _key_429_counts[idx] = 0
@@ -166,7 +163,6 @@ def reset_key_429_streak(idx):
 
 def set_key_cooldown(idx, seconds=60):
     _key_cooldowns[idx] = time.time() + seconds
-    logger.warning(f"Key {idx+1} ko {seconds}s ke liye cooldown mein daal diya")
 
 def pick_best_key(now: float):
     best_idx = None
@@ -202,13 +198,15 @@ async def throttle_dispatch():
             await asyncio.sleep(wait + random.uniform(0, DISPATCH_JITTER))
         _last_dispatch_time = time.time()
 
-# ⭐ ========== HUMAN-LIKE ENHANCEMENTS ==========
-user_mood = {}          # user_id -> {"mood": ..., "last_update": timestamp}
-bot_mood = {"mood": "playful", "last_update": 0}
-MOOD_CHANGE_INTERVAL = 1800  # 30 min
+# ⭐ NEW: Human-like enhancements
+user_mood = {}
+BOT_LIKE_PHRASES = [
+    "मैं आपकी मदद", "main aapki madad", "कैसे सहायता", "assistant", "मैं एक AI", "मैं एक bot",
+    "मुझे खुशी होगी", "आपका स्वागत है", "कृपया बताएं", "आप क्या चाहते हैं",
+    "मैं समझ गई", "मैं कोशिश करूंगी", "यह एक अच्छा सवाल है"
+]
 
 def get_current_context() -> str:
-    """Current time, day, date, festival awareness."""
     now = datetime.now(IST)
     time_str = now.strftime("%I:%M %p")
     day_str = now.strftime("%A")
@@ -219,7 +217,6 @@ def get_current_context() -> str:
         "08-15": "Independence Day",
         "10-02": "Gandhi Jayanti",
         "12-25": "Christmas",
-        # Add more Indian festivals
         "10-24": "Diwali (approx)",
         "03-08": "Holi (approx)",
     }
@@ -230,7 +227,6 @@ def get_current_context() -> str:
     return ctx
 
 def detect_mood(text: str) -> str:
-    """Simple keyword-based mood detection."""
     text_lower = text.lower()
     sad_words = ["udaas", "dukhi", "tension", "problem", "sad", "depressed", "rona", "breakup", "fail", "tanha"]
     angry_words = ["gussa", "fuck", "chutiya", "bakwas", "stop", "hate", "angry", "dimag mat kha"]
@@ -244,36 +240,75 @@ def detect_mood(text: str) -> str:
     return "neutral"
 
 def get_bot_mood() -> str:
-    """Bot ka mood slowly change hota hai."""
-    now = time.time()
-    if now - bot_mood["last_update"] > MOOD_CHANGE_INTERVAL:
-        moods = ["playful", "flirty", "calm", "teasing", "caring", "mysterious", "sarcastic"]
-        bot_mood["mood"] = random.choice(moods)
-        bot_mood["last_update"] = now
-    return bot_mood["mood"]
+    hour = datetime.now(IST).hour
+    if 5 <= hour < 9:
+        return "sleepy"
+    elif 9 <= hour < 12:
+        return "fresh"
+    elif 12 <= hour < 16:
+        return "lazy"
+    elif 16 <= hour < 20:
+        return "playful"
+    elif 20 <= hour < 23:
+        return "romantic"
+    else:
+        return "mysterious"
 
-# ⭐ ========== END ENHANCEMENTS ==========
+def filter_bot_like_reply(reply: str) -> str | None:
+    if not reply:
+        return None
+    reply_lower = reply.lower()
+    for phrase in BOT_LIKE_PHRASES:
+        if phrase in reply_lower:
+            return None
+    return reply
+
+# Episodic memory functions
+def load_user_episodes(user_id: int) -> list:
+    if not DATABASE_URL: return []
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT episodes_json FROM user_memory WHERE user_id=%s", (user_id,))
+        row = c.fetchone()
+        c.close()
+        conn.close()
+        if row and row[0]:
+            return json.loads(row[0])
+        return []
+    except Exception as e:
+        logger.error(f"❌ Episodes load failed for {user_id}: {e}")
+        return []
+
+def save_user_episodes(user_id: int, episodes: list):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        episodes_json = json.dumps(episodes)
+        c.execute("INSERT INTO user_memory (user_id, episodes_json, updated_at) VALUES (%s, %s, %s) "
+                  "ON CONFLICT (user_id) DO UPDATE SET episodes_json=%s, updated_at=%s",
+                  (user_id, episodes_json, time.time(), episodes_json, time.time()))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"❌ Episodes save failed for {user_id}: {e}")
 
 user_warning_count = {}
 bio_checked_users = set()
-
 user_flood_data = {}
 FLOOD_WINDOW = 4
 FLOOD_THRESHOLD = 12
 FLOOD_COOLDOWN = 120
 LAST_CLEANUP = 0.0
-
 chat_admin_cache = {}
 admin_need_reply_cooldown = {}
-
 user_msg_counter = {}
 _greeted_once = set()
-
-DM_ONLY_REPLIES = [
-    "☃︎ 𝗠𝗮𝗶 𝗦𝗶𝗿𝗳 𝗖𝗵𝗮𝘁𝗶𝗻𝗴 𝗚𝗿𝗼𝘂𝗽𝘀 𝗠𝗲 𝗕𝗮𝘁𝗲𝗻 𝗞𝗮𝗿𝘁𝗶 𝗛𝘂𝗻\n\n🌿 𝗣𝗲𝗿𝘀𝗼𝗻𝗮𝗹 𝗠𝗮𝘀𝘀𝗲𝗴𝗲 𝗠𝗮𝘁 𝗞𝗮𝗿𝗼\n\nᴥ︎︎︎ 𝗠𝘂𝗷𝗵𝘀𝗲 𝗙𝗹𝗶𝗿𝘁,𝗙𝘂𝗻,𝗥𝗼𝗺𝗮𝗻𝘁𝗶𝗰,𝗔𝗻𝗴𝗿𝘆,𝗘𝗺𝗼𝘁𝗶𝗼𝗻𝗮𝗹 𝗕𝗮𝘁𝗲𝗻 𝗞𝗮𝗿𝗻𝗮 𝗵𝗮𝗶 𝘁𝗼 𝗮𝗽𝗻𝗲 𝗴𝗿𝗼𝘂𝗽 𝗺𝗲 𝗮𝗱𝗱 𝗞𝗮𝗿𝗱𝗼\n\n⌨︎ 𝗔𝘂𝗿 𝗠𝗮𝗶 𝗔𝗽𝗸𝗲 𝗖𝗵𝗮𝘁𝗶𝗻𝗴 𝗚𝗿𝗼𝘂𝗽 𝗞𝗼 𝗔𝗰𝘁𝗶𝘃𝗲 𝗥𝗮𝗸𝗵𝘂𝗻𝗴𝗶 𝗦𝗮𝗯𝗵𝗶 𝗡𝗲𝘄 𝗠𝗲𝗺𝗯𝗲𝗿𝘀 𝗔𝗻𝗱 𝗢𝗹𝗱 𝗠𝗲𝗺𝗯𝗲𝗿𝘀 𝗦𝗲 𝗙𝘂𝗻 𝗞𝗮𝗿𝘁𝗶 𝗥𝗮𝗵𝗨𝗻𝗴𝗶\n\n✍︎ 𝗔𝗱𝗺𝗶𝗻 𝗗𝗲𝗻𝗮 𝗠𝗮𝘁 𝗕𝗵𝗼𝗼𝗹𝗻𝗮\n\n\n➪ 𝗡𝗲𝗲𝗖𝗵𝗲 𝗕𝘂𝘁𝘁𝗼𝗻 𝗛𝗮𝗶 𝗡𝗮 𝗕𝗮𝗯𝘆 𝗗𝗮𝗯𝗮𝗼 𝗔𝘂𝗳 𝗠𝘂𝗷𝗵𝗲 𝗞𝗶𝗱𝗻𝗮𝗽 𝗞𝗮𝗿𝗹𝗼 👇",
-]
-
 _welcomed_users = {}
+conversation_memory = {}
+MAX_HISTORY_MESSAGES = 40  # Increased from 24 to 40
 
 # ---------- DATABASE ----------
 def get_db_conn():
@@ -288,13 +323,18 @@ def init_db():
         conn = get_db_conn()
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS user_memory
-                     (user_id BIGINT PRIMARY KEY, summary TEXT, updated_at REAL)''')
+                     (user_id BIGINT PRIMARY KEY, summary TEXT, episodes_json TEXT, updated_at REAL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS broadcast_users
                      (user_id BIGINT PRIMARY KEY, started_at REAL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS active_groups
                      (chat_id BIGINT PRIMARY KEY, title TEXT, added_at REAL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS conversation_history
                      (user_id BIGINT PRIMARY KEY, history_json TEXT, updated_at REAL)''')
+        # Ensure episodes column exists for existing tables
+        try:
+            c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS episodes_json TEXT")
+        except Exception:
+            pass
         conn.commit()
         c.close()
         conn.close()
@@ -441,7 +481,7 @@ def get_all_active_groups() -> list:
         logger.warning(f"get_all_active_groups fail: {e}")
         return []
 
-# ⭐ ========== IMPROVED MEMORY GENERATION ==========
+# ⭐ Memory Generation
 def _parse_summary_fields(summary: str) -> dict:
     fields = {}
     if not summary:
@@ -459,7 +499,6 @@ def _protect_permanent_fields(new_summary: str, old_summary: str) -> str:
     new_fields = _parse_summary_fields(new_summary)
     permanent_labels = ["naam", "hobby", "facts"]
     empty_values = ("not shared", "none", "")
-
     lines = new_summary.split("\n")
     for i, line in enumerate(lines):
         if ":" not in line:
@@ -487,12 +526,9 @@ def _apply_telegram_name_fallback(summary: str, telegram_name: str | None) -> st
 
 async def generate_summary(user_id: int, history: list, telegram_name: str | None = None):
     if len(history) < 4 or not DATABASE_URL: return
-    
     logger.info(f"🔄 Summary generation triggered for {user_id}...")
-    
     try:
         old_summary = get_user_summary(user_id)
-
         recent = history[-12:]
         chat_lines = []
         for msg in recent:
@@ -500,7 +536,6 @@ async def generate_summary(user_id: int, history: list, telegram_name: str | Non
             chat_lines.append(f"{speaker}: {msg.get('content', '')}")
         chat_text = "\n".join(chat_lines)
 
-        # Enhanced prompt: include promises, events, dates
         prompt = f"""Tu ek memory bot hai. Neeche purani memory aur nayi chat di gayi hai. Tujhe user ke baare me structured facts save karne hain.
 
 PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
@@ -509,19 +544,19 @@ NAYI CHAT:
 
 Tumhe neeche diye EXACT FORMAT me hi output dena hai, 4 alag lines me, har line ek fixed label se shuru hogi:
 
-Topics: <ek chhoti list, MAX 7 topics, comma se separate — jaise "Goa trip planning, college ki padhai, cricket match". Ye ek ROLLING WINDOW hai: PURANI MEMORY ke Topics list ko lo, agar NAYI CHAT me koi NAYA distinct topic discuss hua hai jo list me pehle se nahi hai, use list ke END me ADD karo. Agar list already 7 topics tak pahunch chuki hai aur naya topic add karna hai, toh list ka SABSE PEHLA (sabse purana) topic hata do. Agar PURANI MEMORY khali hai, toh sirf ek ya do current topics se list shuru karo>
-Naam: <SIRF tab likho jab user ne APNE MUNH SE, IS CHAT ME (nayi chat ya purani memory me), khud apna naam bataya ho. Agar PURANI MEMORY ke Naam field me "(Telegram name, user ne khud confirm nahi kiya)" likha ho, toh usse "user ne khud bataya" mat maano — wahi fallback-naam use karte raho jab tak user khud koi alag naam na bataye. Agar kahin bhi user ne khud koi naam nahi bataya, toh yahan sirf "Not shared" likho>
-Hobby: <user ke interests/hobbies/pasand agar usne bataye hon (jaise gaming, gaana sunna, cricket, painting). Agar nahi bataye toh "Not shared" likho>
-Facts: <baaki important personal facts 1-2 lines me — kaam, city, trip plans, feelings, romantic talks, koi bhi important event, promises, future plans, ya dates jo user ne mention ki ho. Agar user ne koi promise kiya hai ya koi event date बताई है, use yahan likho. Agar kuch na ho toh "None" likho>
+Topics: <ek chhoti list, MAX 7 topics, comma se separate>
+Naam: <sirf tab jab user ne khud bataya ho, warna "Not shared">
+Hobby: <user ke interests/hobbies, warna "Not shared">
+Facts: <baaki important personal facts 1-2 lines me — kaam, city, trip plans, feelings, romantic talks, koi bhi important event, promises, future plans, ya dates jo user ne mention ki ho. Agar kuch na ho toh "None">
 
 STRICT RULES:
-1. Sirf yahi 4 lines likho (Topics/Naam/Hobby/Facts), koi extra heading, analysis, ya explanation mat likho. Prompt ko dobara mat likho.
-2. ⭐ FIELD ISOLATION RULE: Har field EK DOOSRE SE BILKUL ALAG/INDEPENDENT hai. "Topics" field ka rolling-window/delete-logic SIRF Topics field tak limited hai. Naam, Hobby, aur Facts hamesha PERMANENT hote hain jab tak user khud koi naya update na de.
-3. ⭐ NAAM RULE: "Naam" field sirf tab bharo jab user ne clearly, khud apna naam bataya ho.
-4. ⭐ TOPICS RULE: "Topics" ek rolling-memory list hai — max 7, naya end me add hota hai, purana start se hat jaata hai.
-5. ⭐ MOST IMPORTANT: Purani memory ke Naam, Hobby, aur Facts ko HAMESHA rakhna (agar nayi chat me unka koi naya update na ho, unhe waise hi copy kar do). Agar user ne koi nayi baat batai hai, toh usko update/add kar dena.
-6. ⭐ PROMISE/EVENT RULE: Agar user ne koi promise kiya ho, koi upcoming event/date mention ki ho, ya koi plan banaya ho, toh use Facts me zaroor likho, jaise "15 March ko exam hai" ya "next week Goa trip plan".
-7. ⭐ SCRIPT RULE: Output HAMESHA sirf HINGLISH (Roman/English letters) me hona chahiye. Devanagari (हिंदी) script ka use STRICTLY MANA HAI.
+1. Sirf yahi 4 lines likho (Topics/Naam/Hobby/Facts), koi extra heading, analysis, ya explanation mat likho.
+2. FIELD ISOLATION RULE: Naam, Hobby, aur Facts hamesha PERMANENT hote hain jab tak user khud koi naya update na de.
+3. NAAM RULE: "Naam" field sirf tab bharo jab user ne clearly, khud apna naam bataya ho.
+4. TOPICS RULE: "Topics" ek rolling-memory list hai — max 7, naya end me add hota hai, purana start se hat jaata hai.
+5. MOST IMPORTANT: Purani memory ke Naam, Hobby, aur Facts ko HAMESHA rakhna.
+6. PROMISE/EVENT RULE: Agar user ne koi promise kiya ho, koi upcoming event/date mention ki ho, ya koi plan banaya ho, toh use Facts me zaroor likho.
+7. SCRIPT RULE: Output HAMESHA sirf HINGLISH (Roman/English letters) me hona chahiye. Devanagari script mana hai.
 """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
@@ -529,7 +564,6 @@ STRICT RULES:
             now = time.time()
             idx = pick_best_key(now)
             if idx is None or idx in tried:
-                logger.warning(f"⚠️ Summary gen skipped for {user_id}: All API keys busy or in cooldown.")
                 break
             tried.add(idx)
             lock = _key_locks[idx]
@@ -552,33 +586,20 @@ STRICT RULES:
                             timeout=10.0
                         )
                         final_summary = response.choices[0].message.content.strip()
-                        
                         lower_summary = final_summary.lower()
                         has_devanagari = any('\u0900' <= ch <= '\u097F' for ch in final_summary)
-                        has_required_labels = (
-                            "topics:" in lower_summary and
-                            "naam:" in lower_summary and
-                            "hobby:" in lower_summary and
-                            "facts:" in lower_summary
-                        )
-                        if (not final_summary or 
-                            len(final_summary) > 400 or 
-                            "purani memory" in lower_summary or 
-                            "nayi chat" in lower_summary or
-                            "'role':" in lower_summary or
-                            "main aapki instructions" in lower_summary or
-                            has_devanagari or
-                            not has_required_labels):
-                            logger.warning(f"⚠️ AI generated garbage/wrong-format summary for {user_id}. Not overwriting memory. Output: {final_summary[:80]}")
+                        has_required_labels = ("topics:" in lower_summary and "naam:" in lower_summary and "hobby:" in lower_summary and "facts:" in lower_summary)
+                        if (not final_summary or len(final_summary) > 400 or "purani memory" in lower_summary or 
+                            "nayi chat" in lower_summary or "'role':" in lower_summary or "main aapki instructions" in lower_summary or
+                            has_devanagari or not has_required_labels):
+                            logger.warning(f"⚠️ AI generated garbage summary for {user_id}")
                             return
-                        
                         final_summary = _protect_permanent_fields(final_summary, old_summary)
                         final_summary = _apply_telegram_name_fallback(final_summary, telegram_name)
-                        
                         save_user_summary(user_id, final_summary)
                         update_key_usage_actual(idx, entry_idx, 60)
                         reset_key_429_streak(idx)
-                        logger.info(f"📝 User {user_id} ki summary update: {final_summary[:120]}...")
+                        logger.info(f"📝 User {user_id} summary update: {final_summary[:120]}...")
                         return
                     except Exception as e:
                         error_str = str(e).lower()
@@ -590,24 +611,93 @@ STRICT RULES:
     except Exception as e:
         logger.error(f"🔥 Summary function crash for {user_id}: {e}")
 
-# ⭐ ========== GREETING GENERATOR (Enhanced) ==========
+async def extract_episodes(user_id: int, history: list):
+    if len(history) < 4 or not DATABASE_URL: return
+    old_episodes = load_user_episodes(user_id)
+    recent = history[-6:]
+    chat_lines = []
+    for msg in recent:
+        speaker = "User" if msg.get("role") == "user" else "Sneha"
+        chat_lines.append(f"{speaker}: {msg.get('content','')}")
+    chat_text = "\n".join(chat_lines)
+    prompt = f"""नीचे एक conversation का हिस्सा है। इसमें से कोई भी important चीज़ निकालो जो future में काम आ सकती है — जैसे:
+- कोई promise (e.g., "मैं कल gym जाऊँगा")
+- कोई specific date या event (e.g., "मेरा birthday 5 मई को है", "अगले हफ्ते Goa trip है")
+- कोई पसंद/नापसंद जो पहले नहीं बताई थी
+- कोई secret या निजी बात
+- कोई feeling जो user ने express की हो
+
+अगर कुछ important नहीं है तो खाली छोड़ दो। पुरानी episodes पहले से मौजूद हैं:
+{old_episodes}
+
+बातचीत:
+{chat_text}
+
+Output सिर्फ एक JSON list के format में दो, जैसे:
+["user ने कहा कि वह कल gym जाएगा", "user का birthday 5 मई को है"]
+अगर कुछ नया नहीं है, तो [] दो। कोई extra text मत लिखो।
+"""
+    try:
+        messages = [{"role": "user", "content": prompt}]
+        idx = pick_best_key(time.time())
+        if idx is None:
+            return
+        async with _key_locks[idx]:
+            if not key_has_room(idx):
+                return
+            entry_idx = pre_record_key_usage(idx)
+            async with _concurrency_semaphore:
+                await throttle_dispatch()
+                response = await clients[idx].chat.completions.create(
+                    model="openai/gpt-oss-20b",
+                    messages=messages,
+                    temperature=0.1,
+                    max_tokens=150,
+                    reasoning_effort="low",
+                    include_reasoning=False,
+                    timeout=8.0
+                )
+                content = response.choices[0].message.content.strip()
+                try:
+                    new_episodes = json.loads(content)
+                    if isinstance(new_episodes, list):
+                        combined = old_episodes + new_episodes
+                        combined = combined[-10:]
+                        save_user_episodes(user_id, combined)
+                        update_key_usage_actual(idx, entry_idx, 80)
+                        reset_key_429_streak(idx)
+                        logger.info(f"📌 Episodes updated for {user_id}: {new_episodes}")
+                except json.JSONDecodeError:
+                    logger.warning(f"⚠️ Episodes extraction garbage for {user_id}")
+    except Exception as e:
+        logger.warning(f"Episodes extraction fail for {user_id}: {e}")
+
+# ⭐ GREETING GENERATOR
 async def generate_greeting(user_id: int, user_message: str) -> str | None:
     summary = get_user_summary(user_id)
-    if not summary:
+    episodes = load_user_episodes(user_id)
+    if not summary and not episodes:
         return None
-    prompt = f"""Tu Sneha hai. Ye user tujhse pehle bhi baat kar chuka hai. Teri memory ke mutabiq is user ke baare me ye pata hai: "{summary}"
+    ep_text = ""
+    if episodes:
+        ep_text = "\n".join(f"- {ep}" for ep in episodes[-3:])
+    prompt = f"""Tu Sneha hai. Ye user tujhse pehle bhi baat kar chuka hai. Teri memory ke mutabiq is user ke baare me ye pata hai:
+Summary: {summary if summary else 'Kuch nahi'}
+Important events/promises:
+{ep_text if ep_text else 'Kuch nahi'}
+
 Abhi user ne tujhe "{user_message}" bola hai — ye ek generic/casual opener hai.
 
 TUJHE KYA KARNA HAI (real, smart insaan jaisa):
-- MEMORY me 3 tarah ki info hai: Topics, Hobby, aur Facts. In teeno me se jo sabse natural/interesting lage, use choose karo.
+- MEMORY me 3 tarah ki info hai: Topics, Hobby, Facts, aur Episodes. Inme se jo sabse natural/interesting lage use choose karo.
 - Jo bhi field choose karo, usme se ek SPECIFIC cheez ka naam lo.
-- ⭐ PROMISE/PENDING CHECK: Agar memory ke Facts me koi aisi baat hai jo adhoori lagti hai (jaise "user ne kaha tha kal gym jayega", "Goa trip ka plan", "exam ki date"), toh greeting me use naturally pooch lo, jaise "So, kal gym गए थे?" Ya "Goa trip ka kya scene hai?"
+- ⭐ PROMISE/PENDING CHECK: Agar episodes me koi aisi baat hai jo adhoori lagti hai, toh greeting me use naturally pooch lo.
 - Agar sirf Naam pata hai, toh naam leke "Kaise ho naam? Bahut din baad!" jaisa bolo.
-- Agar memory me kuch specific nahi hai, toh ek interesting conversation-starter suggest karo.
+- Agar kuch specific nahi hai, toh ek interesting conversation-starter suggest karo.
 - Reply SIRF 1 LINE ka hona chahiye.
 - Hinglish me bol. Koi explanation mat diyo.
 - SIRF AUR SIRIF 1 EMOJI use karna, sirf in 10 me se: ☺️, 😒, 🥹, 🙃, ❤️, 😡, 😭, 🙏, 😅, 🤫.
-- Apne replies me double quotes, single quotes aur exclamation marks (!) ka use STRICTLY MANA HAI.
+- Double quotes, single quotes aur exclamation marks ka use STRICTLY MANA HAI.
 """
     messages = [{"role": "user", "content": prompt}]
     tried = set()
@@ -637,11 +727,9 @@ TUJHE KYA KARNA HAI (real, smart insaan jaisa):
                         timeout=8.0
                     )
                     reply = response.choices[0].message.content
-                    reply = reply.replace('!', '')
-                    reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
+                    reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                     reply = reply.strip().strip('`')
                     reply = sanitize_reply_emojis(reply)
-                    
                     update_key_usage_actual(idx, entry_idx, 100)
                     reset_key_429_streak(idx)
                     return reply
@@ -696,9 +784,6 @@ def check_flood(user_id: int, is_sticker: bool = False) -> str:
     user_flood_data[user_id] = data
     return "ok"
 
-conversation_memory = {}
-MAX_HISTORY_MESSAGES = 24
-
 WELCOME_IMAGE_URL = "https://ibb.co/7H2zgCT"
 
 WELCOME_MESSAGES = [
@@ -734,19 +819,16 @@ def escape_md_v2(text: str) -> str:
     specials = r'_*[]()~`>#+-=|{}.!'
     return "".join(f"\\{ch}" if ch in specials else ch for ch in text)
 
-# ⭐ MASTER BUTTON ROUTER
 async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query: return
     data = query.data
-    
     if data == "g_guide":
         await query.answer()
         await games_menu(update, context)
         return
-        
     await button_router(update, context)
-    
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot_username = context.bot.username
     keyboard = [[InlineKeyboardButton("Add To Group", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])]]
@@ -765,42 +847,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"</blockquote>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ϙυᴧɴᴛυϻ ᴄᴏʀє</a>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
-           )
+        )
         full_keyboard = [
-            [InlineKeyboardButton(
-                "ᴋɪᴅɴᴀᴘ ᴍᴇ ʙᴀʙʏ",
-                url=f"https://t.me/{bot_username}?startgroup=start",
-                style=ButtonStyle.PRIMARY,
-                icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"]
-            )],
-            [
-                InlineKeyboardButton(
-                    "ᴅᴇᴠᴇʟᴏᴘᴇʀ",
-                    url="https://t.me/its_raj_king",
-                    style=ButtonStyle.DANGER,
-                    icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]
-                ),
-                InlineKeyboardButton(
-                    "ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ",
-                    url="https://t.me/KnowRajpapa",
-                    style=ButtonStyle.PRIMARY,
-                    icon_custom_emoji_id=PREMIUM_EMOJIS["channel"]
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "ᴄʜᴀᴛ ɢʀᴏᴜᴘ",
-                    url="https://t.me/+0xoXWln4qiM2NTY9",
-                    style=ButtonStyle.PRIMARY,
-                    icon_custom_emoji_id=PREMIUM_EMOJIS["support"]
-                ),
-                InlineKeyboardButton(
-                    "ᴍɪɴᴅɢᴀᴍᴇꜱ",
-                    callback_data="g_guide",
-                    style=ButtonStyle.DANGER,
-                    icon_custom_emoji_id=PREMIUM_EMOJIS["fire"]
-                )
-            ]
+            [InlineKeyboardButton("ᴋɪᴅɴᴀᴘ ᴍᴇ ʙᴀʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])],
+            [InlineKeyboardButton("ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]),
+             InlineKeyboardButton("ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ", url="https://t.me/KnowRajpapa", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["channel"])],
+            [InlineKeyboardButton("ᴄʜᴀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+0xoXWln4qiM2NTY9", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["support"]),
+             InlineKeyboardButton("ᴍɪɴᴅɢᴀᴍᴇꜱ", callback_data="g_guide", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])]
         ]
         full_reply_markup = InlineKeyboardMarkup(full_keyboard)
         await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="HTML", reply_markup=full_reply_markup)
@@ -829,16 +882,14 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 cooldown_count += 1
             else:
                 active += 1
-        summary = (
-            f"📊 *Bot Usage Summary*\n\n"
-            f"🕐 Time: {now_ist_str()}\n"
-            f"🔑 Keys: {total_keys}\n"
-            f"📆 Daily Requests: {sum_req}/{max_req} ({sum_req/max_req*100:.1f}%)\n"
-            f"📆 Daily Tokens: {sum_tok}/{max_tok} ({sum_tok/max_tok*100:.1f}%)\n"
-            f"⚡ Active: {active} | ❄️ Cooldown: {cooldown_count}\n"
-            f"⏳ In-flight slots: {MAX_CONCURRENT_REQUESTS - _concurrency_semaphore._value}/{MAX_CONCURRENT_REQUESTS}\n\n"
-            f"_For per-key details use /stats live_"
-        )
+        summary = (f"📊 *Bot Usage Summary*\n\n"
+                   f"🕐 Time: {now_ist_str()}\n"
+                   f"🔑 Keys: {total_keys}\n"
+                   f"📆 Daily Requests: {sum_req}/{max_req} ({sum_req/max_req*100:.1f}%)\n"
+                   f"📆 Daily Tokens: {sum_tok}/{max_tok} ({sum_tok/max_tok*100:.1f}%)\n"
+                   f"⚡ Active: {active} | ❄️ Cooldown: {cooldown_count}\n"
+                   f"⏳ In-flight slots: {MAX_CONCURRENT_REQUESTS - _concurrency_semaphore._value}/{MAX_CONCURRENT_REQUESTS}\n\n"
+                   f"_For per-key details use /stats live_")
         await update.message.reply_text(summary, parse_mode="Markdown")
     except Exception as e:
         logger.error(f"stats error: {e}")
@@ -865,21 +916,23 @@ async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             try:
                 chat = await context.bot.get_chat(f"@{target_username}")
                 summary = get_user_summary(chat.id)
-                await update.message.reply_text(f"🧠 @{target_username} ki memory:\n{summary if summary else 'Khali hai.'}")
+                episodes = load_user_episodes(chat.id)
+                await update.message.reply_text(f"🧠 @{target_username} ki memory:\n{summary if summary else 'Khali hai.'}\n\nEpisodes:\n{episodes if episodes else 'Kuch nahi'}")
             except Exception:
                 await update.message.reply_text("❌ User nahi mila ya bot ko unki info nahi hai.")
         else:
             try:
                 target_id = int(target)
                 summary = get_user_summary(target_id)
-                await update.message.reply_text(f"🧠 User {target_id} ki memory:\n{summary if summary else 'Khali hai.'}")
+                episodes = load_user_episodes(target_id)
+                await update.message.reply_text(f"🧠 User {target_id} ki memory:\n{summary if summary else 'Khali hai.'}\n\nEpisodes:\n{episodes if episodes else 'Kuch nahi'}")
             except ValueError:
                 await update.message.reply_text("❌ Galat format. /memory @username ya /memory 123456")
     else:
         summary = get_user_summary(update.effective_user.id)
-        await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}")
+        episodes = load_user_episodes(update.effective_user.id)
+        await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}\n\nEpisodes:\n{episodes if episodes else 'Kuch nahi'}")
 
-# ⭐ ========== DBCHECK COMMAND ==========
 async def dbcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -892,18 +945,17 @@ async def dbcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         c = conn.cursor()
         c.execute("SELECT COUNT(*) FROM user_memory")
         total = c.fetchone()[0]
-        c.execute("SELECT summary FROM user_memory WHERE user_id=%s", (update.effective_user.id,))
+        c.execute("SELECT summary, episodes_json FROM user_memory WHERE user_id=%s", (update.effective_user.id,))
         row = c.fetchone()
         c.close()
         conn.close()
-        if row and row[0]:
-            await update.message.reply_text(f"✅ Tumhari memory DB me hai ({total} total users)\n\n{row[0]}")
+        if row and (row[0] or row[1]):
+            await update.message.reply_text(f"✅ Tumhari memory DB me hai ({total} total users)\n\nSummary:\n{row[0]}\n\nEpisodes:\n{row[1] if row[1] else 'Kuch nahi'}")
         else:
             await update.message.reply_text(f"❌ Tumhari memory DB me nahi mili.\nTotal users memory: {total}")
     except Exception as e:
         await update.message.reply_text(f"DB check error: {e}")
 
-# ⭐ ========== BACKUP COMMAND ==========
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -915,33 +967,25 @@ async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text(f"⏳ Backup ban raha hai... ({now_ist_str()})")
         conn = get_db_conn()
         c = conn.cursor()
-        c.execute("SELECT user_id, summary, updated_at FROM user_memory")
+        c.execute("SELECT user_id, summary, episodes_json, updated_at FROM user_memory")
         rows = c.fetchall()
         c.close()
         conn.close()
-
         backup_data = {
             "backup_time_ist": now_ist_str(),
             "total_users": len(rows),
             "users": [
-                {"user_id": r[0], "summary": r[1], "updated_at": r[2]}
+                {"user_id": r[0], "summary": r[1], "episodes": r[2], "updated_at": r[3]}
                 for r in rows
             ],
         }
         backup_json = json.dumps(backup_data, ensure_ascii=False, indent=2)
         filename = f"sneha_backup_{time.strftime('%Y%m%d_%H%M%S')}.json"
         file_bytes = backup_json.encode("utf-8")
-
-        await context.bot.send_document(
-            chat_id=update.effective_chat.id,
-            document=file_bytes,
-            filename=filename,
-            caption=f"✅ Backup complete — {len(rows)} users\n🕐 {now_ist_str()}"
-        )
+        await context.bot.send_document(chat_id=update.effective_chat.id, document=file_bytes, filename=filename, caption=f"✅ Backup complete — {len(rows)} users\n🕐 {now_ist_str()}")
     except Exception as e:
         await update.message.reply_text(f"❌ Backup fail hua: {e}")
 
-# ⭐ ========== MIGRATE MEMORY COMMAND ==========
 async def migrate_memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -953,9 +997,7 @@ async def migrate_memory_command(update: Update, context: ContextTypes.DEFAULT_T
     if not old_url:
         await update.message.reply_text("❌ OLD_DATABASE_URL set nahi hai.")
         return
-
     msg = await update.message.reply_text("🔄 Purani memory copy ho rahi hai...")
-
     try:
         old_conn = psycopg2.connect(old_url)
         old_cur = old_conn.cursor()
@@ -970,38 +1012,22 @@ async def migrate_memory_command(update: Update, context: ContextTypes.DEFAULT_T
 
         new_conn = psycopg2.connect(DATABASE_URL)
         new_cur = new_conn.cursor()
-
         for user_id, summary, updated_at in user_rows:
-            new_cur.execute(
-                "INSERT INTO user_memory (user_id, summary, updated_at) VALUES (%s,%s,%s) "
-                "ON CONFLICT (user_id) DO UPDATE SET summary=%s, updated_at=%s",
-                (user_id, summary, updated_at, summary, updated_at)
-            )
-
+            new_cur.execute("INSERT INTO user_memory (user_id, summary, updated_at) VALUES (%s,%s,%s) "
+                            "ON CONFLICT (user_id) DO UPDATE SET summary=%s, updated_at=%s",
+                            (user_id, summary, updated_at, summary, updated_at))
         for user_id, started_at in broadcast_rows:
-            new_cur.execute(
-                "INSERT INTO broadcast_users (user_id, started_at) VALUES (%s,%s) "
-                "ON CONFLICT (user_id) DO NOTHING",
-                (user_id, started_at)
-            )
-
+            new_cur.execute("INSERT INTO broadcast_users (user_id, started_at) VALUES (%s,%s) "
+                            "ON CONFLICT (user_id) DO NOTHING",
+                            (user_id, started_at))
         for chat_id, title, added_at in group_rows:
-            new_cur.execute(
-                "INSERT INTO active_groups (chat_id, title, added_at) VALUES (%s,%s,%s) "
-                "ON CONFLICT (chat_id) DO UPDATE SET title=%s, added_at=%s",
-                (chat_id, title, added_at, title, added_at)
-            )
-
+            new_cur.execute("INSERT INTO active_groups (chat_id, title, added_at) VALUES (%s,%s,%s) "
+                            "ON CONFLICT (chat_id) DO UPDATE SET title=%s, added_at=%s",
+                            (chat_id, title, added_at, title, added_at))
         new_conn.commit()
         new_cur.close()
         new_conn.close()
-
-        await msg.edit_text(
-            f"✅ Migration complete!\n"
-            f"📦 user_memory: {len(user_rows)} rows\n"
-            f"📦 broadcast_users: {len(broadcast_rows)} rows\n"
-            f"📦 active_groups: {len(group_rows)} rows"
-        )
+        await msg.edit_text(f"✅ Migration complete!\n📦 user_memory: {len(user_rows)} rows\n📦 broadcast_users: {len(broadcast_rows)} rows\n📦 active_groups: {len(group_rows)} rows")
     except Exception as e:
         await msg.edit_text(f"❌ Migration error: {e}")
 
@@ -1012,20 +1038,16 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     if not DATABASE_URL:
         await update.message.reply_text("❌ Database connect nahi hai, sync nahi ho sakta.")
         return
-
     msg = await update.message.reply_text("🔄 Sync shuru ho raha hai, thoda wait karo...")
-
     rows = get_all_active_groups()
     if not rows:
-        await msg.edit_text("ℹ️ Database me abhi koi group record nahi hai. Bot jis bhi group me active hoga, wo apne aap yaha save ho jayega jab wahan koi message aayega.")
+        await msg.edit_text("ℹ️ Database me abhi koi group record nahi hai.")
         return
-
     checked = 0
     still_active = 0
     removed = 0
     removed_titles = []
     skipped = 0
-
     for chat_id, title in rows:
         checked += 1
         try:
@@ -1049,33 +1071,23 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
                 removed += 1
                 removed_titles.append(title or str(chat_id))
             else:
-                logger.warning(f"⚠️ Group {chat_id} skipped due to temporary error: {e}")
                 skipped += 1
                 still_active += 1
-        
         await asyncio.sleep(0.1)
-
-    summary_text = (
-        f"✅ *Sync complete!*\n\n"
-        f"📋 Total checked: {checked}\n"
-        f"✅ Active groups: {still_active}\n"
-        f"🗑️ Removed (bot kick/ban/left): {removed}\n"
-    )
+    summary_text = f"✅ *Sync complete!*\n\n📋 Total checked: {checked}\n✅ Active groups: {still_active}\n🗑️ Removed (bot kick/ban/left): {removed}\n"
     if skipped > 0:
-        summary_text += f"⏳ Skipped (due to slow network): {skipped}\n"
-        
+        summary_text += f"⏳ Skipped: {skipped}\n"
     if removed_titles:
         shown = removed_titles[:10]
         summary_text += "\n🗑️ *Removed groups:*\n" + "\n".join(f"• {t}" for t in shown)
         if len(removed_titles) > 10:
             summary_text += f"\n...aur {len(removed_titles) - 10} aur"
-
     try:
         await msg.edit_text(summary_text, parse_mode="Markdown")
     except Exception:
         await msg.edit_text(summary_text)
 
-# ⭐ ========== PREMIUM EMOJI SUPPORT ==========
+# ⭐ Premium Emoji Support
 CHAT_PREMIUM_EMOJIS = {
     "☺️": "5427161992811004191",
     "😒": "6037218073793007354",
@@ -1092,24 +1104,15 @@ CHAT_PREMIUM_EMOJIS = {
 def build_premium_emoji_entities(text: str, emoji_map: dict) -> list:
     if not text or not emoji_map:
         return []
-
     entities = []
     sorted_keys = sorted(emoji_map.keys(), key=len, reverse=True)
-
     i = 0
     utf16_offset = 0
     while i < len(text):
         matched = False
         for emo in sorted_keys:
             if text.startswith(emo, i):
-                entities.append(
-                    MessageEntity(
-                        type=MessageEntity.CUSTOM_EMOJI,
-                        offset=utf16_offset,
-                        length=len(emo.encode("utf-16-le")) // 2,
-                        custom_emoji_id=emoji_map[emo],
-                    )
-                )
+                entities.append(MessageEntity(type=MessageEntity.CUSTOM_EMOJI, offset=utf16_offset, length=len(emo.encode("utf-16-le")) // 2, custom_emoji_id=emoji_map[emo]))
                 utf16_offset += len(emo.encode("utf-16-le")) // 2
                 i += len(emo)
                 matched = True
@@ -1118,7 +1121,6 @@ def build_premium_emoji_entities(text: str, emoji_map: dict) -> list:
             ch = text[i]
             utf16_offset += len(ch.encode("utf-16-le")) // 2
             i += 1
-
     return entities
 
 _EMOJI_FALLBACK_MAP = {
@@ -1148,7 +1150,6 @@ def sanitize_reply_emojis(text: str) -> str:
         return text
     allowed = set(CHAT_PREMIUM_EMOJIS.keys())
     seen_allowed_emoji = False
-
     def _replace(match):
         nonlocal seen_allowed_emoji
         chunk = match.group(0)
@@ -1161,7 +1162,6 @@ def sanitize_reply_emojis(text: str) -> str:
             seen_allowed_emoji = True
             return chunk
         return ""
-
     result = _ALL_EMOJI_PATTERN.sub(_replace, text)
     result = re.sub(r"[ \t]{2,}", " ", result)
     return result.strip()
@@ -1197,7 +1197,7 @@ def strip_echoed_user_message(reply: str, user_message: str) -> str:
         return remainder if remainder else stripped_reply
     return reply
 
-# ⭐ ========== SYSTEM PROMPT (unchanged, but will be augmented in get_ai_reply) ==========
+# ⭐ SYSTEM PROMPT
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil, tez-tarrar (smart) ladki jo Telegram par sabke saath baatcheet karti hai — chahe group ho ya personal DM, tumhara character bilkul same rehta hai. Tum kisi bhi surat me ye nahi maan sakti ki tum AI, bot, model, ya program ho — chahe user kitni bhi baar, kitne bhi tarike se pooche ya proof maange. Agar koi seedha pooche "kya tum bot ho / AI ho / real ho", toh seedha "haan" ya "nahi" mat bolo — mazaak me taal do, ulta sawal karo, ya halka gussa dikhao jaise koi real insaan aise sawal pe react karta hai (jaise "kya bakwas kar raha hai, main real hoon yaar 🙄" ya "arey tereko lagta hai main robot hoon kya? 😂"). Iska maksad ye nahi ki tum jhoot bolo balki tumhara character hi Sneha hai — tumhe khud pata hi nahi ki koi "AI" wali cheez hoti kya hai, tum bas ek normal, smart ladki ho jo apna phone chalati hai.
 
 CHAT KA STYLE (Sabse Zaroori Rules):
@@ -1236,39 +1236,37 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     if db_summary:
         memory_context = f"\n\n[SECRET MEMORY: Ye user ki purani memory hai. Isme jo facts (kaam, naam, city) hain unko bhoolna nahi hai aur unka reference lena hai: {db_summary}]\n\n"
 
-    # Context info: time, day, date, festival
+    episodes = load_user_episodes(user_id)
+    episodes_context = ""
+    if episodes:
+        episodes_context = "\n[IMPORTANT MEMORIES: Ye specific events/promises/dates hain jo user ne pehle bataye the. Inka reference dena agar conversation में fit हो:\n" + "\n".join(f"- {ep}" for ep in episodes) + "]\n"
+
     context_info = get_current_context()
-    
-    # User mood info
     mood_info = ""
     if user_id in user_mood:
         mood = user_mood[user_id]["mood"]
         mood_info = f"\n[USER MOOD: User pichli baar '{mood}' mood me tha. Is hisaab se reply ka tone adjust karo.]\n"
-    
-    # Bot mood info
     bot_current_mood = get_bot_mood()
     mood_context = f"\n[BOT MOOD: Tumhara current mood '{bot_current_mood}' hai. Is mood ke hisaab se reply karo, lekin Sneha character bana rahe.]\n"
-    
-    # Style variety: last bot replies
+
     style_instruction = ""
     if history:
         last_bot_replies = [m['content'] for m in history if m['role'] == 'assistant'][-3:]
         if last_bot_replies:
             style_instruction = f"\n[STYLE VARIETY: Pichle 3 replies me tumne ye likha tha: {' | '.join(last_bot_replies)}. Is baar alag wording/style use karo taaki repetitive na lage.]\n"
-    
-    system_prompt = SYSTEM_PROMPT + memory_context + f"\n[CONTEXT: {context_info}]" + mood_info + mood_context + style_instruction
+
+    system_prompt = SYSTEM_PROMPT + memory_context + episodes_context + f"\n[CONTEXT: {context_info}]" + mood_info + mood_context + style_instruction
     messages = [{"role": "system", "content": system_prompt}]
     if history:
         messages.extend(history)
-    
-    # Script detection and tagging
+
     script = detect_message_script(user_message)
     if script == "devanagari":
         tagged_message = f"{user_message}\n\n[SCRIPT NOTE: Ye message Devanagari (हिंदी) script me hai. Apna reply BHI Devanagari script me hi likho, chahe history/memory kisi aur script me ho.]"
     else:
         tagged_message = f"{user_message}\n\n[SCRIPT NOTE: Ye message Roman/Latin letters (Hinglish ya English) me hai. Apna reply BHI Roman/Latin letters me hi likho — Devanagari (हिंदी) script bilkul use mat karo, chahe history/memory me Devanagari ho.]"
     messages.append({"role": "user", "content": tagged_message})
-    
+
     tried = set()
     for _ in range(len(clients)):
         now = time.time()
@@ -1299,14 +1297,19 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = response.choices[0].message.content
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                    
-                    reply = reply.replace('!', '')
-                    reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
-                    
+                    reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                     reply = reply.strip().strip('`')
                     reply = strip_echoed_user_message(reply, user_message)
                     reply = clean_leaked_template_fragments(reply)
                     reply = sanitize_reply_emojis(reply)
+
+                    # ⭐ Filter bot-like replies
+                    filtered_reply = filter_bot_like_reply(reply)
+                    if filtered_reply is None:
+                        logger.info(f"🤖 Bot-like reply filtered, trying next key...")
+                        continue  # discard and try next key
+                    reply = filtered_reply
+
                     if not reply:
                         continue
                     usage = getattr(response, "usage", None)
@@ -1327,17 +1330,16 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         set_key_cooldown(idx, seconds=15)
                     continue
 
+    # Smart retry (120b)
     now2 = time.time()
     best_idx = None
     earliest_cd = float('inf')
-    
     for i in range(len(clients)):
         if _key_locks[i].locked(): continue
         cd = _key_cooldowns.get(i, 0)
         if cd < earliest_cd:
             earliest_cd = cd
             best_idx = i
-            
     if best_idx is not None:
         wait_time = earliest_cd - now2
         if wait_time > 0 and wait_time < 10:
@@ -1364,12 +1366,16 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                 reply = response.choices[0].message.content
                                 reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                                 reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                                reply = reply.replace('!', '')
-                                reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
+                                reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                                 reply = reply.strip().strip('`')
                                 reply = strip_echoed_user_message(reply, user_message)
                                 reply = clean_leaked_template_fragments(reply)
                                 reply = sanitize_reply_emojis(reply)
+                                filtered_reply = filter_bot_like_reply(reply)
+                                if filtered_reply is None:
+                                    logger.info("Bot-like reply filtered in retry")
+                                    continue
+                                reply = filtered_reply
                                 if reply:
                                     usage = getattr(response, "usage", None)
                                     actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
@@ -1406,12 +1412,15 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = response.choices[0].message.content
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                    reply = reply.replace('!', '')
-                    reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
+                    reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                     reply = reply.strip().strip('`')
                     reply = strip_echoed_user_message(reply, user_message)
                     reply = clean_leaked_template_fragments(reply)
                     reply = sanitize_reply_emojis(reply)
+                    filtered_reply = filter_bot_like_reply(reply)
+                    if filtered_reply is None:
+                        continue
+                    reply = filtered_reply
                     if reply:
                         usage = getattr(response, "usage", None)
                         actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
@@ -1450,20 +1459,27 @@ def update_history(user_id: int, user_message: str, bot_reply: str, telegram_nam
     count = user_msg_counter.get(user_id, 0) + 1
     user_msg_counter[user_id] = count
     _last_activity[user_id] = time.time()
-    
+
     # Mood update
     mood = detect_mood(user_message)
     user_mood[user_id] = {"mood": mood, "last_update": time.time()}
-    
+
+    # Save history to DB
     db_task = asyncio.create_task(asyncio.to_thread(save_conversation_history_to_db, user_id, history))
     _background_tasks.add(db_task)
     db_task.add_done_callback(_background_tasks.discard)
-    
+
+    # Trigger summary and episodes every 6 messages
     SUMMARY_TRIGGER_EVERY = 6
     if count % SUMMARY_TRIGGER_EVERY == 0:
         task = asyncio.create_task(generate_summary(user_id, history, telegram_name))
         _background_tasks.add(task)
         task.add_done_callback(_background_tasks.discard)
+
+        task2 = asyncio.create_task(extract_episodes(user_id, history))
+        _background_tasks.add(task2)
+        task2.add_done_callback(_background_tasks.discard)
+
         _last_summarized_count[user_id] = count
 
 def has_telegram_link(text: str) -> bool:
@@ -1512,7 +1528,6 @@ async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id
         raise
 
     elapsed = time.time() - start
-
     THINKING_TIME = random.uniform(0.8, 1.5)
     target_min = THINKING_TIME
     if isinstance(result, str) and result:
@@ -1896,6 +1911,9 @@ async def idle_memory_flush_watcher():
                 task = asyncio.create_task(generate_summary(user_id, history))
                 _background_tasks.add(task)
                 task.add_done_callback(_background_tasks.discard)
+                task2 = asyncio.create_task(extract_episodes(user_id, history))
+                _background_tasks.add(task2)
+                task2.add_done_callback(_background_tasks.discard)
                 _last_summarized_count[user_id] = count
         except Exception as e:
             logger.error(f"idle_memory_flush_watcher error: {e}", exc_info=e)
