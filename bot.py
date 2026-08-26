@@ -849,11 +849,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
         )
         full_keyboard = [
-            [InlineKeyboardButton("ᴋɪᴅɴᴀᴘ ᴍᴇ ʙᴀʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])],
-            [InlineKeyboardButton("ᴅᴇᴠᴇʟᴏᴘᴇʀ", url="https://t.me/its_raj_king", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]),
-             InlineKeyboardButton("ᴊᴏɪɴ ᴄʜᴀɴɴᴇʟ", url="https://t.me/KnowRajpapa", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["channel"])],
-            [InlineKeyboardButton("ᴄʜᴀᴛ ɢʀᴏᴜᴘ", url="https://t.me/+0xoXWln4qiM2NTY9", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["support"]),
-             InlineKeyboardButton("ᴍɪɴᴅɢᴀᴍᴇꜱ", callback_data="g_guide", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])]
+            [InlineKeyboardButton("ᴧᴅᴅ ϻє ʙᴧʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])],
+            [InlineKeyboardButton("ᴅєᴠєʟᴏᴘєʀ", url="https://t.me/its_raj_king", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]),
+             InlineKeyboardButton("ᴊᴏɪɴ ᴄʜᴧɴɴєʟ", url="https://t.me/KnowRajpapa", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["channel"])],
+            [InlineKeyboardButton("ᴄʜᴧᴛ ɢʀᴏυᴘ", url="https://t.me/+0xoXWln4qiM2NTY9", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["support"]),
+             InlineKeyboardButton("ϻɪɴᴅɢᴧϻєꜱ", callback_data="g_guide", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])]
         ]
         full_reply_markup = InlineKeyboardMarkup(full_keyboard)
         await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="HTML", reply_markup=full_reply_markup)
