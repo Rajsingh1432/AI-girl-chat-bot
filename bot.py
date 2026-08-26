@@ -263,6 +263,906 @@ def filter_bot_like_reply(reply: str) -> str | None:
             return None
     return reply
 
+# Episodic memory functions
+def load_user_episodes(user_id: int) -> list:
+    if not DATABASE_URL: return []
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT episodes_json FROM user_memory WHERE user_id=%s", (user_id,))
+        row = c.fetchone()
+        c.close()
+        conn.close()
+        if row and row[0]:
+            return json.loads(row[0])
+        return []
+    except Exception as e:
+        logger.error(f"❌ Episodes load failed for {user_id}: {e}")
+        return []
+
+def save_user_episodes(user_id: int, episodes: list):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        episodes_json = json.dumps(episodes)
+        c.execute("INSERT INTO user_memory (user_id, episodes_json, updated_at) VALUES (%s, %s, %s) "
+                  "ON CONFLICT (user_id) DO UPDATE SET episodes_json=%s, updated_at=%s",
+                  (user_id, episodes_json, time.time(), episodes_json, time.time()))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"❌ Episodes save failed for {user_id}: {e}")
+
+user_warning_count = {}
+bio_checked_users = set()
+user_flood_data = {}
+FLOOD_WINDOW = 4
+FLOOD_THRESHOLD = 12
+FLOOD_COOLDOWN = 120
+LAST_CLEANUP = 0.0
+chat_admin_cache = {}
+admin_need_reply_cooldown = {}
+user_msg_counter = {}
+_greeted_once = set()
+_welcomed_users = {}
+conversation_memory = {}
+MAX_HISTORY_MESSAGES = 40
+
+# ---------- DATABASE ----------
+def get_db_conn():
+    if not DATABASE_URL: return None
+    return psycopg2.connect(DATABASE_URL)
+
+def init_db():
+    if not DATABASE_URL:
+        logger.warning("DATABASE_URL nahi mila, PostgreSQL skip ho raha hai.")
+        return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS user_memory
+                     (user_id BIGINT PRIMARY KEY, summary TEXT, episodes_json TEXT, updated_at REAL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS broadcast_users
+                     (user_id BIGINT PRIMARY KEY, started_at REAL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS active_groups
+                     (chat_id BIGINT PRIMARY KEY, title TEXT, added_at REAL)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS conversation_history
+                     (user_id BIGINT PRIMARY KEY, history_json TEXT, updated_at REAL)''')
+        # Ensure episodes column exists for existing tables
+        try:
+            c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS episodes_json TEXT")
+        except Exception:
+            pass
+        conn.commit()
+        c.close()
+        conn.close()
+        logger.info("✅ PostgreSQL Permanent Database Connected!")
+    except Exception as e:
+        logger.error(f"DB Connection error: {e}")
+
+def get_user_summary(user_id: int) -> str:
+    if not DATABASE_URL: return ""
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT summary FROM user_memory WHERE user_id=%s", (user_id,))
+        row = c.fetchone()
+        c.close()
+        conn.close()
+        return row[0] if row and row[0] else ""
+    except Exception as e:
+        logger.error(f"❌ DB Fetch Failed for {user_id}: {e}")
+        return ""
+
+def save_user_summary(user_id: int, summary: str):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("INSERT INTO user_memory (user_id, summary, updated_at) VALUES (%s, %s, %s) "
+                  "ON CONFLICT (user_id) DO UPDATE SET summary=%s, updated_at=%s",
+                  (user_id, summary, time.time(), summary, time.time()))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"❌ DB Save Failed for {user_id}: {e}")
+
+def load_conversation_history_from_db(user_id: int) -> list:
+    if not DATABASE_URL: return []
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT history_json FROM conversation_history WHERE user_id=%s", (user_id,))
+        row = c.fetchone()
+        c.close()
+        conn.close()
+        if row and row[0]:
+            return json.loads(row[0])
+        return []
+    except Exception as e:
+        logger.error(f"❌ History DB Fetch Failed for {user_id}: {e}")
+        return []
+
+def save_conversation_history_to_db(user_id: int, history: list):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        history_json = json.dumps(history)
+        c.execute("INSERT INTO conversation_history (user_id, history_json, updated_at) VALUES (%s, %s, %s) "
+                  "ON CONFLICT (user_id) DO UPDATE SET history_json=%s, updated_at=%s",
+                  (user_id, history_json, time.time(), history_json, time.time()))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"❌ History DB Save Failed for {user_id}: {e}")
+
+async def save_broadcast_user_async(user_id: int):
+    if not DATABASE_URL:
+        return
+    try:
+        await asyncio.to_thread(_save_broadcast_user_sync, user_id)
+    except Exception:
+        pass
+
+def _save_broadcast_user_sync(user_id: int):
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("INSERT INTO broadcast_users (user_id, started_at) VALUES (%s, %s) "
+                  "ON CONFLICT (user_id) DO NOTHING",
+                  (user_id, time.time()))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception:
+        pass
+
+def save_active_group(chat_id: int, title: str):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("INSERT INTO active_groups (chat_id, title, added_at) VALUES (%s, %s, %s) "
+                  "ON CONFLICT (chat_id) DO UPDATE SET title=%s",
+                  (chat_id, title, time.time(), title))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception:
+        pass
+
+async def save_active_group_async(chat_id: int, title: str):
+    if not DATABASE_URL:
+        return
+    try:
+        await asyncio.to_thread(_save_active_group_sync, chat_id, title)
+    except Exception:
+        pass
+
+def _save_active_group_sync(chat_id: int, title: str):
+    save_active_group(chat_id, title)
+
+def delete_active_group(chat_id: int):
+    if not DATABASE_URL: return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("DELETE FROM active_groups WHERE chat_id=%s", (chat_id,))
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"delete_active_group fail for {chat_id}: {e}")
+
+async def delete_active_group_async(chat_id: int):
+    if not DATABASE_URL:
+        return
+    try:
+        await asyncio.to_thread(delete_active_group, chat_id)
+    except Exception:
+        pass
+
+def get_all_active_groups() -> list:
+    if not DATABASE_URL: return []
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT chat_id, title FROM active_groups")
+        rows = c.fetchall()
+        c.close()
+        conn.close()
+        return rows
+    except Exception as e:
+        logger.warning(f"get_all_active_groups fail: {e}")
+        return []
+
+# ⭐ Memory Generation
+def _parse_summary_fields(summary: str) -> dict:
+    fields = {}
+    if not summary:
+        return fields
+    for line in summary.split("\n"):
+        if ":" in line:
+            label, _, value = line.partition(":")
+            fields[label.strip().lower()] = value.strip()
+    return fields
+
+def _protect_permanent_fields(new_summary: str, old_summary: str) -> str:
+    if not old_summary:
+        return new_summary
+    old_fields = _parse_summary_fields(old_summary)
+    new_fields = _parse_summary_fields(new_summary)
+    permanent_labels = ["naam", "hobby", "facts"]
+    empty_values = ("not shared", "none", "")
+    lines = new_summary.split("\n")
+    for i, line in enumerate(lines):
+        if ":" not in line:
+            continue
+        label = line.split(":", 1)[0].strip().lower()
+        if label not in permanent_labels:
+            continue
+        new_value = new_fields.get(label, "").lower()
+        old_value = old_fields.get(label, "")
+        if new_value in empty_values and old_value and old_value.lower() not in empty_values:
+            lines[i] = f"{line.split(':', 1)[0]}: {old_value}"
+    return "\n".join(lines)
+
+def _apply_telegram_name_fallback(summary: str, telegram_name: str | None) -> str:
+    if not summary:
+        return summary
+    lines = summary.split("\n")
+    for i, line in enumerate(lines):
+        if line.strip().lower().startswith("naam:"):
+            value = line.split(":", 1)[1].strip() if ":" in line else ""
+            if value.lower() in ("not shared", "") and telegram_name:
+                lines[i] = f"Naam: {telegram_name} (Telegram name, user ne khud confirm nahi kiya)"
+            break
+    return "\n".join(lines)
+
+async def generate_summary(user_id: int, history: list, telegram_name: str | None = None):
+    if len(history) < 4 or not DATABASE_URL: return
+    logger.info(f"🔄 Summary generation triggered for {user_id}...")
+    try:
+        old_summary = get_user_summary(user_id)
+        recent = history[-12:]
+        chat_lines = []
+        for msg in recent:
+            speaker = "User" if msg.get("role") == "user" else "Sneha"
+            chat_lines.append(f"{speaker}: {msg.get('content', '')}")
+        chat_text = "\n".join(chat_lines)
+
+        prompt = f"""Tu ek memory bot hai. Neeche purani memory aur nayi chat di gayi hai. Tujhe user ke baare me structured facts save karne hain.
+
+PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
+NAYI CHAT:
+{chat_text}
+
+Tumhe neeche diye EXACT FORMAT me hi output dena hai, 4 alag lines me, har line ek fixed label se shuru hogi:
+
+Topics: <ek chhoti list, MAX 7 topics, comma se separate>
+Naam: <sirf tab jab user ne khud bataya ho, warna "Not shared">
+Hobby: <user ke interests/hobbies, warna "Not shared">
+Facts: <baaki important personal facts 1-2 lines me — kaam, city, trip plans, feelings, romantic talks, koi bhi important event, promises, future plans, ya dates jo user ne mention ki ho. Agar kuch na ho toh "None">
+
+STRICT RULES:
+1. Sirf yahi 4 lines likho, koi extra heading mat likho.
+2. FIELD ISOLATION RULE: Naam, Hobby, Facts permanent hain.
+3. NAAM RULE: Naam sirf tab jab user ne khud bataya ho.
+4. TOPICS RULE: Topics rolling list hai, max 7.
+5. MOST IMPORTANT: Purani memory ke permanent fields ko rakhna.
+6. PROMISE/EVENT RULE: Facts me promises/dates likho.
+7. SCRIPT RULE: Output Hamesha Hinglish me, Devanagari mana hai.
+"""
+        messages = [{"role": "user", "content": prompt}]
+        tried = set()
+        for _ in range(len(clients)):
+            now = time.time()
+            idx = pick_best_key(now)
+            if idx is None or idx in tried:
+                break
+            tried.add(idx)
+            lock = _key_locks[idx]
+            if lock.locked():
+                continue
+            async with lock:
+                if not key_has_room(idx):
+                    continue
+                entry_idx = pre_record_key_usage(idx)
+                async with _concurrency_semaphore:
+                    await throttle_dispatch()
+                    try:
+                        response = await clients[idx].chat.completions.create(
+                            model="openai/gpt-oss-20b",
+                            messages=messages,
+                            temperature=0.2,
+                            max_tokens=300,
+                            reasoning_effort="low",
+                            include_reasoning=False,
+                            timeout=10.0
+                        )
+                        final_summary = response.choices[0].message.content.strip()
+                        lower_summary = final_summary.lower()
+                        has_devanagari = any('\u0900' <= ch <= '\u097F' for ch in final_summary)
+                        has_required_labels = ("topics:" in lower_summary and "naam:" in lower_summary and "hobby:" in lower_summary and "facts:" in lower_summary)
+                        if (not final_summary or len(final_summary) > 400 or "purani memory" in lower_summary or 
+                            "nayi chat" in lower_summary or "'role':" in lower_summary or "main aapki instructions" in lower_summary or
+                            has_devanagari or not has_required_labels):
+                            logger.warning(f"⚠️ AI generated garbage summary for {user_id}")
+                            return
+                        final_summary = _protect_permanent_fields(final_summary, old_summary)
+                        final_summary = _apply_telegram_name_fallback(final_summary, telegram_name)
+                        save_user_summary(user_id, final_summary)
+                        update_key_usage_actual(idx, entry_idx, 60)
+                        reset_key_429_streak(idx)
+                        logger.info(f"📝 User {user_id} summary update: {final_summary[:120]}...")
+                        return
+                    except Exception as e:
+                        error_str = str(e).lower()
+                        if "429" in error_str or "rate_limit" in error_str:
+                            handle_429_error(idx, error_str)
+                        else:
+                            logger.error(f"❌ Summary generation failed for {user_id}: {e}")
+                        continue
+    except Exception as e:
+        logger.error(f"🔥 Summary function crash for {user_id}: {e}")
+
+async def extract_episodes(user_id: int, history: list):
+    if len(history) < 4 or not DATABASE_URL: return
+    old_episodes = load_user_episodes(user_id)
+    recent = history[-6:]
+    chat_lines = []
+    for msg in recent:
+        speaker = "User" if msg.get("role") == "user" else "Sneha"
+        chat_lines.append(f"{speaker}: {msg.get('content','')}")
+    chat_text = "\n".join(chat_lines)
+    prompt = f"""नीचे एक conversation का हिस्सा है। इसमें से कोई भी important चीज़ निकालो जो future में काम आ सकती है — जैसे:
+- कोई promise (e.g., "मैं कल gym जाऊँगा")
+- कोई specific date या event (e.g., "मेरा birthday 5 मई को है")
+- कोई पसंद/नापसंद जो पहले नहीं बताई थी
+- कोई secret या निजी बात
+- कोई feeling जो user ने express की हो
+
+अगर कुछ important नहीं है तो खाली छोड़ दो। पुरानी episodes पहले से मौजूद हैं:
+{old_episodes}
+
+बातचीत:
+{chat_text}
+
+Output सिर्फ एक JSON list के format में दो, जैसे:
+["user ने कहा कि वह कल gym जाएगा", "user का birthday 5 मई को है"]
+अगर कुछ नया नहीं है, तो [] दो। कोई extra text मत लिखो।
+"""
+    try:
+        messages = [{"role": "user", "content": prompt}]
+        idx = pick_best_key(time.time())
+        if idx is None:
+            return
+        async with _key_locks[idx]:
+            if not key_has_room(idx):
+                return
+            entry_idx = pre_record_key_usage(idx)
+            async with _concurrency_semaphore:
+                await throttle_dispatch()
+                response = await clients[idx].chat.completions.create(
+                    model="openai/gpt-oss-20b",
+                    messages=messages,
+                    temperature=0.1,
+                    max_tokens=150,
+                    reasoning_effort="low",
+                    include_reasoning=False,
+                    timeout=8.0
+                )
+                content = response.choices[0].message.content.strip()
+                try:
+                    new_episodes = json.loads(content)
+                    if isinstance(new_episodes, list):
+                        combined = old_episodes + new_episodes
+                        combined = combined[-10:]
+                        save_user_episodes(user_id, combined)
+                        update_key_usage_actual(idx, entry_idx, 80)
+                        reset_key_429_streak(idx)
+                        logger.info(f"📌 Episodes updated for {user_id}: {new_episodes}")
+                except json.JSONDecodeError:
+                    logger.warning(f"⚠️ Episodes extraction garbage for {user_id}")
+    except Exception as e:
+        logger.warning(f"Episodes extraction fail for {user_id}: {e}")
+
+# ⭐ GREETING GENERATOR
+async def generate_greeting(user_id: int, user_message: str) -> str | None:
+    summary = get_user_summary(user_id)
+    episodes = load_user_episodes(user_id)
+    if not summary and not episodes:
+        return None
+    ep_text = ""
+    if episodes:
+        ep_text = "\n".join(f"- {ep}" for ep in episodes[-3:])
+    prompt = f"""Tu Sneha hai. Ye user tujhse pehle bhi baat kar chuka hai. Teri memory ke mutabiq is user ke baare me ye pata hai:
+Summary: {summary if summary else 'Kuch nahi'}
+Important events/promises:
+{ep_text if ep_text else 'Kuch nahi'}
+
+Abhi user ne tujhe "{user_message}" bola hai — ye ek generic/casual opener hai.
+
+TUJHE KYA KARNA HAI:
+- MEMORY me 3 tarah ki info hai: Topics, Hobby, Facts, aur Episodes. Inme se jo sabse natural lage use choose karo.
+- Jo bhi field choose karo, usme se ek SPECIFIC cheez ka naam lo.
+- PROMISE/PENDING CHECK: Agar episodes me koi adhoori baat hai, toh naturally pooch lo.
+- Agar sirf Naam pata hai, toh naam leke poocho.
+- Agar kuch specific nahi hai, toh interesting starter do.
+- Reply 1 line, Hinglish, 1 emoji only (10 allowed), no quotes/exclamation.
+"""
+    messages = [{"role": "user", "content": prompt}]
+    tried = set()
+    for _ in range(len(clients)):
+        now = time.time()
+        idx = pick_best_key(now)
+        if idx is None or idx in tried:
+            break
+        tried.add(idx)
+        lock = _key_locks[idx]
+        if lock.locked():
+            continue
+        async with lock:
+            if not key_has_room(idx):
+                continue
+            entry_idx = pre_record_key_usage(idx)
+            async with _concurrency_semaphore:
+                await throttle_dispatch()
+                try:
+                    response = await clients[idx].chat.completions.create(
+                        model="openai/gpt-oss-20b",
+                        messages=messages,
+                        temperature=0.7,
+                        max_tokens=200,
+                        reasoning_effort="low",
+                        include_reasoning=False,
+                        timeout=8.0
+                    )
+                    reply = response.choices[0].message.content
+                    reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
+                    reply = reply.strip().strip('`')
+                    reply = sanitize_reply_emojis(reply)
+                    update_key_usage_actual(idx, entry_idx, 100)
+                    reset_key_429_streak(idx)
+                    return reply
+                except Exception as e:
+                    error_str = str(e).lower()
+                    if "429" in error_str or "rate_limit" in error_str:
+                        handle_429_error(idx, error_str)
+                    else:
+                        logger.warning(f"Greeting gen fail: {e}")
+                    continue
+    return None
+
+async def is_bot_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> bool:
+    now = time.time()
+    cached = chat_admin_cache.get(chat_id)
+    if cached and (now - cached[0]) < 120:
+        return cached[1]
+    try:
+        member = await context.bot.get_chat_member(chat_id, context.bot.id)
+        is_admin = member.status in ["administrator", "creator"]
+    except Exception:
+        is_admin = False
+    chat_admin_cache[chat_id] = (now, is_admin)
+    return is_admin
+
+def check_flood(user_id: int, is_sticker: bool = False) -> str:
+    global LAST_CLEANUP
+    now = time.time()
+    if now - LAST_CLEANUP > 600:
+        expired = [uid for uid, d in user_flood_data.items() if d["cd"] > 0 and now >= d["cd"] and not d["ts"]]
+        for uid in expired:
+            del user_flood_data[uid]
+        LAST_CLEANUP = now
+    data = user_flood_data.get(user_id)
+    if data is None:
+        user_flood_data[user_id] = {"ts": [now], "cd": 0.0}
+        return "ok"
+    if now < data["cd"]:
+        return "cooldown"
+    if data["cd"] > 0.0:
+        data["cd"] = 0.0
+        data["ts"] = []
+    data["ts"].append(now)
+    if is_sticker:
+        data["ts"].append(now)
+    data["ts"] = [t for t in data["ts"] if now - t < FLOOD_WINDOW]
+    if len(data["ts"]) >= FLOOD_THRESHOLD:
+        data["cd"] = now + FLOOD_COOLDOWN
+        data["ts"] = []
+        user_flood_data[user_id] = data
+        return "flood"
+    user_flood_data[user_id] = data
+    return "ok"
+
+WELCOME_IMAGE_URL = "https://ibb.co/7H2zgCT"
+
+WELCOME_MESSAGES = [
+    "{name} hello welcome hai aapka! Kaise ho? <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "{name} welcome dude! Kya haal chaal hain? <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "Woow {name} aa gaye, swagat hai aapka! <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji>",
+    "{name} arey aap aa gaye! Welcome to the group <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>",
+    "Hii {name}! Group me swagat hai tumhara <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji>",
+    "{name} welcome welcome! Mazaa aayega ab yahan <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "Oye {name} aa gaya! Kaisa hai tu? <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "{name} ji aapka hardik swagat hai group me! <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>",
+    "Naya member! {name} welcome to the family <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji>",
+    "{name} hey! Kaise ho, sab badhiya? <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "Welcome {name}! Ab masti shuru hogi <tg-emoji emoji-id=\"6318642082126763758\">😘</tg-emoji>",
+    "{name} aa gaye aap! Group me maza aayega ab <tg-emoji emoji-id=\"6334360245090915308\">🔥</tg-emoji>",
+    "Hello {name}! Group join karne ke liye shukriya <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "{name} welcome! Sabse mil lo, sab friendly hain yahan <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>",
+    "Are wah {name}! Swagat hai tumhara yahan <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "{name} kaise ho? Welcome to our group! <tg-emoji emoji-id=\"6143155267509948558\">✨</tg-emoji>",
+    "Yayy {name} aa gaye! Ab group aur mazedaar <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji>",
+    "{name} welcome dost! Enjoy karo yahan <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>",
+    "Hey {name}! Naye member ka swagat hai <tg-emoji emoji-id=\"5801018335919347111\">🎉</tg-emoji>",
+    "{name} aapka is group me dil se swagat hai! <tg-emoji emoji-id=\"6318642082126763758\">😘</tg-emoji>",
+    "Salaam {name}! Group me aane ke liye welcome <tg-emoji emoji-id=\"6332617871348210023\">🌸</tg-emoji>",
+    "{name} welcome yaar! Kaisa chal raha hai sab? <tg-emoji emoji-id=\"6334360245090915308\">🔥</tg-emoji>",
+]
+
+def get_welcome_message(name: str) -> str:
+    template = random.choice(WELCOME_MESSAGES)
+    return template.format(name=name)
+
+def escape_md_v2(text: str) -> str:
+    specials = r'_*[]()~`>#+-=|{}.!'
+    return "".join(f"\\{ch}" if ch in specials else ch for ch in text)
+
+async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if not query: return
+    data = query.data
+    if data == "g_guide":
+        await query.answer()
+        await games_menu(update, context)
+        return
+    await button_router(update, context)
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    bot_username = context.bot.username
+    keyboard = [[InlineKeyboardButton("Add To Group", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    try:
+        user = update.effective_user
+        asyncio.create_task(save_broadcast_user_async(user.id))
+        user_name = escape_md_v2(user.first_name or "Buddy")
+        bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
+        welcome_text = (
+            f"\n‎ ‎‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ <tg-emoji emoji-id=\"5789593740091857906\">💃</tg-emoji> <tg-emoji emoji-id=\"5792001889600022897\">💃</tg-emoji> <tg-emoji emoji-id=\"5789579686958865077\">💃</tg-emoji> <tg-emoji emoji-id=\"5789419819686173268\">💃</tg-emoji> <tg-emoji emoji-id=\"5789588379972671766\">💃</tg-emoji> <tg-emoji emoji-id=\"5791677275971787880\">💃</tg-emoji> <tg-emoji emoji-id=\"5792001889600022897\">💃</tg-emoji>\n\n"
+            f"<blockquote>"
+            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b>\n\n"
+            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b>\n\n"
+            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ꜰυʟʟ ɢʀᴏυᴘ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴧᴛυʀєꜱ</b>\n"
+            f"</blockquote>\n\n"
+            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ϙυᴧɴᴛυϻ ᴄᴏʀє</a>\n\n"
+            f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
+        )
+        full_keyboard = [
+            [InlineKeyboardButton("ᴧᴅᴅ ϻє ʙᴧʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])],
+            [InlineKeyboardButton("ᴅєᴠєʟᴏᴘєʀ", url="https://t.me/its_raj_king", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]),
+             InlineKeyboardButton("ᴊᴏɪɴ ᴄʜᴧɴɴєʟ", url="https://t.me/KnowRajpapa", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["channel"])],
+            [InlineKeyboardButton("ᴄʜᴧᴛ ɢʀᴏυᴘ", url="https://t.me/+0xoXWln4qiM2NTY9", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["support"]),
+             InlineKeyboardButton("ϻɪɴᴅɢᴧϻєꜱ", callback_data="g_guide", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])]
+        ]
+        full_reply_markup = InlineKeyboardMarkup(full_keyboard)
+        await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="HTML", reply_markup=full_reply_markup)
+    except Exception as e:
+        logger.error(f"start error: {e}")
+        try:
+            await update.message.reply_text("🌟 Welcome! Bot me aapka swagat hai! Neeche buttons check karo 👇", reply_markup=reply_markup)
+        except Exception:
+            pass
+
+async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    try:
+        if update.effective_user.id != OWNER_ID: return
+        now = time.time()
+        reset_daily_if_new_day()
+        total_keys = len(clients)
+        sum_req = sum(daily_requests)
+        sum_tok = sum(daily_tokens)
+        max_req = total_keys * 1000
+        max_tok = total_keys * 200000
+        active = 0
+        cooldown_count = 0
+        for i in range(total_keys):
+            cd = _key_cooldowns.get(i, 0)
+            if cd > now:
+                cooldown_count += 1
+            else:
+                active += 1
+        summary = (f"📊 *Bot Usage Summary*\n\n"
+                   f"🕐 Time: {now_ist_str()}\n"
+                   f"🔑 Keys: {total_keys}\n"
+                   f"📆 Daily Requests: {sum_req}/{max_req} ({sum_req/max_req*100:.1f}%)\n"
+                   f"📆 Daily Tokens: {sum_tok}/{max_tok} ({sum_tok/max_tok*100:.1f}%)\n"
+                   f"⚡ Active: {active} | ❄️ Cooldown: {cooldown_count}\n"
+                   f"⏳ In-flight slots: {MAX_CONCURRENT_REQUESTS - _concurrency_semaphore._value}/{MAX_CONCURRENT_REQUESTS}\n\n"
+                   f"_For per-key details use /stats live_")
+        await update.message.reply_text(summary, parse_mode="Markdown")
+    except Exception as e:
+        logger.error(f"stats error: {e}")
+
+async def resetkeys_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    global _key_429_counts, _key_success_since_429, _key_cooldowns
+    _key_429_counts = [0] * len(clients)
+    _key_success_since_429 = [True] * len(clients)
+    _key_cooldowns.clear()
+    await update.message.reply_text("✅ Sab keys reset ho gayi! Midnight sleep hatayi.")
+
+async def memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    args = context.args
+    if args:
+        target = args[0]
+        if target.startswith("@"):
+            target_username = target[1:]
+            try:
+                chat = await context.bot.get_chat(f"@{target_username}")
+                summary = get_user_summary(chat.id)
+                episodes = load_user_episodes(chat.id)
+                await update.message.reply_text(f"🧠 @{target_username} ki memory:\n{summary if summary else 'Khali hai.'}\n\nEpisodes:\n{episodes if episodes else 'Kuch nahi'}")
+            except Exception:
+                await update.message.reply_text("❌ User nahi mila ya bot ko unki info nahi hai.")
+        else:
+            try:
+                target_id = int(target)
+                summary = get_user_summary(target_id)
+                episodes = load_user_episodes(target_id)
+                await update.message.reply_text(f"🧠 User {target_id} ki memory:\n{summary if summary else 'Khali hai.'}\n\nEpisodes:\n{episodes if episodes else 'Kuch nahi'}")
+            except ValueError:
+                await update.message.reply_text("❌ Galat format. /memory @username ya /memory 123456")
+    else:
+        summary = get_user_summary(update.effective_user.id)
+        episodes = load_user_episodes(update.effective_user.id)
+        await update.message.reply_text(f"🧠 Tumhari memory:\n{summary if summary else 'Khali hai.'}\n\nEpisodes:\n{episodes if episodes else 'Kuch nahi'}")
+
+async def dbcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    if not DATABASE_URL:
+        await update.message.reply_text("❌ DATABASE_URL set nahi hai.")
+        return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT COUNT(*) FROM user_memory")
+        total = c.fetchone()[0]
+        c.execute("SELECT summary, episodes_json FROM user_memory WHERE user_id=%s", (update.effective_user.id,))
+        row = c.fetchone()
+        c.close()
+        conn.close()
+        if row and (row[0] or row[1]):
+            await update.message.reply_text(f"✅ Tumhari memory DB me hai ({total} total users)\n\nSummary:\n{row[0]}\n\nEpisodes:\n{row[1] if row[1] else 'Kuch nahi'}")
+        else:
+            await update.message.reply_text(f"❌ Tumhari memory DB me nahi mili.\nTotal users memory: {total}")
+    except Exception as e:
+        await update.message.reply_text(f"DB check error: {e}")
+
+async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    if not DATABASE_URL:
+        await update.message.reply_text("❌ DATABASE_URL set nahi hai.")
+        return
+    try:
+        await update.message.reply_text(f"⏳ Backup ban raha hai... ({now_ist_str()})")
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT user_id, summary, episodes_json, updated_at FROM user_memory")
+        rows = c.fetchall()
+        c.close()
+        conn.close()
+        backup_data = {
+            "backup_time_ist": now_ist_str(),
+            "total_users": len(rows),
+            "users": [
+                {"user_id": r[0], "summary": r[1], "episodes": r[2], "updated_at": r[3]}
+                for r in rows
+            ],
+        }
+        backup_json = json.dumps(backup_data, ensure_ascii=False, indent=2)
+        filename = f"sneha_backup_{time.strftime('%Y%m%d_%H%M%S')}.json"
+        file_bytes = backup_json.encode("utf-8")
+        await context.bot.send_document(chat_id=update.effective_chat.id, document=file_bytes, filename=filename, caption=f"✅ Backup complete — {len(rows)} users\n🕐 {now_ist_str()}")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Backup fail hua: {e}")
+
+async def migrate_memory_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    if not DATABASE_URL:
+        await update.message.reply_text("❌ Naya Supabase DATABASE_URL set nahi hai.")
+        return
+    old_url = os.getenv("OLD_DATABASE_URL")
+    if not old_url:
+        await update.message.reply_text("❌ OLD_DATABASE_URL set nahi hai.")
+        return
+    msg = await update.message.reply_text("🔄 Purani memory copy ho rahi hai...")
+    try:
+        old_conn = psycopg2.connect(old_url)
+        old_cur = old_conn.cursor()
+        old_cur.execute("SELECT user_id, summary, updated_at FROM user_memory")
+        user_rows = old_cur.fetchall()
+        old_cur.execute("SELECT user_id, started_at FROM broadcast_users")
+        broadcast_rows = old_cur.fetchall()
+        old_cur.execute("SELECT chat_id, title, added_at FROM active_groups")
+        group_rows = old_cur.fetchall()
+        old_cur.close()
+        old_conn.close()
+
+        new_conn = psycopg2.connect(DATABASE_URL)
+        new_cur = new_conn.cursor()
+        for user_id, summary, updated_at in user_rows:
+            new_cur.execute("INSERT INTO user_memory (user_id, summary, updated_at) VALUES (%s,%s,%s) "
+                            "ON CONFLICT (user_id) DO UPDATE SET summary=%s, updated_at=%s",
+                            (user_id, summary, updated_at, summary, updated_at))
+        for user_id, started_at in broadcast_rows:
+            new_cur.execute("INSERT INTO broadcast_users (user_id, started_at) VALUES (%s,%s) "
+                            "ON CONFLICT (user_id) DO NOTHING",
+                            (user_id, started_at))
+        for chat_id, title, added_at in group_rows:
+            new_cur.execute("INSERT INTO active_groups (chat_id, title, added_at) VALUES (%s,%s,%s) "
+                            "ON CONFLICT (chat_id) DO UPDATE SET title=%s, added_at=%s",
+                            (chat_id, title, added_at, title, added_at))
+        new_conn.commit()
+        new_cur.close()
+        new_conn.close()
+        await msg.edit_text(f"✅ Migration complete!\n📦 user_memory: {len(user_rows)} rows\n📦 broadcast_users: {len(broadcast_rows)} rows\n📦 active_groups: {len(group_rows)} rows")
+    except Exception as e:
+        await msg.edit_text(f"❌ Migration error: {e}")
+
+async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    if not DATABASE_URL:
+        await update.message.reply_text("❌ Database connect nahi hai, sync nahi ho sakta.")
+        return
+    msg = await update.message.reply_text("🔄 Sync shuru ho raha hai, thoda wait karo...")
+    rows = get_all_active_groups()
+    if not rows:
+        await msg.edit_text("ℹ️ Database me abhi koi group record nahi hai.")
+        return
+    checked = 0
+    still_active = 0
+    removed = 0
+    removed_titles = []
+    skipped = 0
+    for chat_id, title in rows:
+        checked += 1
+        try:
+            member = await context.bot.get_chat_member(chat_id, context.bot.id)
+            if member.status in ("left", "kicked", "banned"):
+                await delete_active_group_async(chat_id)
+                removed += 1
+                removed_titles.append(title or str(chat_id))
+            else:
+                still_active += 1
+                try:
+                    chat_obj = await context.bot.get_chat(chat_id)
+                    if chat_obj and chat_obj.title and chat_obj.title != title:
+                        await save_active_group_async(chat_id, chat_obj.title)
+                except Exception:
+                    pass
+        except Exception as e:
+            error_str = str(e).lower()
+            if "forbidden" in error_str or "chat not found" in error_str or "kicked" in error_str:
+                await delete_active_group_async(chat_id)
+                removed += 1
+                removed_titles.append(title or str(chat_id))
+            else:
+                skipped += 1
+                still_active += 1
+        await asyncio.sleep(0.1)
+    summary_text = f"✅ *Sync complete!*\n\n📋 Total checked: {checked}\n✅ Active groups: {still_active}\n🗑️ Removed (bot kick/ban/left): {removed}\n"
+    if skipped > 0:
+        summary_text += f"⏳ Skipped: {skipped}\n"
+    if removed_titles:
+        shown = removed_titles[:10]
+        summary_text += "\n🗑️ *Removed groups:*\n" + "\n".join(f"• {t}" for t in shown)
+        if len(removed_titles) > 10:
+            summary_text += f"\n...aur {len(removed_titles) - 10} aur"
+    try:
+        await msg.edit_text(summary_text, parse_mode="Markdown")
+    except Exception:
+        await msg.edit_text(summary_text)
+
+# ⭐ Premium Emoji Support
+CHAT_PREMIUM_EMOJIS = {
+    "☺️": "5427161992811004191",
+    "😒": "6037218073793007354",
+    "🥹": "5371007876691138460",
+    "🙃": "5373179691328871991",
+    "❤️": "5366286462092323271",
+    "😡": "5372811453717813644",
+    "😭": "5370646412243510708",
+    "😅": "5373015670822804395",
+    "🙏": "5217614738917173774",
+    "🤫": "5363874941034843883",
+}
+
+def build_premium_emoji_entities(text: str, emoji_map: dict) -> list:
+    if not text or not emoji_map:
+        return []
+    entities = []
+    sorted_keys = sorted(emoji_map.keys(), key=len, reverse=True)
+    i = 0
+    utf16_offset = 0
+    while i < len(text):
+        matched = False
+        for emo in sorted_keys:
+            if text.startswith(emo, i):
+                entities.append(MessageEntity(type=MessageEntity.CUSTOM_EMOJI, offset=utf16_offset, length=len(emo.encode("utf-16-le")) // 2, custom_emoji_id=emoji_map[emo]))
+                utf16_offset += len(emo.encode("utf-16-le")) // 2
+                i += len(emo)
+                matched = True
+                break
+        if not matched:
+            ch = text[i]
+            utf16_offset += len(ch.encode("utf-16-le")) // 2
+            i += 1
+    return entities
+
+_EMOJI_FALLBACK_MAP = {
+    "😊": "☺️", "🙂": "☺️", "😀": "☺️", "😁": "☺️", "😄": "☺️", "😃": "☺️",
+    "🥰": "❤️", "😍": "❤️", "💕": "❤️", "💖": "❤️", "💗": "❤️", "😘": "❤️",
+    "😢": "😭", "😪": "😭", "😔": "😭", "😞": "😭",
+    "😤": "😡", "🙄": "😒", "😑": "😒", "😐": "😒",
+    "😆": "😅", "🤣": "😅", "😂": "😅",
+    "🥺": "🥹", "😳": "🥹",
+    "😏": "🙃", "😜": "🙃", "😉": "🙃",
+    "🤐": "🤫", "🤭": "🤫",
+    "🙌": "🙏", "🤲": "🙏",
+}
+
+_ALL_EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F300-\U0001FAFF"
+    "\U00002600-\U000027BF"
+    "\U0001F1E6-\U0001F1FF"
+    "\uFE0F"
+    "]+",
+    flags=re.UNICODE
+)
+
+def sanitize_reply_emojis(text: str) -> str:
+    if not text:
+        return text
+    allowed = set(CHAT_PREMIUM_EMOJIS.keys())
+    seen_allowed_emoji = False
+    def _replace(match):
+        nonlocal seen_allowed_emoji
+        chunk = match.group(0)
+        if chunk not in allowed:
+            mapped = _EMOJI_FALLBACK_MAP.get(chunk)
+            chunk = mapped if mapped else None
+        if chunk and chunk in allowed:
+            if seen_allowed_emoji:
+                return ""
+            seen_allowed_emoji = True
+            return chunk
+        return ""
+    result = _ALL_EMOJI_PATTERN.sub(_replace, text)
+    result = re.sub(r"[ \t]{2,}", " ", result)
+    return result.strip()
+
 def detect_message_script(text: str) -> str:
     if not text:
         return "hinglish"
@@ -492,73 +1392,69 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         set_key_cooldown(idx, seconds=15)
                     continue
 
-    # Smart retry (120b)
-    # Smart retry (120b)
-now2 = time.time()
-best_idx = None
-earliest_cd = float('inf')
-for i in range(len(clients)):
-    if _key_locks[i].locked():
-        continue
-    cd = _key_cooldowns.get(i, 0)
-    if cd < earliest_cd:
-        earliest_cd = cd
-        best_idx = i
+    # Smart retry (120b) - fixed without continue
+    now2 = time.time()
+    best_idx = None
+    earliest_cd = float('inf')
+    for i in range(len(clients)):
+        if _key_locks[i].locked():
+            continue
+        cd = _key_cooldowns.get(i, 0)
+        if cd < earliest_cd:
+            earliest_cd = cd
+            best_idx = i
 
-if best_idx is not None:
-    wait_time = earliest_cd - now2
-    if wait_time > 0 and wait_time < 10:
-        logger.info(f"⏳ Sab keys busy hain. {wait_time:.1f}s wait karke key {best_idx+1} try kar rahe hain.")
-        await asyncio.sleep(wait_time)
-        lock = _key_locks[best_idx]
-        if not lock.locked():
-            async with lock:
-                if key_has_room(best_idx):
-                    entry_idx = pre_record_key_usage(best_idx)
-                    async with _concurrency_semaphore:
-                        await throttle_dispatch()
-                        try:
-                            response = await clients[best_idx].chat.completions.create(
-                                model="openai/gpt-oss-120b",
-                                messages=messages,
-                                temperature=0.7,
-                                max_tokens=400,
-                                top_p=0.9,
-                                reasoning_effort="low",
-                                include_reasoning=False,
-                                timeout=15.0
-                            )
-                            reply = response.choices[0].message.content
-                            reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
-                            reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                            reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
-                            reply = reply.strip().strip('`')
-                            reply = strip_echoed_user_message(reply, user_message)
-                            reply = clean_leaked_template_fragments(reply)
-                            reply = sanitize_reply_emojis(reply)
+    if best_idx is not None:
+        wait_time = earliest_cd - now2
+        if wait_time > 0 and wait_time < 10:
+            logger.info(f"⏳ Sab keys busy hain. {wait_time:.1f}s wait karke key {best_idx+1} try kar rahe hain.")
+            await asyncio.sleep(wait_time)
+            lock = _key_locks[best_idx]
+            if not lock.locked():
+                async with lock:
+                    if key_has_room(best_idx):
+                        entry_idx = pre_record_key_usage(best_idx)
+                        async with _concurrency_semaphore:
+                            await throttle_dispatch()
+                            try:
+                                response = await clients[best_idx].chat.completions.create(
+                                    model="openai/gpt-oss-120b",
+                                    messages=messages,
+                                    temperature=0.7,
+                                    max_tokens=400,
+                                    top_p=0.9,
+                                    reasoning_effort="low",
+                                    include_reasoning=False,
+                                    timeout=15.0
+                                )
+                                reply = response.choices[0].message.content
+                                reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
+                                reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
+                                reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
+                                reply = reply.strip().strip('`')
+                                reply = strip_echoed_user_message(reply, user_message)
+                                reply = clean_leaked_template_fragments(reply)
+                                reply = sanitize_reply_emojis(reply)
 
-                            # ⭐ Language consistency check
-                            if reply_language_mismatch(user_message, reply):
-                                logger.info("🌐 Language mismatch in smart retry, skipping...")
-                                # यहाँ continue नहीं, बल्कि हम fallback पर जाने के लिए कुछ नहीं करेंगे
-                                # (बस इस block से बाहर निकलेंगे, नीचे fallback 20b चलेगा)
-                                pass
-                            else:
-                                filtered_reply = filter_bot_like_reply(reply)
-                                if filtered_reply is not None:
-                                    reply = filtered_reply
-                                    usage = getattr(response, "usage", None)
-                                    actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-                                    update_key_usage_actual(best_idx, entry_idx, actual_tokens)
-                                    reset_key_429_streak(best_idx)
-                                    logger.info(f"✅ Smart Retry se Key {best_idx+1} se reply aaya!")
-                                    return reply
-                                # अगर filtered_reply None है तो कुछ मत करो, fallback 20b चलेगा
-                        except Exception as e:
-                            error_str = str(e).lower()
-                            if "429" in error_str or "rate_limit" in error_str:
-                                handle_429_error(best_idx, error_str)
-                            # अन्य errors के लिए कुछ मत करो, fallback 20b चलेगा
+                                # ⭐ Language consistency check
+                                if reply_language_mismatch(user_message, reply):
+                                    logger.info("🌐 Language mismatch in smart retry, skipping...")
+                                    # यहाँ continue नहीं, बल्कि कुछ मत करो, fallback 20b चलेगा
+                                else:
+                                    filtered_reply = filter_bot_like_reply(reply)
+                                    if filtered_reply is not None:
+                                        reply = filtered_reply
+                                        usage = getattr(response, "usage", None)
+                                        actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
+                                        update_key_usage_actual(best_idx, entry_idx, actual_tokens)
+                                        reset_key_429_streak(best_idx)
+                                        logger.info(f"✅ Smart Retry se Key {best_idx+1} se reply aaya!")
+                                        return reply
+                                    # अगर filtered_reply None है तो कुछ मत करो, fallback 20b चलेगा
+                            except Exception as e:
+                                error_str = str(e).lower()
+                                if "429" in error_str or "rate_limit" in error_str:
+                                    handle_429_error(best_idx, error_str)
                                 # अन्य errors के लिए कुछ मत करो, fallback 20b चलेगा
 
     # Fallback 20b
