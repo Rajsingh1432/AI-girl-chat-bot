@@ -493,54 +493,57 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     continue
 
     # Smart retry (120b)
-    now2 = time.time()
-    best_idx = None
-    earliest_cd = float('inf')
-    for i in range(len(clients)):
-        if _key_locks[i].locked():
-            continue
-        cd = _key_cooldowns.get(i, 0)
-        if cd < earliest_cd:
-            earliest_cd = cd
-            best_idx = i
+    # Smart retry (120b)
+now2 = time.time()
+best_idx = None
+earliest_cd = float('inf')
+for i in range(len(clients)):
+    if _key_locks[i].locked():
+        continue
+    cd = _key_cooldowns.get(i, 0)
+    if cd < earliest_cd:
+        earliest_cd = cd
+        best_idx = i
 
-    if best_idx is not None:
-        wait_time = earliest_cd - now2
-        if wait_time > 0 and wait_time < 10:
-            logger.info(f"⏳ Sab keys busy hain. {wait_time:.1f}s wait karke key {best_idx+1} try kar rahe hain.")
-            await asyncio.sleep(wait_time)
-            lock = _key_locks[best_idx]
-            if not lock.locked():
-                async with lock:
-                    if key_has_room(best_idx):
-                        entry_idx = pre_record_key_usage(best_idx)
-                        async with _concurrency_semaphore:
-                            await throttle_dispatch()
-                            try:
-                                response = await clients[best_idx].chat.completions.create(
-                                    model="openai/gpt-oss-120b",
-                                    messages=messages,
-                                    temperature=0.7,
-                                    max_tokens=400,
-                                    top_p=0.9,
-                                    reasoning_effort="low",
-                                    include_reasoning=False,
-                                    timeout=15.0
-                                )
-                                reply = response.choices[0].message.content
-                                reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
-                                reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                                reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
-                                reply = reply.strip().strip('`')
-                                reply = strip_echoed_user_message(reply, user_message)
-                                reply = clean_leaked_template_fragments(reply)
-                                reply = sanitize_reply_emojis(reply)
+if best_idx is not None:
+    wait_time = earliest_cd - now2
+    if wait_time > 0 and wait_time < 10:
+        logger.info(f"⏳ Sab keys busy hain. {wait_time:.1f}s wait karke key {best_idx+1} try kar rahe hain.")
+        await asyncio.sleep(wait_time)
+        lock = _key_locks[best_idx]
+        if not lock.locked():
+            async with lock:
+                if key_has_room(best_idx):
+                    entry_idx = pre_record_key_usage(best_idx)
+                    async with _concurrency_semaphore:
+                        await throttle_dispatch()
+                        try:
+                            response = await clients[best_idx].chat.completions.create(
+                                model="openai/gpt-oss-120b",
+                                messages=messages,
+                                temperature=0.7,
+                                max_tokens=400,
+                                top_p=0.9,
+                                reasoning_effort="low",
+                                include_reasoning=False,
+                                timeout=15.0
+                            )
+                            reply = response.choices[0].message.content
+                            reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
+                            reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
+                            reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
+                            reply = reply.strip().strip('`')
+                            reply = strip_echoed_user_message(reply, user_message)
+                            reply = clean_leaked_template_fragments(reply)
+                            reply = sanitize_reply_emojis(reply)
 
-                                # ⭐ Language consistency check
-                                if reply_language_mismatch(user_message, reply):
-                                    logger.info("🌐 Language mismatch in smart retry, skipping...")
-                                    continue
-
+                            # ⭐ Language consistency check
+                            if reply_language_mismatch(user_message, reply):
+                                logger.info("🌐 Language mismatch in smart retry, skipping...")
+                                # यहाँ continue नहीं, बल्कि हम fallback पर जाने के लिए कुछ नहीं करेंगे
+                                # (बस इस block से बाहर निकलेंगे, नीचे fallback 20b चलेगा)
+                                pass
+                            else:
                                 filtered_reply = filter_bot_like_reply(reply)
                                 if filtered_reply is not None:
                                     reply = filtered_reply
@@ -551,10 +554,11 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                     logger.info(f"✅ Smart Retry se Key {best_idx+1} se reply aaya!")
                                     return reply
                                 # अगर filtered_reply None है तो कुछ मत करो, fallback 20b चलेगा
-                            except Exception as e:
-                                error_str = str(e).lower()
-                                if "429" in error_str or "rate_limit" in error_str:
-                                    handle_429_error(best_idx, error_str)
+                        except Exception as e:
+                            error_str = str(e).lower()
+                            if "429" in error_str or "rate_limit" in error_str:
+                                handle_429_error(best_idx, error_str)
+                            # अन्य errors के लिए कुछ मत करो, fallback 20b चलेगा
                                 # अन्य errors के लिए कुछ मत करो, fallback 20b चलेगा
 
     # Fallback 20b
