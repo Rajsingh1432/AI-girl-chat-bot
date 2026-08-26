@@ -1374,7 +1374,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                 filtered_reply = filter_bot_like_reply(reply)
                                 if filtered_reply is None:
                                     logger.info("Bot-like reply filtered in retry")
-                                    continue
+                                continue
                                 reply = filtered_reply
                                 if reply:
                                     usage = getattr(response, "usage", None)
