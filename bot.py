@@ -308,7 +308,7 @@ user_msg_counter = {}
 _greeted_once = set()
 _welcomed_users = {}
 conversation_memory = {}
-MAX_HISTORY_MESSAGES = 40  # Increased from 24 to 40
+MAX_HISTORY_MESSAGES = 40
 
 # ---------- DATABASE ----------
 def get_db_conn():
@@ -330,7 +330,7 @@ def init_db():
                      (chat_id BIGINT PRIMARY KEY, title TEXT, added_at REAL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS conversation_history
                      (user_id BIGINT PRIMARY KEY, history_json TEXT, updated_at REAL)''')
-        # Ensure episodes column exists for existing tables
+        # Ensure episodes column exists
         try:
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS episodes_json TEXT")
         except Exception:
@@ -550,13 +550,13 @@ Hobby: <user ke interests/hobbies, warna "Not shared">
 Facts: <baaki important personal facts 1-2 lines me — kaam, city, trip plans, feelings, romantic talks, koi bhi important event, promises, future plans, ya dates jo user ne mention ki ho. Agar kuch na ho toh "None">
 
 STRICT RULES:
-1. Sirf yahi 4 lines likho (Topics/Naam/Hobby/Facts), koi extra heading, analysis, ya explanation mat likho.
-2. FIELD ISOLATION RULE: Naam, Hobby, aur Facts hamesha PERMANENT hote hain jab tak user khud koi naya update na de.
-3. NAAM RULE: "Naam" field sirf tab bharo jab user ne clearly, khud apna naam bataya ho.
-4. TOPICS RULE: "Topics" ek rolling-memory list hai — max 7, naya end me add hota hai, purana start se hat jaata hai.
-5. MOST IMPORTANT: Purani memory ke Naam, Hobby, aur Facts ko HAMESHA rakhna.
-6. PROMISE/EVENT RULE: Agar user ne koi promise kiya ho, koi upcoming event/date mention ki ho, ya koi plan banaya ho, toh use Facts me zaroor likho.
-7. SCRIPT RULE: Output HAMESHA sirf HINGLISH (Roman/English letters) me hona chahiye. Devanagari script mana hai.
+1. Sirf yahi 4 lines likho, koi extra heading mat likho.
+2. FIELD ISOLATION RULE: Naam, Hobby, Facts permanent hain.
+3. NAAM RULE: Naam sirf tab jab user ne khud bataya ho.
+4. TOPICS RULE: Topics rolling list hai, max 7.
+5. MOST IMPORTANT: Purani memory ke permanent fields ko rakhna.
+6. PROMISE/EVENT RULE: Facts me promises/dates likho.
+7. SCRIPT RULE: Output Hamesha Hinglish me, Devanagari mana hai.
 """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
@@ -622,7 +622,7 @@ async def extract_episodes(user_id: int, history: list):
     chat_text = "\n".join(chat_lines)
     prompt = f"""नीचे एक conversation का हिस्सा है। इसमें से कोई भी important चीज़ निकालो जो future में काम आ सकती है — जैसे:
 - कोई promise (e.g., "मैं कल gym जाऊँगा")
-- कोई specific date या event (e.g., "मेरा birthday 5 मई को है", "अगले हफ्ते Goa trip है")
+- कोई specific date या event (e.g., "मेरा birthday 5 मई को है")
 - कोई पसंद/नापसंद जो पहले नहीं बताई थी
 - कोई secret या निजी बात
 - कोई feeling जो user ने express की हो
@@ -688,16 +688,13 @@ Important events/promises:
 
 Abhi user ne tujhe "{user_message}" bola hai — ye ek generic/casual opener hai.
 
-TUJHE KYA KARNA HAI (real, smart insaan jaisa):
-- MEMORY me 3 tarah ki info hai: Topics, Hobby, Facts, aur Episodes. Inme se jo sabse natural/interesting lage use choose karo.
+TUJHE KYA KARNA HAI:
+- MEMORY me 3 tarah ki info hai: Topics, Hobby, Facts, aur Episodes. Inme se jo sabse natural lage use choose karo.
 - Jo bhi field choose karo, usme se ek SPECIFIC cheez ka naam lo.
-- ⭐ PROMISE/PENDING CHECK: Agar episodes me koi aisi baat hai jo adhoori lagti hai, toh greeting me use naturally pooch lo.
-- Agar sirf Naam pata hai, toh naam leke "Kaise ho naam? Bahut din baad!" jaisa bolo.
-- Agar kuch specific nahi hai, toh ek interesting conversation-starter suggest karo.
-- Reply SIRF 1 LINE ka hona chahiye.
-- Hinglish me bol. Koi explanation mat diyo.
-- SIRF AUR SIRIF 1 EMOJI use karna, sirf in 10 me se: ☺️, 😒, 🥹, 🙃, ❤️, 😡, 😭, 🙏, 😅, 🤫.
-- Double quotes, single quotes aur exclamation marks ka use STRICTLY MANA HAI.
+- PROMISE/PENDING CHECK: Agar episodes me koi adhoori baat hai, toh naturally pooch lo.
+- Agar sirf Naam pata hai, toh naam leke poocho.
+- Agar kuch specific nahi hai, toh interesting starter do.
+- Reply 1 line, Hinglish, 1 emoji only (10 allowed), no quotes/exclamation.
 """
     messages = [{"role": "user", "content": prompt}]
     tried = set()
@@ -1230,156 +1227,6 @@ CHAT KA STYLE (Sabse Zaroori Rules):
 
 Yaad rakhna: tumhara har jawab crisp, smart, aur ekdum asli insaan jaisa hona chahiye — chahe DM ho ya group, tum hamesha wahi Sneha ho."""
 
-async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
-    db_summary = get_user_summary(user_id)
-    memory_context = ""
-    if db_summary:
-        memory_context = f"\n\n[SECRET MEMORY: Ye user ki purani memory hai. Isme jo facts (kaam, naam, city) hain unko bhoolna nahi hai aur unka reference lena hai: {db_summary}]\n\n"
-
-    episodes = load_user_episodes(user_id)
-    episodes_context = ""
-    if episodes:
-        episodes_context = "\n[IMPORTANT MEMORIES: Ye specific events/promises/dates hain jo user ne pehle bataye the. Inka reference dena agar conversation में fit हो:\n" + "\n".join(f"- {ep}" for ep in episodes) + "]\n"
-
-    context_info = get_current_context()
-    mood_info = ""
-    if user_id in user_mood:
-        mood = user_mood[user_id]["mood"]
-        mood_info = f"\n[USER MOOD: User pichli baar '{mood}' mood me tha. Is hisaab se reply ka tone adjust karo.]\n"
-    bot_current_mood = get_bot_mood()
-    mood_context = f"\n[BOT MOOD: Tumhara current mood '{bot_current_mood}' hai. Is mood ke hisaab se reply karo, lekin Sneha character bana rahe.]\n"
-
-    style_instruction = ""
-    if history:
-        last_bot_replies = [m['content'] for m in history if m['role'] == 'assistant'][-3:]
-        if last_bot_replies:
-            style_instruction = f"\n[STYLE VARIETY: Pichle 3 replies me tumne ye likha tha: {' | '.join(last_bot_replies)}. Is baar alag wording/style use karo taaki repetitive na lage.]\n"
-
-    system_prompt = SYSTEM_PROMPT + memory_context + episodes_context + f"\n[CONTEXT: {context_info}]" + mood_info + mood_context + style_instruction
-    messages = [{"role": "system", "content": system_prompt}]
-    if history:
-        messages.extend(history)
-
-    script = detect_message_script(user_message)
-    if script == "devanagari":
-        tagged_message = f"{user_message}\n\n[SCRIPT NOTE: Ye message Devanagari (हिंदी) script me hai. Apna reply BHI Devanagari script me hi likho, chahe history/memory kisi aur script me ho.]"
-    else:
-        tagged_message = f"{user_message}\n\n[SCRIPT NOTE: Ye message Roman/Latin letters (Hinglish ya English) me hai. Apna reply BHI Roman/Latin letters me hi likho — Devanagari (हिंदी) script bilkul use mat karo, chahe history/memory me Devanagari ho.]"
-    messages.append({"role": "user", "content": tagged_message})
-
-    tried = set()
-    for _ in range(len(clients)):
-        now = time.time()
-        idx = pick_best_key(now)
-        if idx is None or idx in tried:
-            break
-        tried.add(idx)
-        lock = _key_locks[idx]
-        if lock.locked():
-            continue
-        async with lock:
-            if not key_has_room(idx):
-                continue
-            entry_idx = pre_record_key_usage(idx)
-            async with _concurrency_semaphore:
-                await throttle_dispatch()
-                try:
-                    response = await clients[idx].chat.completions.create(
-                        model="openai/gpt-oss-120b",
-                        messages=messages,
-                        temperature=0.7,
-                        max_tokens=400,
-                        top_p=0.9,
-                        reasoning_effort="low",
-                        include_reasoning=False,
-                        timeout=15.0
-                    )
-                    reply = response.choices[0].message.content
-                    reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
-                    reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                    reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
-                    reply = reply.strip().strip('`')
-                    reply = strip_echoed_user_message(reply, user_message)
-                    reply = clean_leaked_template_fragments(reply)
-                    reply = sanitize_reply_emojis(reply)
-
-                    # ⭐ Filter bot-like replies
-                    filtered_reply = filter_bot_like_reply(reply)
-                    if filtered_reply is None:
-                        logger.info(f"🤖 Bot-like reply filtered, trying next key...")
-                        continue  # discard and try next key
-                    reply = filtered_reply
-
-                    if not reply:
-                        continue
-                    usage = getattr(response, "usage", None)
-                    actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-                    update_key_usage_actual(idx, entry_idx, actual_tokens)
-                    reset_key_429_streak(idx)
-                    logger.info(f"✅ Key {idx+1} se reply aaya!")
-                    return reply
-                except Exception as e:
-                    error_str = str(e).lower()
-                    if "429" in error_str or "rate_limit" in error_str:
-                        handle_429_error(idx, error_str)
-                    elif "timeout" in error_str:
-                        set_key_cooldown(idx, seconds=30)
-                        logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
-                    else:
-                        logger.error(f"❌ Key {idx+1} error: {e}")
-                        set_key_cooldown(idx, seconds=15)
-                    continue
-
-    # Smart retry (120b)
-    # Smart retry (120b)
-now2 = time.time()
-best_idx = None
-earliest_cd = float('inf')
-for i in range(len(clients)):
-    if _key_locks[i].locked(): continue
-    cd = _key_cooldowns.get(i, 0)
-    if cd < earliest_cd:
-        earliest_cd = cd
-        best_idx = i
-if best_idx is not None:
-    wait_time = earliest_cd - now2
-    if wait_time > 0 and wait_time < 10:
-        logger.info(f"⏳ Sab keys busy hain. {wait_time:.1f}s wait karke key {best_idx+1} try kar rahe hain.")
-        await asyncio.sleep(wait_time)
-        lock = _key_locks[best_idx]
-        if not lock.locked():
-            async with lock:
-                if key_has_room(best_idx):
-                    entry_idx = pre_record_key_usage(best_idx)
-                    async with _concurrency_semaphore:
-                        await throttle_dispatch()
-                        try:
-                            response = await clients[best_idx].chat.completions.create(
-                                model="openai/gpt-oss-120b",
-                                messages=messages,
-                                temperature=0.7,
-                                max_tokens=400,
-                                top_p=0.9,
-                                reasoning_effort="low",
-                                include_reasoning=False,
-                                timeout=15.0
-                            )
-                            reply = response.choices[0].message.content
-                            reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
-                            reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                            reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
-                            reply = reply.strip().strip('`')
-                            reply = strip_echoed_user_message(reply, user_message)
-                            reply = clean_leaked_template_fragments(reply)
-                            reply = sanitize_reply_emojis(reply)
-                            filtered_reply = filter_bot_like_reply(reply)
-                            if filtered_reply is not None:
-                                reply = filtered_reply
-                                usage = getattr(response, "usage", None)
-                                actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
-                                update_key_usage_actual(best_idx, entry_idx, actual_tokens)
-                                reset_key_429_streak(best_idx)
-                                logger.info(f"✅ Smart Retry se Key {best_idx+1} se reply aaya!")
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
     memory_context = ""
