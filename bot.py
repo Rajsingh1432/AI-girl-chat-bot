@@ -61,13 +61,16 @@ _rr_index = 0
 _key_cooldowns = {}
 _key_locks = [asyncio.Lock() for _ in clients]
 
+# --- openai/gpt-oss-120b ke actual Groq limits (per key): RPM 30, RPD 1000, TPM 8000, TPD 200000 ---
+# TPM hi asli constraint hai (RPM 30 hone ke bawajood TPM 8000 pehle hi rok deta hai),
+# isliye RPM ko loose rakha hai (sirf ek outer safety net) aur poora control TOKEN budget (TPM) se hota hai.
 _key_usage = {i: [] for i in range(len(clients))}
-RPM_SAFE_LIMIT = 6
-TPM_SAFE_LIMIT = 7000
-REQUEST_TOKEN_ESTIMATE = 900
+RPM_SAFE_LIMIT = 28         # actual RPM 30 ke bahut kareeb — TPM hi asli brake hai, RPM sirf backup safety
+TPM_SAFE_LIMIT = 7500        # actual TPM 8000 ka ~94% — TPM hi primary control hai isliye margin kam rakha
+REQUEST_TOKEN_ESTIMATE = 700  # average real usage ke kareeb — na zyada tight, na zyada loose
 
-DAILY_REQUEST_LIMIT = 950
-DAILY_TOKEN_LIMIT = 190000
+DAILY_REQUEST_LIMIT = 950    # actual RPD 1000 ka ~95%
+DAILY_TOKEN_LIMIT = 190000   # actual TPD 200000 ka ~95%
 
 daily_requests = [0] * len(clients)
 daily_tokens = [0] * len(clients)
@@ -100,6 +103,21 @@ def key_has_room(idx) -> bool:
     if daily_tokens[idx] + REQUEST_TOKEN_ESTIMATE > DAILY_TOKEN_LIMIT:
         return False
     if daily_requests[idx] + 1 > DAILY_REQUEST_LIMIT:
+        return False
+    return True
+
+def key_is_cooldown_only(idx) -> bool:
+    """
+    ⭐ FIX: 20b-fallback ke liye halka check — sirf genuine 429-cooldown
+    dekhta hai, 120b ke RPM/TPM/daily-budget tracking se independent hai.
+    Pehle 20b bhi key_has_room() use kar raha tha, jo 120b ke shared
+    daily_tokens/daily_requests arrays check karta hai — matlab agar 120b
+    ne kisi key ka "budget" khatam kar diya ho, 20b use bhi try nahi kar
+    paata tha, jabki Groq pe 20b ka apna alag quota hota hai. Ab 20b sirf
+    ye check karta hai ki key abhi 429-cooldown me hai ya nahi.
+    """
+    now = time.time()
+    if idx in _key_cooldowns and _key_cooldowns[idx] > now:
         return False
     return True
 
@@ -611,7 +629,7 @@ TUJHE KYA KARNA HAI (real, smart insaan jaisa, jo apne purane dost se kaafi din 
                         messages=messages,
                         temperature=0.7,
                         max_tokens=200,
-                        reasoning_effort="medium",
+                        reasoning_effort="low",
                         include_reasoning=False,
                         timeout=8.0
                     )
@@ -1182,6 +1200,22 @@ def detect_message_script(text: str) -> str:
         return "hinglish_or_english"
     return "hinglish_or_english"
 
+def clean_leaked_template_fragments(reply: str) -> str:
+    """
+    ⭐ FIX: Kabhi-kabhi (khaaskar jab reasoning-model ka token-budget tight
+    ho jaaye) model apna internal reasoning/template ka fragment reply ke
+    end me chhod deta hai, jaise "[bata kya karna]" jaisa incomplete
+    bracket-note, ya kabhi ek unclosed "[" bhi. Ye function aise trailing
+    bracket-patterns (closed ya unclosed) ko detect karke clean kar deta
+    hai, taaki user ko sirf clean, complete reply mile.
+    """
+    if not reply:
+        return reply
+    cleaned = re.sub(r"\s*\[[^\]]{0,60}\]\s*$", "", reply).strip()
+    # Agar ek unclosed "[" bhi reply ke bilkul end me reh gaya ho
+    cleaned = re.sub(r"\s*\[[^\[\]]{0,60}$", "", cleaned).strip()
+    return cleaned if cleaned else reply
+
 def strip_echoed_user_message(reply: str, user_message: str) -> str:
     """
     ⭐ FIX: Kabhi kabhi model apne reply ke shuruaat me user ka poora bheja
@@ -1276,9 +1310,9 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         model="openai/gpt-oss-120b",
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=250,
+                        max_tokens=400,
                         top_p=0.9,
-                        reasoning_effort="medium",
+                        reasoning_effort="low",
                         include_reasoning=False,
                         timeout=15.0
                     )
@@ -1291,6 +1325,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     
                     reply = reply.strip().strip('`')
                     reply = strip_echoed_user_message(reply, user_message)
+                    reply = clean_leaked_template_fragments(reply)
                     reply = sanitize_reply_emojis(reply)
                     if not reply:
                         continue
@@ -1340,9 +1375,9 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                     model="openai/gpt-oss-120b",
                                     messages=messages,
                                     temperature=0.7,
-                                    max_tokens=250,
+                                    max_tokens=400,
                                     top_p=0.9,
-                                    reasoning_effort="medium",
+                                    reasoning_effort="low",
                                     include_reasoning=False,
                                     timeout=15.0
                                 )
@@ -1353,6 +1388,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                 reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                                 reply = reply.strip().strip('`')
                                 reply = strip_echoed_user_message(reply, user_message)
+                                reply = clean_leaked_template_fragments(reply)
                                 reply = sanitize_reply_emojis(reply)
                                 if reply:
                                     usage = getattr(response, "usage", None)
@@ -1376,10 +1412,10 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     # sirf jab 120b genuinely completely unavailable ho jaaye.
     for i in range(len(clients)):
         if _key_locks[i].locked(): continue
-        if not key_has_room(i): continue
+        if not key_is_cooldown_only(i): continue
         lock = _key_locks[i]
         async with lock:
-            if not key_has_room(i):
+            if not key_is_cooldown_only(i):
                 continue
             entry_idx = pre_record_key_usage(i)
             async with _concurrency_semaphore:
@@ -1401,6 +1437,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = reply.replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                     reply = reply.strip().strip('`')
                     reply = strip_echoed_user_message(reply, user_message)
+                    reply = clean_leaked_template_fragments(reply)
                     reply = sanitize_reply_emojis(reply)
                     if reply:
                         usage = getattr(response, "usage", None)
@@ -1510,14 +1547,19 @@ async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id
     # ⭐ Real insaan jaisa natural delay: pehle message padhne/samajhne ka
     # chhota "thinking" time, phir type karne ka time — dono milaake target
     # duration banate hain, taaki reply kabhi turant "fatak se" na aaye.
-    THINKING_TIME = random.uniform(1.2, 2.2)
+    # NOTE: Ye sirf AI-response ke BAAD ka extra-wait control karta hai — agar
+    # AI khud (reasoning_effort ki wajah se) already lamba time le chuka hai,
+    # ye formula extra time add NAHI karega (neeche wala if-check isko rokta
+    # hai) — upper_cap sirf ye ensure karta hai ki agar AI fast ho jaaye,
+    # artificial wait zyada na ho jaaye.
+    THINKING_TIME = random.uniform(0.8, 1.5)
     target_min = THINKING_TIME
     if isinstance(result, str) and result:
-        CHARS_PER_SECOND = 12.0
+        CHARS_PER_SECOND = 14.0
         typing_time = len(result) / CHARS_PER_SECOND
         target_min = THINKING_TIME + typing_time
-        upper_cap = random.uniform(7.5, 9.5)
-        target_min = max(2.0, min(target_min, upper_cap))
+        upper_cap = random.uniform(4.0, 6.0)
+        target_min = max(1.5, min(target_min, upper_cap))
 
     if elapsed < target_min:
         remaining = target_min - elapsed
