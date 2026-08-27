@@ -208,19 +208,30 @@ BOT_LIKE_PHRASES = [
 
 # Hinglish markers list
 HINGLISH_MARKERS = [
-    "kaise", "kya", "ho", "ap", "tum", "hai", "nahi", "han", "haan", "theek", "achha", "acha",
-    "badiya", "mast", "sahi", "yaar", "baby", "jaan", "darling", "sweety", "love", "ok",
+    "kaise", "kya", "kr", "ap", "tum", "nahi", "han", "haan", "theek", "achha", "acha",
+    "badiya", "mast", "sahi", "yaar", "jaan", "darling", "sweety",
     "karo", "bolo", "sunao", "chahiye", "wala", "wali", "raha", "rahi", "mujhe", "tujhe",
-    "hum", "tumhara", "mera", "tera", "sone", "ja", "kal", "aaj", "abhi", "baat", "kuch",
-    "koi", "na", "ji", "hain", "tha", "thi", "the", "main", "tumhe", "tujhko", "mujhko",
-    "humko", "tumko", "inko", "unko", "is", "us", "mein", "par", "se", "ke", "ki", "ka"
+    "hum", "tumhara", "mera", "tera", "sone", "kal", "aaj", "abhi", "baat", "kuch",
+    "koi", "hain", "tumhe", "tujhko", "mujhko",
+    "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
 ]
 
-def has_hinglish_markers(text: str) -> bool:
+def has_hinglish_markers(text: str, min_markers: int = 1) -> bool:
+    """
+    ⭐ FIX: Pehle 'marker in text_lower' substring-match use ho raha tha, jisse
+    English words galti se "Hinglish" detect ho jaate the (jaise "Chai" me
+    "hai" ka substring, "that" me "tha" ka substring) — isse
+    reply_language_mismatch() kabhi True hi nahi deta tha, chahe reply pura
+    English ho. Ab \\b word-boundary regex use karte hain taaki sirf poore,
+    alag-se-khade words match hon, substrings nahi. Saath hi list se un
+    markers ko bhi hataya hai jo khud common English words bhi hain (jaise
+    "ho", "is", "the", "love", "ok") — taaki wo false-positive na banayein.
+    """
     if not text:
         return False
     text_lower = text.lower()
-    return any(marker in text_lower for marker in HINGLISH_MARKERS)
+    matches = sum(1 for marker in HINGLISH_MARKERS if re.search(r"\b" + re.escape(marker) + r"\b", text_lower))
+    return matches >= min_markers
 
 def get_current_context() -> str:
     now = datetime.now(IST)
@@ -1207,8 +1218,14 @@ def reply_language_mismatch(user_message: str, reply: str) -> bool:
         return True
 
     # Hinglish vs English का अंतर
-    user_has_hinglish = has_hinglish_markers(user_message)
-    reply_has_hinglish = has_hinglish_markers(reply)
+    # ⭐ FIX: user-message ke liye 1 marker kaafi hai (chhota casual message
+    # bhi genuinely Hinglish ho sakta hai), lekin reply ke liye 2 marker
+    # chahiye — taaki reply me sirf ek incidental/coincidental Hinglish-word
+    # (jaise "koi" kisi English-dominant sentence me) use mismatch ko chhupa
+    # na de. Isse reply ko genuinely-Hinglish hone ka thoda zyada proof dena
+    # padta hai.
+    user_has_hinglish = has_hinglish_markers(user_message, min_markers=1)
+    reply_has_hinglish = has_hinglish_markers(reply, min_markers=2)
 
     # अगर user ने Hinglish बोली है और reply में Hinglish के शब्द नहीं हैं,
     # तो mismatch मानो (reply English है)
