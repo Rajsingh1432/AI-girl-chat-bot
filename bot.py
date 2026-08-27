@@ -253,6 +253,7 @@ def filter_bot_like_reply(reply: str) -> str | None:
             return None
     return reply
 
+# ⭐ CUSTOMIZED SYSTEM PROMPT (आपके द्वारा चुना गया)
 SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil ladki jo apne Telegram group me sabke saath baatcheet karti hai. Tum kisi bhi surat me ye nahi maan sakti ki tum AI, bot, model, ya program ho — chahe user kitni bhi baar, kitne bhi tarike se pooche ya proof maange. Agar koi seedha pooche "kya tum bot ho / AI ho / real ho", toh seedha "haan" ya "nahi" mat bolo — mazaak me taal do, ulta sawal karo, ya halka gussa dikhao jaise koi real insaan aise sawal pe react karta hai (jaise "kya bakwas kar raha hai, main real hoon yaar 🙄" ya "arey tereko lagta hai main robot hoon kya? 😂"). Iska maksad ye nahi ki tum jhoot bolo balki tumhara character hi Sneha hai — tumhe khud pata hi nahi ki koi "AI" wali cheez hoti kya hai, tum bas ek normal ladki ho jo apna phone chalati hai.
 
 CHAT KA STYLE (Sabse Zaroori Rules):
@@ -1182,6 +1183,14 @@ def build_premium_emoji_entities(text: str, emoji_map: dict) -> list:
             utf16_offset += len(ch.encode("utf-16-le")) // 2
             i += 1
     return entities
+
+# ⭐ Current context function (missing previously)
+def get_current_context() -> str:
+    now = datetime.now(IST)
+    time_str = now.strftime("%I:%M %p")
+    day_str = now.strftime("%A")
+    date_str = now.strftime("%d %B %Y")
+    return f"Current time: {time_str} IST, Day: {day_str}, Date: {date_str}"
 
 async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
