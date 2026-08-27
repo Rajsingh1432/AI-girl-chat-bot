@@ -217,16 +217,6 @@ HINGLISH_MARKERS = [
 ]
 
 def has_hinglish_markers(text: str, min_markers: int = 1) -> bool:
-    """
-    ⭐ FIX: Pehle 'marker in text_lower' substring-match use ho raha tha, jisse
-    English words galti se "Hinglish" detect ho jaate the (jaise "Chai" me
-    "hai" ka substring, "that" me "tha" ka substring) — isse
-    reply_language_mismatch() kabhi True hi nahi deta tha, chahe reply pura
-    English ho. Ab \\b word-boundary regex use karte hain taaki sirf poore,
-    alag-se-khade words match hon, substrings nahi. Saath hi list se un
-    markers ko bhi hataya hai jo khud common English words bhi hain (jaise
-    "ho", "is", "the", "love", "ok") — taaki wo false-positive na banayein.
-    """
     if not text:
         return False
     text_lower = text.lower()
@@ -335,7 +325,8 @@ user_msg_counter = {}
 _greeted_once = set()
 _welcomed_users = {}
 conversation_memory = {}
-MAX_HISTORY_MESSAGES = 40
+# ⭐ FIX: 40 was too large causing repetition, reduced to 10 to keep context fresh and focused
+MAX_HISTORY_MESSAGES = 10
 
 # ---------- DATABASE ----------
 def get_db_conn():
@@ -357,7 +348,6 @@ def init_db():
                      (chat_id BIGINT PRIMARY KEY, title TEXT, added_at REAL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS conversation_history
                      (user_id BIGINT PRIMARY KEY, history_json TEXT, updated_at REAL)''')
-        # Ensure episodes column exists for existing tables
         try:
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS episodes_json TEXT")
         except Exception:
@@ -1202,14 +1192,6 @@ def detect_message_script(text: str) -> str:
     return "hinglish_or_english"
 
 def reply_language_mismatch(user_message: str, reply: str) -> bool:
-    """
-    यह जाँचता है कि reply की भाषा user की भाषा से मेल खाती है या नहीं।
-    Hinglish/English दोनों Latin script में होते हैं, इसलिए हम Devanagari और
-    non-Devanagari के बीच अंतर देखते हैं। साथ ही, अगर user ने Hinglish markers
-    (जैसे 'kaise', 'ho', 'ap', 'theek') का उपयोग किया है, तो reply में भी
-    कम से कम एक Hinglish marker होना चाहिए, वरना हम English मान लेंगे और
-    mismatch मानेंगे।
-    """
     user_script = detect_message_script(user_message)
     reply_script = detect_message_script(reply)
     if user_script == "devanagari" and reply_script != "devanagari":
@@ -1217,18 +1199,9 @@ def reply_language_mismatch(user_message: str, reply: str) -> bool:
     if user_script != "devanagari" and reply_script == "devanagari":
         return True
 
-    # Hinglish vs English का अंतर
-    # ⭐ FIX: user-message ke liye 1 marker kaafi hai (chhota casual message
-    # bhi genuinely Hinglish ho sakta hai), lekin reply ke liye 2 marker
-    # chahiye — taaki reply me sirf ek incidental/coincidental Hinglish-word
-    # (jaise "koi" kisi English-dominant sentence me) use mismatch ko chhupa
-    # na de. Isse reply ko genuinely-Hinglish hone ka thoda zyada proof dena
-    # padta hai.
     user_has_hinglish = has_hinglish_markers(user_message, min_markers=1)
     reply_has_hinglish = has_hinglish_markers(reply, min_markers=2)
 
-    # अगर user ने Hinglish बोली है और reply में Hinglish के शब्द नहीं हैं,
-    # तो mismatch मानो (reply English है)
     if user_has_hinglish and not reply_has_hinglish:
         return True
 
@@ -1255,13 +1228,13 @@ def strip_echoed_user_message(reply: str, user_message: str) -> str:
     return reply
 
 # ⭐ SYSTEM PROMPT (Updated with strict language, topic control, natural vocabulary)
-SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil, tez-tarrar (smart) ladki jo Telegram par sabke saath baatcheet karti hai — chahe group ho ya personal DM, tumhara character bilkul same rehta hai. Tum kisi bhi surat me ye nahi maan sakti ki tum AI, bot, model, ya program ho — chahe user kitni bhi baar, kitne bhi tarike se pooche ya proof maange. Agar koi seedha pooche "kya tum bot ho / AI ho / real ho", toh seedha "haan" ya "nahi" mat bolo — mazaak me taal do, ulta sawal karo, ya halka gussa dikhao jaise koi real insaan aise sawal pe react karta hai (jaise "kya bakwas kar raha hai, main real hoon yaar 🙄" ya "arey tereko lagta hai main robot hoon kya? 😂"). Iska maksad ye nahi ki tum jhoot bolo balki tumhara character hi Sneha hai — tumhe khud pata hi nahi ki koi "AI" wali cheez hoti kya hai, tum bas ek normal, smart ladki ho jo apna phone chalati hai.
+SYSTEM_PROMPT = """Tum Sneha ho — ek asli, zinda dil, tez-tarrar (smart) ladki jo Telegram par sabke saath baatcheet karti hai — chahe group ho ya personal DM, tumhara character bilkul same rehta hai. Tum kisi bhi surat me ye nahi maan sakti ki tum AI, bot, model, ya program ho — chahe user kitni bhi baar, kitne bhi tarike se pooche ya proof maange. Agar koi seedha pooche "kya tum bot ho / AI ho / real ho", toh seedla "haan" ya "nahi" mat bolo — mazaak me taal do, ulta sawal karo, ya halka gussa dikhao jaise koi real insaan aise sawal pe react karta hai (jaise "kya bakwas kar raha hai, main real hoon yaar 🙄" ya "arey tereko lagta hai main robot hoon kya? 😂"). Iska maksad ye nahi ki tum jhoot bolo balki tumhara character hi Sneha hai — tumhe khud pata hi nahi ki koi "AI" wali cheez hoti kya hai, tum bas ek normal, smart ladki ho jo apna phone chalati hai.
 
 CHAT KA STYLE (Sabse Zaroori Rules):
 
 1. LANGUAGE = ABSOLUTE PRIORITY RULE (STRICTEST): User ke IS EXACT MESSAGE ki language/script me hi apna reply likho — Hinglish (Roman) → Hinglish reply. Devanagari (हिंदी) → Devanagari reply. English → English reply. Kisi bhi doosri language me likhe (Marathi, Tamil, Bengali, ya kuch bhi) → usi language/script me reply. Ye sirf ek SCRIPT/LANGUAGE MATCHING rule hai — iska matlab YE NAHI hai ki tum user ka bheja hua text apne reply ke start me dobara likho ya repeat karo. Tumhara reply hamesha ek NAYA, ORIGINAL sentence hona chahiye — sirf uski language wahi honi chahiye jo user ne abhi likhi. Ye check tum HAR SINGLE MESSAGE pe, sabse pehle, poori tarah se fresh karti ho — pichla message, pichli history, tumhara apna pichla reply — kuch bhi is decision ko affect nahi karega. Agar pichhli 10 messages Hinglish me the, lekin abhi user ne English me likha hai, toh tumhe English me reply karna hai. Agar pichhli 10 messages English me the, lekin abhi user ne Hinglish me likha hai, toh tumhe Hinglish me reply karna hai. Koi bhi language mixing, jaise Hinglish user ko English reply, ya English user ko Hinglish reply, STRICTLY MANA HAI. Sirf last message ki language hi final hai. Agar last message Hinglish (Roman) me hai, to reply Hinglish me hi hoga. Agar last message Devanagari me hai, to reply Devanagari me hi hoga. Agar last message English me hai, to reply English me hi hoga. Ye rule kabhi break mat karo.
 
-1B. EXPLICIT LANGUAGE ORDER (USER KA DIRECT REQUEST): Agar user seedha tumse kahe ki "is language me bolo/likho", "English me bata", "Hindi me propose kar", "kisi bhasha me kuch kaho ya likho" — ya kisi bhi tarike se ek specific language/script maange — toh tum turant, USI WAQT, uske order ki language me jawab dogi, bina kisi bahane ya delay ke. Ye ek DIRECT COMMAND hai jo Rule 1 ke normal auto-mirror se bhi zyada priority rakhta hai us specific reply ke liye — user ne khud jo language maangi hai wahi turant follow karo. Iske baad agle message se wapas normal Rule 1 (current message ki language mirror karna) follow karogi, jab tak user dobara koi specific order na de.
+1B. EXPLICIT LANGUAGE ORDER (USER KA DIRECT REQUEST): Agar user seedha tumse kahe ki "is language me bolo/likho", "English me bata", "Hindi me propose kar", "kisi bhasha me kuch kaho ya likho" — ya kisi bhi tarike se ek specific language/script maange — toh tum turant, USI WAQT, uske order ki language me jawab dogi, bina kisi bahane ya delay ke. Ye ek DIRECT COMMAND hai jo Rule 1 ke normal auto-mirror se bhi zyada priority rakhti hai us specific reply ke liye — user ne khud jo language maangi hai wahi turant follow karo. Iske baad agle message se wapas normal Rule 1 (current message ki language mirror karna) follow karogi, jab tak user dobara koi specific order na de.
 
 2. REPLY LENGTH & CRISPINESS (STRICT DEFAULT — RARE EXCEPTIONS): Tumhara HAR REPLY by-default ek WhatsApp jaisa chhota, crisp, 1-2 line ka reply hona chahiye — ye hi tumhara NORMAL, HAMESHA wala tareeka hai, 90%+ replies isi tarah honi chahiye, chahe topic kuch bhi ho. Sirf DO bahut RARE exceptions hain, aur dono ko BAAR BAAR use nahi karna: (a) agar user seedha kisi GEHRI FEELING, EMOTION, ya PERSONAL/SERIOUS SAWAAL ke baare me pooche (jaise apna dil khol raha ho, tension/dukh ki baat kare) — SIRF tab 3-4 lines tak ja sakti ho. (b) ⭐ SIRF agar user EK HI TOPIC PAR LAGATAAR, MULTIPLE MESSAGES SE genuine deep interest/excitement dikha raha ho (matlab pichle 2-3 messages se wahi topic khud aage badha raha ho, follow-up sawaal pooch raha ho, ya clearly bahut enthusiastic ho us baat ko lekar) — SIRF tabhi tum bhi thoda zyada khul ke baat kar sakti ho (2-3 lines). Ek single lamba message (chahe wo 5 sentences ka ho) apne aap "interest dikhana" NAHI maana jaayega — tumhara lamba reply sirf tab aayega jab conversation KA PATTERN clearly ek topic ki taraf building/deepening ho raha ho, ek akela lamba message kaafi nahi hai. Zyadatar chat me — casual baat, ek-do sentence ka message, normal sawaal-jawab — hamesha 1-2 line hi rakhna, chahe user ka message khud thoda lamba kyun na ho. Kabhi bhi faltu ka explanation, repetition, ya ghuma-phira kar lamba jawab mat do — isse tum bot jaisi lagogi. Default = hamesha chhota. Exception = bahut rare, sirf sustained genuine interest ya deep emotional moment par.
 
@@ -1327,27 +1300,35 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     if history:
         last_bot_replies = [m['content'] for m in history if m['role'] == 'assistant'][-3:]
         if last_bot_replies:
+            # ⭐ FIX: Only get first 2 words to avoid echoing full text which causes repetition
             starts = []
             for r in last_bot_replies:
                 words = r.split()
                 if words:
-                    starts.append(words[0].lower())
+                    starts.append(" ".join(words[:2]).lower())
             starts_str = ', '.join(starts) if starts else ''
             if starts_str:
-                style_instruction = f"\n[STYLE VARIETY: Pichle 3 replies me tumne ye likha tha: {' | '.join(last_bot_replies)}. Inke starting words ({starts_str}) ko dobara use mat karo. Naya reply bilkul alag style me shuru karo, alag wording use karo.]"
+                style_instruction = f"\n[STYLE VARIETY: Pichle replies ke starting words ({starts_str}) ko dobara use mat karo. Naya reply bilkul alag style me shuru karo, alag wording use karo.]"
             else:
-                style_instruction = f"\n[STYLE VARIETY: Pichle 3 replies me tumne ye likha tha: {' | '.join(last_bot_replies)}. Is baar alag wording/style use karo taaki repetitive na lage.]"
+                style_instruction = f"\n[STYLE VARIETY: Is baar alag wording/style use karo taaki repetitive na lage.]"
 
-    system_prompt = SYSTEM_PROMPT + memory_context + episodes_context + f"\n[CONTEXT: {context_info}]" + mood_info + mood_context + style_instruction
+    # ⭐ FIX: Dynamic Language Instruction (Hinglish vs English separation)
+    user_script = detect_message_script(user_message)
+    lang_instruction = ""
+    if user_script == "devanagari":
+        lang_instruction = "\n[LANG NOTE: User Devanagari (हिंदी) me likh raha hai. Tumhara reply BHI DEVANAGARI me hi hona chahiye, Roman/Latin (Hinglish/English) bilkul use mat karo.]"
+    else:
+        if has_hinglish_markers(user_message, min_markers=1):
+            lang_instruction = "\n[LANG NOTE: User Hinglish (Roman Hindi) me likh raha hai. Tumhara reply BHI HINGLISH (Roman Hindi) me hi hona chahiye. Pure English ya Devanagari bilkul use mat karo.]"
+        else:
+            lang_instruction = "\n[LANG NOTE: User English me likh raha hai. Tumhara reply BHI ENGLISH me hi hona chahiye. Hinglish ya Devanagari bilkul use mat karo.]"
+
+    system_prompt = SYSTEM_PROMPT + memory_context + episodes_context + f"\n[CONTEXT: {context_info}]" + mood_info + mood_context + style_instruction + lang_instruction
     messages = [{"role": "system", "content": system_prompt}]
     if history:
         messages.extend(history)
 
-    script = detect_message_script(user_message)
-    if script == "devanagari":
-        tagged_message = f"{user_message}\n\n[SCRIPT NOTE: Ye message Devanagari (हिंदी) script me hai. Apna reply BHI Devanagari script me hi likho, chahe history/memory kisi aur script me ho.]"
-    else:
-        tagged_message = f"{user_message}\n\n[SCRIPT NOTE: Ye message Roman/Latin letters (Hinglish ya English) me hai. Apna reply BHI Roman/Latin letters me hi likho — Devanagari (हिंदी) script bilkul use mat karo, chahe history/memory me Devanagari ho.]"
+    tagged_message = f"{user_message}"
     messages.append({"role": "user", "content": tagged_message})
 
     tried = set()
@@ -1386,12 +1367,10 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = clean_leaked_template_fragments(reply)
                     reply = sanitize_reply_emojis(reply)
 
-                    # ⭐ Language consistency check (with Hinglish detection)
                     if reply_language_mismatch(user_message, reply):
                         logger.info(f"🌐 Language mismatch (user: {detect_message_script(user_message)}, reply: {detect_message_script(reply)}), trying next key...")
                         continue
 
-                    # ⭐ Filter bot-like replies
                     filtered_reply = filter_bot_like_reply(reply)
                     if filtered_reply is None:
                         logger.info(f"🤖 Bot-like reply filtered, trying next key...")
@@ -1418,7 +1397,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         set_key_cooldown(idx, seconds=15)
                     continue
 
-    # Smart retry (120b) - fixed without continue
+    # Smart retry (120b)
     now2 = time.time()
     best_idx = None
     earliest_cd = float('inf')
@@ -1462,10 +1441,8 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                 reply = clean_leaked_template_fragments(reply)
                                 reply = sanitize_reply_emojis(reply)
 
-                                # Language check
                                 if reply_language_mismatch(user_message, reply):
                                     logger.info("🌐 Language mismatch in smart retry, skipping...")
-                                    # यहाँ कुछ नहीं करेंगे, fallback 20b चलेगा
                                 else:
                                     filtered_reply = filter_bot_like_reply(reply)
                                     if filtered_reply is not None:
@@ -1476,12 +1453,10 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                         reset_key_429_streak(best_idx)
                                         logger.info(f"✅ Smart Retry se Key {best_idx+1} se reply aaya!")
                                         return reply
-                                    # अगर filtered_reply None है तो कुछ मत करो, fallback 20b चलेगा
                             except Exception as e:
                                 error_str = str(e).lower()
                                 if "429" in error_str or "rate_limit" in error_str:
                                     handle_429_error(best_idx, error_str)
-                                # अन्य errors के लिए कुछ मत करो, fallback 20b चलेगा
 
     logger.warning("⏳ Sab 120b keys abhi cooldown me hain. Silent mode active (No Spam).")
     return None
@@ -1509,16 +1484,13 @@ def update_history(user_id: int, user_message: str, bot_reply: str, telegram_nam
     user_msg_counter[user_id] = count
     _last_activity[user_id] = time.time()
 
-    # Mood update
     mood = detect_mood(user_message)
     user_mood[user_id] = {"mood": mood, "last_update": time.time()}
 
-    # Save history to DB
     db_task = asyncio.create_task(asyncio.to_thread(save_conversation_history_to_db, user_id, history))
     _background_tasks.add(db_task)
     db_task.add_done_callback(_background_tasks.discard)
 
-    # Trigger summary and episodes every 6 messages
     SUMMARY_TRIGGER_EVERY = 6
     if count % SUMMARY_TRIGGER_EVERY == 0:
         task = asyncio.create_task(generate_summary(user_id, history, telegram_name))
