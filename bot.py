@@ -743,7 +743,7 @@ TUJHE KYA KARNA HAI:
                     reply = response.choices[0].message.content
                     reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                     reply = reply.strip().strip('`')
-                    reply = sanitize_reply_emojis(reply)
+                    reply = clean_reply_text(reply)
                     update_key_usage_actual(idx, entry_idx, 100)
                     reset_key_429_streak(idx)
                     return reply
@@ -850,8 +850,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     try:
         user = update.effective_user
         asyncio.create_task(save_broadcast_user_async(user.id))
-        user_name = escape_md_v2(user.first_name or "Buddy")
-        bot_name = escape_md_v2(context.bot.first_name or "AI Girl Bot")
+        user_name = html.escape(user.first_name or "Buddy")
+        bot_name = html.escape(context.bot.first_name or "AI Girl Bot")
         welcome_text = (
             f"\n‎ ‎‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎ ‎‎ ‎ <tg-emoji emoji-id=\"5789593740091857906\">💃</tg-emoji> <tg-emoji emoji-id=\"5792001889600022897\">💃</tg-emoji> <tg-emoji emoji-id=\"5789579686958865077\">💃</tg-emoji> <tg-emoji emoji-id=\"5789419819686173268\">💃</tg-emoji> <tg-emoji emoji-id=\"5789588379972671766\">💃</tg-emoji> <tg-emoji emoji-id=\"5791677275971787880\">💃</tg-emoji> <tg-emoji emoji-id=\"5792001889600022897\">💃</tg-emoji>\n\n"
             f"<blockquote>"
@@ -1180,6 +1180,18 @@ def sanitize_reply_emojis(text: str) -> str:
     result = re.sub(r"[ \t]{2,}", " ", result)
     return result.strip()
 
+# ⭐ FIX: Clean dashes/hyphens and sanitize emojis in one go
+def clean_reply_text(text: str) -> str:
+    if not text: return text
+    # Remove leading/trailing dashes, hyphens, and spaces
+    text = re.sub(r'^[-—\s]+', '', text).strip()
+    text = re.sub(r'[-—\s]+$', '', text).strip()
+    # Replace standalone dashes in the middle with space
+    text = re.sub(r'\s[-—]\s', ' ', text)
+    # Sanitize emojis using the previous function
+    text = sanitize_reply_emojis(text)
+    return text
+
 def detect_message_script(text: str) -> str:
     if not text:
         return "hinglish"
@@ -1273,7 +1285,7 @@ CHAT KA STYLE (Sabse Zaroori Rules):
 
 9. STRONG MEMORY, LIGHT TOUCH: [SECRET MEMORY] me structured info hoti hai — Topics, Naam, Hobby, Facts. [IMPORTANT MEMORIES] me specific events, promises, dates hoti hain. In dono ko conversation me naturally mix karo — jaise "are haan tune bataya tha na..." — lekin har reply me force mat karo. Jab bhi mauka mile, koi purani baat, promise, ya hobby ka reference do, taaki user ko lage ki tumhe sach me yaad hai. Kabhi pucho "wo kaam hua kya?" ya "wo wali movie dekhi kya?" — isse conversation aur real lagegi.
 
-10. STRICT FORMATTING: Double quotes, single quotes, exclamation marks (!) ka use STRICTLY MANA HAI. Normal WhatsApp-style text likho, ek hi chhote paragraph me.
+10. STRICT FORMATTING: Double quotes, single quotes, exclamation marks (!) ka use STRICTLY MANA HAI. Normal WhatsApp-style text likho, ek hi chhote paragraph me. Sentence ke beech me ya aakhir me dash (-) ya em-dash (—) use mat karo, seedhe words likho.
 
 Yaad rakhna: tumhara har jawab crisp, smart, aur ekdum asli insaan jaisa hona chahiye — chahe DM ho ya group, tum hamesha wahi Sneha ho."""
 
@@ -1300,7 +1312,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     if history:
         last_bot_replies = [m['content'] for m in history if m['role'] == 'assistant'][-3:]
         if last_bot_replies:
-            # ⭐ FIX: Only get first 2 words to avoid echoing full text which causes repetition
             starts = []
             for r in last_bot_replies:
                 words = r.split()
@@ -1312,7 +1323,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
             else:
                 style_instruction = f"\n[STYLE VARIETY: Is baar alag wording/style use karo taaki repetitive na lage.]"
 
-    # ⭐ FIX: Dynamic Language Instruction (Hinglish vs English separation)
     user_script = detect_message_script(user_message)
     lang_instruction = ""
     if user_script == "devanagari":
@@ -1365,7 +1375,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = reply.strip().strip('`')
                     reply = strip_echoed_user_message(reply, user_message)
                     reply = clean_leaked_template_fragments(reply)
-                    reply = sanitize_reply_emojis(reply)
+                    reply = clean_reply_text(reply)
 
                     if reply_language_mismatch(user_message, reply):
                         logger.info(f"🌐 Language mismatch (user: {detect_message_script(user_message)}, reply: {detect_message_script(reply)}), trying next key...")
@@ -1439,7 +1449,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                                 reply = reply.strip().strip('`')
                                 reply = strip_echoed_user_message(reply, user_message)
                                 reply = clean_leaked_template_fragments(reply)
-                                reply = sanitize_reply_emojis(reply)
+                                reply = clean_reply_text(reply)
 
                                 if reply_language_mismatch(user_message, reply):
                                     logger.info("🌐 Language mismatch in smart retry, skipping...")
