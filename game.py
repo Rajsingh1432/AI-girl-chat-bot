@@ -2,18 +2,17 @@ import asyncio
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from telegram.error import Forbidden, TimedOut
 # ⭐ Alag file se questions import kar rahe hain
 from questions import EMOJI_PUZZLES, BRAIN_QUESTIONS, WORD_PUZZLES
 
 SUPPORT_LINK = "https://t.me/+0xoXWln4qiM2NTY9"
 
 # ⭐ ========== PREMIUM EMOJI + COLOR BUTTON STYLING ==========
-# bot.py se independent rakha gaya hai (koi circular import na ho).
 class ButtonStyle:
     PRIMARY = "primary"
     DANGER = "danger"
 
-# Caption-emoji IDs (bot.py ke welcome-caption me use hui wahi 8 IDs)
 GAME_EMOJIS = {
     "dance": "6332268261010315734",   # 💃
     "flower": "6332617871348210023",  # 🌸
@@ -40,18 +39,14 @@ def _dedupe_questions(items):
             unique.append(item)
     return unique
 
-# ⭐ Import ke baad hi dedupe karo taaki global pool me duplicate na jaye
 EMOJI_PUZZLES = _dedupe_questions(EMOJI_PUZZLES)
 BRAIN_QUESTIONS = _dedupe_questions(BRAIN_QUESTIONS)
 WORD_PUZZLES = _dedupe_questions(WORD_PUZZLES)
 
-# ⭐ GLOBAL POOL SYSTEM: Ye list poore bot ke lifetime ke liye yaad rakhega
-# Jab tak ye khaali nahi hogi, koi question repeat nahi hoga (chahe 100 game khel lo)
 GLOBAL_P_POOL = []
 GLOBAL_B_POOL = []
 GLOBAL_W_POOL = []
 
-# Function to get a unique question globally
 def get_unique_question(g_type):
     global GLOBAL_P_POOL, GLOBAL_B_POOL, GLOBAL_W_POOL
     
@@ -100,10 +95,6 @@ async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         try:
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         except Exception:
-            # ⭐ FIX: Agar original message photo/caption wala hai (jaise /start ka
-            # welcome image), to edit_message_text fail ho jaata hai kyunki us
-            # message me "text" hota hi nahi, sirf "caption" hota hai. Us case
-            # me edit karne ki bajaye naya message bhej dete hain.
             await update.callback_query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 # ==========================================
@@ -206,10 +197,14 @@ async def join_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     game['phase'] = 'playing'
     players_count = len(game['players'])
     
-    if players_count == 1:
-        await context.bot.send_message(chat_id, "Koi nahi aya? Chalo koi baat nahi, tum akela hi kheloge! Game shuru! 🔥")
-    else:
-        await context.bot.send_message(chat_id, f"Times up! Total {players_count} log khel rahe hain. Chalo shuru karte hain! 🔥")
+    try:
+        if players_count == 1:
+            await context.bot.send_message(chat_id, "Koi nahi aya? Chalo koi baat nahi, tum akela hi kheloge! Game shuru! 🔥")
+        else:
+            await context.bot.send_message(chat_id, f"Times up! Total {players_count} log khel rahe hain. Chalo shuru karte hain! 🔥")
+    except Forbidden:
+        active_games.pop(chat_id, None)
+        return
         
     if game['g_type'] == "puzzle":
         await ask_puzzle(update, context, chat_id)
@@ -230,7 +225,6 @@ async def ask_word(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: 
         await end_game_winner(update, context, chat_id)
         return
         
-    # ⭐ GLOBAL POOL SE QUESTION LO
     w = get_unique_question("word")
     
     opts = w['opts'].copy()
@@ -244,12 +238,19 @@ async def ask_word(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id: 
     
     keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_wans_{i}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["flower"])] for i, opt in enumerate(opts)]
     
-    msg = await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the word? <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n<b>{w['q']}</b>\n\nNiche se sahi jawab dabao!",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    try:
+        msg = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the word? <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n<b>{w['q']}</b>\n\nNiche se sahi jawab dabao!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    except Forbidden:
+        active_games.pop(chat_id, None)
+        return
+    except Exception:
+        return
+        
     game['msg_id'] = msg.message_id
     game['timer_task'] = asyncio.create_task(word_timer(update, context, chat_id))
 
@@ -268,7 +269,14 @@ async def word_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
         f"<tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji> 30 second khatam! Bade khiladi lagte ho? Sahi jawab tha:",
         f"<tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji> Arey bhai, itna easy sawaal tha! Sahi jawab:"
     ]
-    await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
+    
+    try:
+        await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
+    except Forbidden:
+        active_games.pop(chat_id, None)
+        return
+    except Exception:
+        pass
     
     await asyncio.sleep(2)
     game['round'] += 1
@@ -316,14 +324,22 @@ async def handle_word_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
             pass
             
         await query.answer("✅ Bilkul Sahi!", show_alert=True)
-        await context.bot.send_message(chat_id, f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> Wah! <b>{user.first_name}</b> ne sahi word pakda! <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
+        
+        try:
+            await context.bot.send_message(chat_id, f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> Wah! <b>{user.first_name}</b> ne sahi word pakda! <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
+        except Forbidden:
+            active_games.pop(chat_id, None)
+            return
         
         await asyncio.sleep(2)
         game['round'] += 1
         await ask_word(update, context, chat_id)
     else:
         await query.answer("❌ Galat Jawab! Koi aur try karega.", show_alert=True)
-        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! <tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji>", parse_mode="HTML")
+        try:
+            await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! <tg-emoji emoji-id=\"{GAME_EMOJIS['flower']}\">🌸</tg-emoji>", parse_mode="HTML")
+        except Forbidden:
+            active_games.pop(chat_id, None)
 
 
 # ==========================================
@@ -337,7 +353,6 @@ async def ask_puzzle(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
         await end_game_winner(update, context, chat_id)
         return
         
-    # ⭐ GLOBAL POOL SE QUESTION LO
     p = get_unique_question("puzzle")
     
     opts = p['opts'].copy()
@@ -351,12 +366,19 @@ async def ask_puzzle(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id
     
     keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_pans_{i}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["party"])] for i, opt in enumerate(opts)]
     
-    msg = await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the movie? <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n<b>Emojis:</b> {p['e']}\n\nNiche se sahi jawab dabao!",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    try:
+        msg = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\nCan you guess the movie? <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n<b>Emojis:</b> {p['e']}\n\nNiche se sahi jawab dabao!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    except Forbidden:
+        active_games.pop(chat_id, None)
+        return
+    except Exception:
+        return
+        
     game['msg_id'] = msg.message_id
     game['timer_task'] = asyncio.create_task(puzzle_timer(update, context, chat_id))
 
@@ -375,7 +397,14 @@ async def puzzle_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_
         f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> 30 second khatam! Bade khiladi lagte ho? Sahi jawab tha:",
         f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> Arey bhai, itna easy sawaal tha! Sahi jawab:"
     ]
-    await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
+    
+    try:
+        await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
+    except Forbidden:
+        active_games.pop(chat_id, None)
+        return
+    except Exception:
+        pass
     
     await asyncio.sleep(2)
     game['round'] += 1
@@ -423,14 +452,22 @@ async def handle_puzzle_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             pass
             
         await query.answer("✅ Bilkul Sahi!", show_alert=True)
-        await context.bot.send_message(chat_id, f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> Wah! <b>{user.first_name}</b> ne sahi jawab de diya! <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
+        
+        try:
+            await context.bot.send_message(chat_id, f"<tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji> Wah! <b>{user.first_name}</b> ne sahi jawab de diya! <tg-emoji emoji-id=\"{GAME_EMOJIS['sparkle']}\">✨</tg-emoji>\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
+        except Forbidden:
+            active_games.pop(chat_id, None)
+            return
         
         await asyncio.sleep(2)
         game['round'] += 1
         await ask_puzzle(update, context, chat_id)
     else:
         await query.answer("❌ Galat Jawab! Koi aur try karega.", show_alert=True)
-        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! <tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji>", parse_mode="HTML")
+        try:
+            await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! <tg-emoji emoji-id=\"{GAME_EMOJIS['party']}\">🎉</tg-emoji>", parse_mode="HTML")
+        except Forbidden:
+            active_games.pop(chat_id, None)
 
 
 # ==========================================
@@ -444,7 +481,6 @@ async def ask_brain(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id:
         await end_game_winner(update, context, chat_id)
         return
         
-    # ⭐ GLOBAL POOL SE QUESTION LO
     q_data = get_unique_question("brain")
     
     opts = q_data['opts'].copy()
@@ -458,12 +494,19 @@ async def ask_brain(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_id:
     
     keyboard = [[InlineKeyboardButton(opt, callback_data=f"g_bans_{i}", style=ButtonStyle.DANGER, icon_custom_emoji_id=GAME_EMOJIS["fire"])] for i, opt in enumerate(opts)]
     
-    msg = await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\n<tg-emoji emoji-id=\"{GAME_EMOJIS['devil']}\">😈</tg-emoji> <b>Sawaal:</b> {q_data['q']}\n\nNiche se sahi jawab dabao!",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    try:
+        msg = await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"<blockquote><b><tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> ROUND {game['round']}/{game['total_rounds']}</b></blockquote>\n\n<tg-emoji emoji-id=\"{GAME_EMOJIS['devil']}\">😈</tg-emoji> <b>Sawaal:</b> {q_data['q']}\n\nNiche se sahi jawab dabao!",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    except Forbidden:
+        active_games.pop(chat_id, None)
+        return
+    except Exception:
+        return
+        
     game['msg_id'] = msg.message_id
     game['timer_task'] = asyncio.create_task(brain_timer(update, context, chat_id))
 
@@ -483,7 +526,14 @@ async def brain_timer(update: Update, context: ContextTypes.DEFAULT_TYPE, chat_i
         f"<tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> 30 second khatam! Bade dimag wale lagte ho? Sahi jawab tha:",
         f"<tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> Arey bhai, itna easy sawaal tha! Sahi jawab:"
     ]
-    await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
+    
+    try:
+        await context.bot.send_message(chat_id, f"{random.choice(roasts)} <b>{game.get('current_ans_text', 'Unknown')}</b>\n\nChalo agla sawaal...", parse_mode="HTML")
+    except Forbidden:
+        active_games.pop(chat_id, None)
+        return
+    except Exception:
+        pass
     
     await asyncio.sleep(2)
     game['round'] += 1
@@ -531,14 +581,22 @@ async def handle_brain_ans(update: Update, context: ContextTypes.DEFAULT_TYPE, c
             pass
             
         await query.answer("✅ Bilkul Sahi!", show_alert=True)
-        await context.bot.send_message(chat_id, f"<tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> <b>{user.first_name}</b> ne dimag lagaya aur sahi jawab diya!\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
+        
+        try:
+            await context.bot.send_message(chat_id, f"<tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji> <b>{user.first_name}</b> ne dimag lagaya aur sahi jawab diya!\n\n✅ Sahi Jawab: <b>{game['current_ans_text']}</b>\n\n+1 Point!", parse_mode="HTML")
+        except Forbidden:
+            active_games.pop(chat_id, None)
+            return
         
         await asyncio.sleep(2)
         game['round'] += 1
         await ask_brain(update, context, chat_id)
     else:
         await query.answer("❌ Galat Jawab! Koi aur try karega.", show_alert=True)
-        await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! <tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji>", parse_mode="HTML")
+        try:
+            await context.bot.send_message(chat_id, f"❌ <b>{user.first_name}</b> galat jawab de gaya. Koi aur try karo! <tg-emoji emoji-id=\"{GAME_EMOJIS['fire']}\">🔥</tg-emoji>", parse_mode="HTML")
+        except Forbidden:
+            active_games.pop(chat_id, None)
 
 # ==========================================
 # 7. WINNER ANNOUNCEMENT
@@ -563,9 +621,12 @@ async def end_game_winner(update: Update, context: ContextTypes.DEFAULT_TYPE, ch
                 
     keyboard = [[InlineKeyboardButton("Join Support Group", url=SUPPORT_LINK, style=ButtonStyle.PRIMARY, icon_custom_emoji_id=GAME_EMOJIS["flower"])]]
     
-    await context.bot.send_message(
-        chat_id=chat_id, 
-        text=win_text, 
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id, 
+            text=win_text, 
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
