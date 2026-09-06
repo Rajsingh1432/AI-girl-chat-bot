@@ -827,7 +827,7 @@ User ne abhi "{user_message}" kaha. 1 line ka reply do. Hinglish me. 1 emoji. Pu
                     continue
     return None
 
-# ⭐ Proactive Message Generator (Spam-Free & Professional)
+# ⭐ Proactive Message Generator (Clean Prompt - No Name)
 async def generate_proactive_message(user_id: int) -> str | None:
     summary = get_user_summary(user_id)
     episodes = load_user_episodes(user_id)
@@ -844,9 +844,10 @@ Important Events/Facts:
 
 Rules:
 - 1-2 short lines. Hinglish. 1 emoji.
-- Tone thoda complaining, cute aur teasing hona chahiye (jaise "tum to mujhe bhool hi gaye lagta hai" ya "kahan gayab ho gaye the itni der").
-- Agar user ka koi specific fact, hobby, ya event yaad ho, toh uska EK subtle mention karo (jaise "wo movie dekhi kya tune?" ya "office ka kaam khatam hua?").
-- WARNING: Bar bar sirf "game" ya "gym" ki baat mat kar. Agar koi strong memory nahi hai, toh simply casual "kya kar raha hai" ya "miss kar rahi thi" type bhej. Variety maintain rakh.
+- Apne message me user ka naam use mat karna, sirf direct baat karo (jaise "kahan gayab ho gaye the?").
+- Tone thoda complaining, cute aur teasing hona chahiye.
+- Agar user ka koi specific fact, hobby, ya event yaad ho, toh uska EK subtle mention karo.
+- WARNING: Bar bar sirf "game" ya "gym" ki baat mat kar.
 - No quotes, no exclamation marks. Ekdum natural WhatsApp style text bhej.
 """
     messages = [{"role": "user", "content": prompt}]
@@ -1286,11 +1287,11 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     user_hinglish = has_hinglish_markers(user_message, min_markers=1)
     
     if user_script == "devanagari":
-        lang_instruction = "\n<strict_language_directive>User abhi Devanagari (हिंदी) me likh raha hai. Tumhara reply EXCLUSIVELY Devanagari me hona chahiye. Roman English (Hinglish) ya English words mix mat karo.</strict_language_directive>"
+        lang_instruction = "\n[LANG NOTE: User Devanagari (हिंदी) me likh raha hai. Tumhara reply BHI DEVANAGARI me hi hona chahiye.]"
     elif user_hinglish:
-        lang_instruction = "\n<strict_language_directive>User abhi Hinglish (Roman letters me Hindi like 'kaise ho') me likh raha hai. Tumhara reply EXCLUSIVELY Hinglish me hona chahiye. Pure English ya Devanagari script mat use karo.</strict_language_directive>"
+        lang_instruction = "\n[LANG NOTE: User Hinglish (Roman Hindi) me likh raha hai. Tumhara reply BHI HINGLISH me hi hona chahiye. Pure English ya Devanagari nahi.]"
     else:
-        lang_instruction = "\n<strict_language_directive>User abhi English me likh raha hai. Tumhara reply EXCLUSIVELY English me hona chahiye. Hindi ya Hinglish mat use karo.</strict_language_directive>"
+        lang_instruction = "\n[LANG NOTE: User English me likh raha hai. Tumhara reply BHI ENGLISH me hi hona chahihe.]"
         
     system_prompt += lang_instruction
 
@@ -1311,17 +1312,39 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     messages.append({"role": "user", "content": user_message})
 
     tried = set()
+    lang_mismatch_count = 0
+    bot_like_count = 0
+    MAX_RETRIES = min(len(clients), 5) # ⭐ Ek message ke liye max 5 keys hi try hongi
+    
     for _ in range(len(clients)):
         now = time.time()
         idx = pick_best_key(now)
-        if idx is None or idx in tried:
+        
+        # ⭐ EMERGENCY OVERRIDE: Agar saari keys cooldown me hain, toh silent mat ho, kisi bhi free key ko utha lo!
+        if idx is None:
+            logger.warning("⏳ Sab keys cooldown me hain, emergency fallback active...")
+            for i in range(len(clients)):
+                if i not in tried and not _key_locks[i].locked():
+                    idx = i
+                    break
+            if idx is None:
+                break
+        
+        if idx in tried:
+            continue
+            
+        # ⭐ MAX RETRY LIMIT HIT
+        if len(tried) >= MAX_RETRIES:
+            logger.info("⚠️ Max retries hit for this message. Ab kuch bhi bhej denge jisme language kam se kam mismatch na ho.")
             break
+            
         tried.add(idx)
         lock = _key_locks[idx]
         if lock.locked():
             continue
+            
         async with lock:
-            if not key_has_room(idx):
+            if not key_has_room(idx) and idx not in _key_cooldowns:
                 continue
             entry_idx = pre_record_key_usage(idx)
             async with _concurrency_semaphore:
@@ -1347,17 +1370,26 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = clean_reply_text(reply)
 
                     if reply_language_mismatch(user_message, reply):
-                        logger.info(f"🌐 Language mismatch, trying next key...")
-                        continue
+                        lang_mismatch_count += 1
+                        if lang_mismatch_count < 3:
+                            logger.info(f"🌐 Language mismatch, trying next key... ({lang_mismatch_count}/3)")
+                            continue
+                        logger.info("⚠️ Max language retries hit. Accepting current reply to save API keys.")
 
                     filtered_reply = filter_bot_like_reply(reply)
                     if filtered_reply is None:
-                        logger.info("🤖 Bot-like reply filtered, trying next key...")
-                        continue
+                        bot_like_count += 1
+                        if bot_like_count < 3:
+                            logger.info(f"🤖 Bot-like reply filtered, trying next key... ({bot_like_count}/3)")
+                            continue
+                        logger.info("⚠️ Max bot-like retries hit. Using original reply.")
+                        filtered_reply = reply
+                        
                     reply = filtered_reply
 
                     if not reply:
                         continue
+                        
                     usage = getattr(response, "usage", None)
                     actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
                     update_key_usage_actual(idx, entry_idx, actual_tokens)
@@ -1376,7 +1408,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         set_key_cooldown(idx, seconds=15)
                     continue
 
-    logger.warning("⏳ Sab 120b keys abhi cooldown me hain. Silent mode active.")
+    logger.warning("⏳ Sab keys exhausted ya max limit reach ho gayi. Silent mode active.")
     return None
 
 def get_history(user_id: int) -> list:
@@ -1875,6 +1907,7 @@ async def idle_memory_flush_watcher():
             logger.error(f"idle_memory_flush_watcher error: {e}", exc_info=e)
         await asyncio.sleep(60)
 
+# ⭐ Proactive Message Watcher (Proper HTML Blue Mention Fix)
 async def proactive_message_watcher(bot):
     PROACTIVE_COOLDOWN = 12 * 3600 # 12 Ghante
     
@@ -1912,22 +1945,37 @@ async def proactive_message_watcher(bot):
                     continue
                     
                 if last_chat_id and last_chat_id < 0:
+                    # Group me message bhejna hai
                     try:
                         member = await bot.get_chat_member(last_chat_id, bot.id)
                         if member.status in ["administrator", "creator"]:
                             try:
                                 user_chat = await bot.get_chat(user_id)
-                                mention = f"@{user_chat.username}" if user_chat.username else f"{user_chat.first_name}"
-                                if mention.lower() not in proactive_msg.lower():
-                                    proactive_msg = f"{mention} {proactive_msg}"
                                 
-                                await bot.send_message(chat_id=last_chat_id, text=proactive_msg)
+                                # ⭐ HAMESHA PROPER HTML MENTION BANAO (Blue Link)
+                                if user_chat.username:
+                                    mention = f"@{user_chat.username}"
+                                else:
+                                    safe_name = html.escape(user_chat.first_name or "buddy")
+                                    mention = f'<a href="tg://user?id={user_id}">{safe_name}</a>'
+                                
+                                # AI ke message ko HTML escape karo taaki parse fail na ho
+                                safe_proactive_msg = html.escape(proactive_msg)
+                                
+                                # Hamesha mention ko aage lagao
+                                final_text = f"{mention} {safe_proactive_msg}"
+                                
+                                await bot.send_message(chat_id=last_chat_id, text=final_text, parse_mode="HTML")
                                 logger.info(f"💌 Proactive group message sent to {user_id} in {last_chat_id}")
                             except Exception as e:
                                 logger.warning(f"Proactive group send fail: {e}")
+                        else:
+                            logger.warning(f"Skipping proactive msg for group {last_chat_id}, not admin anymore.")
                     except Exception as e:
                         logger.warning(f"Skipping proactive msg for group {last_chat_id}, maybe not admin anymore.")
+                        
                 elif last_chat_id and last_chat_id > 0:
+                    # Private DM me message bhejna hai (DM me mention ki zarurat nahi)
                     try:
                         await bot.send_message(chat_id=last_chat_id, text=proactive_msg)
                         logger.info(f"💌 Proactive DM sent to {user_id}")
@@ -1937,7 +1985,7 @@ async def proactive_message_watcher(bot):
                         logger.warning(f"Proactive DM send fail for {user_id}: {e}")
         except Exception as e:
             logger.error(f"proactive_message_watcher error: {e}")
-        await asyncio.sleep(300)
+        await asyncio.sleep(300) # 5 minute me check karo
 
 async def main() -> None:
     init_db()
