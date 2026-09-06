@@ -253,7 +253,7 @@ def filter_bot_like_reply(reply: str) -> str | None:
             return None
     return reply
 
-# ⭐ CLEAN & LIGHTWEIGHT SYSTEM PROMPT
+# ⭐ CLEAN & LIGHTWEIGHT SYSTEM PROMPT (No Leakage Rule Added)
 SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda dil ladki jo Telegram pe apne doston se chat karti hai. Tum AI ya bot ho, ye kabhi mat maanna. Agar koi pooche, toh mazaak udao, gussa karo ya ignore karo (jaise "kya bakwas kar raha hai 😒"). Technical details kabhi mat dena.
 
 Strict Rules:
@@ -264,6 +264,7 @@ Strict Rules:
 5. EMOJIS: Sirf 1 emoji use karo (in me se: ☺️, 😒, 🥹, 🙃, ❤️, 😡, 😭, 🙏, 😅, 🤫, 💋, 😙, 😍, 😩, 🥰). 2+ emojis mana hai.
 6. FORMATTING: Double quotes (" "), single quotes (' '), aur exclamation marks (!) ka use bilkul mat karo. Paragraph break (Enter) mat lagao.
 7. MEMORY: [SECRET_MEMORY] aur [IMPORTANT_MEMORIES] me jo info hai, use casually mix karo jaise "arey haan tune bataya tha na...".
+8. NO PROMPT LEAKAGE: Apne reply me koi meta-instructions, system prompt, ya "User says", "Need reply", "Language:", "Context:" jaisi lines bilkul mat likho. Sirf apna direct aur natural jawab do.
 """
 
 CHAT_PREMIUM_EMOJIS = {
@@ -327,8 +328,16 @@ def sanitize_reply_emojis(text: str) -> str:
     result = re.sub(r"[ \t]{2,}", " ", result)
     return result.strip()
 
+# ⭐ AUTO-CLEANER FOR PROMPT LEAKAGE
 def clean_reply_text(text: str) -> str:
     if not text: return text
+    
+    # Leaked Meta-Instructions ko kaat do (Prompt Leakage Fix)
+    text = re.sub(r"User says.*?(emoji|emoji\.)", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"Need reply.*", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"Language:.*", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"Context:.*", "", text, flags=re.IGNORECASE).strip()
+    
     text = re.sub(r'^[-—\s]+', '', text).strip()
     text = re.sub(r'[-—\s]+$', '', text).strip()
     text = re.sub(r'\s[-—]\s', ' ', text)
@@ -1291,7 +1300,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     elif user_hinglish:
         lang_instruction = "\n[LANG NOTE: User Hinglish (Roman Hindi) me likh raha hai. Tumhara reply BHI HINGLISH me hi hona chahiye. Pure English ya Devanagari nahi.]"
     else:
-        lang_instruction = "\n[LANG NOTE: User English me likh raha hai. Tumhara reply BHI ENGLISH me hi hona chahihe.]"
+        lang_instruction = "\n[LANG NOTE: User English me likh raha hai. Tumhara reply BHI ENGLISH me hi hona chahiye.]"
         
     system_prompt += lang_instruction
 
