@@ -271,7 +271,7 @@ CHAT_PREMIUM_EMOJIS = {
     "☺️": "5287556683604716838",
     "😒": "6271814607749254384",
     "🥹": "6271505825370476883",
-    "🙃": "5348310902972118933",
+    "🙃": "6271778482779328233",
     "❤️": "6217289430990851552",
     "😡": "6266970009193418570",
     "😭": "6156559357929592876",
@@ -836,7 +836,7 @@ User ne abhi "{user_message}" kaha. 1 line ka reply do. Hinglish me. 1 emoji. Pu
                     continue
     return None
 
-# ⭐ Proactive Message Generator (Clean Prompt - No Name)
+# ⭐ Proactive Message Generator (Dynamic & Creative - Fixed Copy Paste)
 async def generate_proactive_message(user_id: int) -> str | None:
     summary = get_user_summary(user_id)
     episodes = load_user_episodes(user_id)
@@ -844,7 +844,7 @@ async def generate_proactive_message(user_id: int) -> str | None:
     
     ep_text = "\n".join(f"- {ep}" for ep in episodes[-3:]) if episodes else "Kuch nahi"
     
-    prompt = f"""Tu Sneha hai. User ne tujhse 12 ghante pehle baat ki thi aur abhi tak reply nahi kiya. Ab tu usko khud ek random message bhejna chahti hai jaise real ladki yaad dilane ke liye karti hai.
+    prompt = f"""Tu Sneha hai. User ne tujhse 12 ghante pehle baat ki thi aur abhi tak reply nahi kiya. Ab tu usko khud ek random message bhejna chahti hai.
 
 User ki Memory:
 Summary: {summary if summary else 'Kuch nahi'}
@@ -853,10 +853,11 @@ Important Events/Facts:
 
 Rules:
 - 1-2 short lines. Hinglish. 1 emoji.
-- Apne message me user ka naam use mat karna, sirf direct baat karo (jaise "kahan gayab ho gaye the?").
+- Apne message me user ka naam use mat karna, sirf direct casual baat karo.
+- HAR BAAR ALAG AUR CREATIVE LINE SOCHNA HAI. Repeat mat karna.
+- Agar user ka koi specific fact, hobby, ya event yaad ho, toh uska EK subtle mention karo (jaise "padhai me busy the kya?", "movie dekhi tune?", "bina bole gayab ho gaye the?").
 - Tone thoda complaining, cute aur teasing hona chahiye.
-- Agar user ka koi specific fact, hobby, ya event yaad ho, toh uska EK subtle mention karo.
-- WARNING: Bar bar sirf "game" ya "gym" ki baat mat kar.
+- WARNING: Sirf "game" ya "gym" ki baat mat kar.
 - No quotes, no exclamation marks. Ekdum natural WhatsApp style text bhej.
 """
     messages = [{"role": "user", "content": prompt}]
@@ -1916,7 +1917,7 @@ async def idle_memory_flush_watcher():
             logger.error(f"idle_memory_flush_watcher error: {e}", exc_info=e)
         await asyncio.sleep(60)
 
-# ⭐ Proactive Message Watcher (Proper HTML Blue Mention Fix)
+# ⭐ Proactive Message Watcher (1 Group me 1 Message Rule + Delay Fixed)
 async def proactive_message_watcher(bot):
     PROACTIVE_COOLDOWN = 12 * 3600 # 12 Ghante
     
@@ -1940,6 +1941,8 @@ async def proactive_message_watcher(bot):
             users = c.fetchall()
             c.close(); conn.close()
             
+            sent_to_groups = set() # ⭐ Ek group me ek hi message jayega
+            
             for user_id, last_chat_id in users:
                 try:
                     conn = get_db_conn()
@@ -1955,6 +1958,10 @@ async def proactive_message_watcher(bot):
                     
                 if last_chat_id and last_chat_id < 0:
                     # Group me message bhejna hai
+                    if last_chat_id in sent_to_groups:
+                        logger.info(f"⏭️ Skipping proactive for {user_id} in {last_chat_id}, already sent to this group this cycle.")
+                        continue # Ek group me ek hi message jayega
+                        
                     try:
                         member = await bot.get_chat_member(last_chat_id, bot.id)
                         if member.status in ["administrator", "creator"]:
@@ -1975,6 +1982,7 @@ async def proactive_message_watcher(bot):
                                 final_text = f"{mention} {safe_proactive_msg}"
                                 
                                 await bot.send_message(chat_id=last_chat_id, text=final_text, parse_mode="HTML")
+                                sent_to_groups.add(last_chat_id) # Group ko set me daal do
                                 logger.info(f"💌 Proactive group message sent to {user_id} in {last_chat_id}")
                             except Exception as e:
                                 logger.warning(f"Proactive group send fail: {e}")
@@ -1992,6 +2000,8 @@ async def proactive_message_watcher(bot):
                         logger.warning(f"User {user_id} blocked the bot. Skipping.")
                     except Exception as e:
                         logger.warning(f"Proactive DM send fail for {user_id}: {e}")
+                        
+                await asyncio.sleep(10) # ⭐ Messages ek sath spam na ho isliye 10 sec gap
         except Exception as e:
             logger.error(f"proactive_message_watcher error: {e}")
         await asyncio.sleep(300) # 5 minute me check karo
