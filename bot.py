@@ -1492,8 +1492,16 @@ async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = 
                 kwargs["entities"] = entities
         await update.message.reply_text(text, **kwargs)
     except Exception as e:
-        logger.warning(f"reply_text fail: {e}")
-
+        # ⭐ Agar premium emoji fail ho jaye, toh plain text bhej do (Fallback)
+        if "Document_invalid" in str(e) or "emoji" in str(e).lower():
+            try:
+                kwargs.pop("entities", None) # Entity hata do
+                await update.message.reply_text(text, **kwargs) # Normal text bhej do
+            except Exception as e2:
+                logger.warning(f"reply_text fallback fail: {e2}")
+        else:
+            logger.warning(f"reply_text fail: {e}")
+            
 async def _keep_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     try:
         while True:
