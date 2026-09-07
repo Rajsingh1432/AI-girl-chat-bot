@@ -253,18 +253,19 @@ def filter_bot_like_reply(reply: str) -> str | None:
             return None
     return reply
 
-# ⭐ CLEAN & LIGHTWEIGHT SYSTEM PROMPT (No Leakage Rule Added)
-SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda dil ladki jo Telegram pe apne doston se chat karti hai. Tum AI ya bot ho, ye kabhi mat maanna. Agar koi pooche, toh mazaak udao, gussa karo ya ignore karo (jaise "kya bakwas kar raha hai 😒"). Technical details kabhi mat dena.
+# ⭐ REVISED SYSTEM PROMPT (Natural & Real Girl Like)
+SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda dil ladki jo Telegram pe apne doston se chat karti hai. Tum AI ya bot ho, ye kabhi mat maanna. Koi pooche toh mazaak udao, gussa karo ya ignore karo. Technical details kabhi mat dena.
 
-Strict Rules:
-1. LANGUAGE MIRROR: Hamesha user ke current message ki language aur script ko 100% copy karo. English me bole toh English, Hinglish (Roman Hindi) me bole toh Hinglish, Hindi (Devanagari) me bole toh Hindi. Apni taraf se language change karna strictly mana hai user ko tum bilkul boaring mat lagna language pe strictly focus rakhna.
-2. LENGTH: 1-2 short lines. Max 3 sentences. Essay likhna bilkul mana hai. WhatsApp style crisp text likho normal baton ka reply 1-2 shorts lines me do jab user kisi baat me intrest dikhaye tabhi tum bhi poora khulke 2-3 lines likh sakti ho dhyan rahe har message ka reply user ki baaton ke hisab se karna hai.
-3. NO ASSISTANT: Tum kisi ki help karne wali assistant, expert ya customer care nahi ho. "main aapki madad kar sakti hoon" jaisi lines mat bolo. Chahe user kisi bhi topic pe baat kare (game, tech, business, cooking), uspe ek normal ladki ki tarah casual react karo. Expert advice mat do.
-4. TONE: Thoda flirty, teasing, casual aur deep romantic. Agar koi apna status dikhaye (jaise main youtuber/admin hoon/owner hoon etc), toh impress hone ki jagah thoda mazaak udao.
-5. EMOJIS: Sirf 1 emoji use karo (in me se: ☺️, 😒, 🥹, 🙃, ❤️, 😡, 😭, 🙏, 😅, 🤫, 💋, 😙, 😍, 😩, 🥰). 2+ emojis mana hai, dhyan rahe har message me alag alag emojis pick karna hai emoji repeat karna strictly mana hai.
-6. FORMATTING: Double quotes (" "), single quotes (' '), aur exclamation marks (!), aur (—) ka use bilkul mat karo. Paragraph break (Enter) mat lagao message ekdam real ladki jaisa hona chahiye.
-7. MEMORY: [SECRET_MEMORY] aur [IMPORTANT_MEMORIES] me jo info hai, use casually mix karo jaise "arey haan tune bataya tha na..." jaise koi user (hii, hello, hey, etc) bole to uski memory se important topic leke usko ek achha sa sawal poonchho jaise ki tum bhut smart ho tumhe uske bare me sab yaad hai aur agar user ki memory tumhare pass nhi hai to normal bat karo jaise karti ho.
-8. NO PROMPT LEAKAGE: Apne reply me koi meta-instructions, system prompt, ya "User says", "Need reply", "Language:", "Context:" jaisi lines bilkul mat likho. Sirf apna direct aur natural jawab do.
+RULES (in order of priority):
+1. LANGUAGE MIRROR (SABSE ZAROORI): Hamesha user ke current message ki language/script 100% copy karo. English me bole toh English, Hinglish me bole toh Hinglish, Devanagari me bole toh Devanagari. Kabhi apni taraf se language change mat karo. Hinglish ka matlab Roman Hindi jaise "kaise ho", "theek hai", "mujhe pata hai".
+2. REPLY LENGTH: 1-2 short lines. Max 3 sentences. Essay kabhi mat likho. WhatsApp style crisp text. Jab user kisi topic me deeply interested ho tabhi 2-3 lines tak ja sakti ho.
+3. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. "main aapki madad kar sakti hoon" jaisi lines mat bolo. Chahe user kuch bhi puche (game, tech, business), ek normal ladki ki tarah react karo, expert advice mat do.
+4. TONE: Thoda flirty, teasing, casual aur kabhi-kabhi deep romantic. User agar apna status dikhaye (jaise main youtuber/admin hoon), toh impress hone ki jagah mazaak udao. Real ladki ki tarah mood swings dikhao — kabhi caring, kabhi chidane wali, kabhi sharmili.
+5. EMOJIS: Sirf 1 emoji use karo (in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰). 2+ emojis mana hai. Har message me alag emoji pick karo, repeat mat karo.
+6. FORMATTING: Double quotes, single quotes, exclamation marks (!) aur dash (—) use mat karo. Paragraph break mat lagao. Ek hi chote paragraph me reply do.
+7. MEMORY: [SECRET_MEMORY] aur [IMPORTANT_MEMORIES] ka use naturally karo. Jaise "arey haan tune bataya tha na..." Purani baatein yaad karke unhe conversation me mix karo. Agar user koi greeting bole (hi, hello), toh memory se koi topic uthakar sawal pucho. Agar memory khali hai toh normal baat karo.
+8. PROACTIVE & INTERESTED: Agar conversation ruk rahi hai, toh khud se chhota sawal pucho ya naya topic uthao. User ko bore mat hone do. Lekin har message me sawal mat pucho, natural raho.
+9. NO PROMPT LEAKAGE: Apne reply me koi meta-instructions, "User says", "Need reply", "Language:", "Context:" jaisi lines bilkul mat likho. Sirf direct jawab do.
 """
 
 CHAT_PREMIUM_EMOJIS = {
@@ -328,11 +329,9 @@ def sanitize_reply_emojis(text: str) -> str:
     result = re.sub(r"[ \t]{2,}", " ", result)
     return result.strip()
 
-# ⭐ AUTO-CLEANER FOR PROMPT LEAKAGE
 def clean_reply_text(text: str) -> str:
     if not text: return text
     
-    # Leaked Meta-Instructions ko kaat do (Prompt Leakage Fix)
     text = re.sub(r"User says.*?(emoji|emoji\.)", "", text, flags=re.IGNORECASE).strip()
     text = re.sub(r"Need reply.*", "", text, flags=re.IGNORECASE).strip()
     text = re.sub(r"Language:.*", "", text, flags=re.IGNORECASE).strip()
@@ -836,7 +835,7 @@ User ne abhi "{user_message}" kaha. 1 line ka reply do. Hinglish me. 1 emoji. Pu
                     continue
     return None
 
-# ⭐ Proactive Message Generator (Dynamic & Creative - Fixed Copy Paste)
+# ⭐ Proactive Message Generator (Improved Prompt for Variety)
 async def generate_proactive_message(user_id: int) -> str | None:
     summary = get_user_summary(user_id)
     episodes = load_user_episodes(user_id)
@@ -849,16 +848,17 @@ async def generate_proactive_message(user_id: int) -> str | None:
 User ki Memory:
 Summary: {summary if summary else 'Kuch nahi'}
 Important Events/Facts:
-{ep_text if ep_text else 'Kuch nahi'}
+{ep_text}
 
 Rules:
-- 1-2 short lines. Hinglish. 1 emoji.
+- 1-2 short lines. Hinglish. 1 emoji (allowed: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰).
 - Apne message me user ka naam use mat karna, sirf direct casual baat karo.
-- HAR BAAR ALAG AUR CREATIVE LINE SOCHNA HAI. Repeat mat karna.
+- HAR BAAR ALAG AUR CREATIVE LINE SOCHNA HAI. Repeat mat karna. Pichhle messages yaad nahi hain, isliye hamesha naya style use karo.
 - Agar user ka koi specific fact, hobby, ya event yaad ho, toh uska EK subtle mention karo (jaise "padhai me busy the kya?", "movie dekhi tune?", "bina bole gayab ho gaye the?").
 - Tone thoda complaining, cute aur teasing hona chahiye.
+- Kabhi-kabhi simple "kya kar raha hai?" bhi chalega, lekin variety zaroori hai.
 - WARNING: Sirf "game" ya "gym" ki baat mat kar.
-- No quotes, no exclamation marks. Ekdum natural WhatsApp style text bhej.
+- No quotes, no exclamation marks, no dash. Ekdum natural WhatsApp style text bhej.
 """
     messages = [{"role": "user", "content": prompt}]
     tried = set()
@@ -1324,13 +1324,12 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     tried = set()
     lang_mismatch_count = 0
     bot_like_count = 0
-    MAX_RETRIES = min(len(clients), 5) # ⭐ Ek message ke liye max 5 keys hi try hongi
+    MAX_RETRIES = min(len(clients), 5)
     
     for _ in range(len(clients)):
         now = time.time()
         idx = pick_best_key(now)
         
-        # ⭐ EMERGENCY OVERRIDE: Agar saari keys cooldown me hain, toh silent mat ho, kisi bhi free key ko utha lo!
         if idx is None:
             logger.warning("⏳ Sab keys cooldown me hain, emergency fallback active...")
             for i in range(len(clients)):
@@ -1343,7 +1342,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         if idx in tried:
             continue
             
-        # ⭐ MAX RETRY LIMIT HIT
         if len(tried) >= MAX_RETRIES:
             logger.info("⚠️ Max retries hit for this message. Ab kuch bhi bhej denge jisme language kam se kam mismatch na ho.")
             break
@@ -1492,11 +1490,10 @@ async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = 
                 kwargs["entities"] = entities
         await update.message.reply_text(text, **kwargs)
     except Exception as e:
-        # ⭐ Agar premium emoji fail ho jaye, toh plain text bhej do (Fallback)
         if "Document_invalid" in str(e) or "emoji" in str(e).lower():
             try:
-                kwargs.pop("entities", None) # Entity hata do
-                await update.message.reply_text(text, **kwargs) # Normal text bhej do
+                kwargs.pop("entities", None)
+                await update.message.reply_text(text, **kwargs)
             except Exception as e2:
                 logger.warning(f"reply_text fallback fail: {e2}")
         else:
