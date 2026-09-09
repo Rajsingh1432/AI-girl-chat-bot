@@ -20,7 +20,7 @@ except ImportError:
     class ButtonStyle:
         PRIMARY = "primary"
         DANGER = "danger"
-    # Tumhare diye hue 5 Premium Emojis
+    # Tumhare diye hue 5 Premium Emojis + Bot defaults
     PREMIUM_EMOJIS = {
         "kidnap": "6001154049452283936",
         "fire": "15064709487953183440",       # 🔥
@@ -30,7 +30,7 @@ except ImportError:
         "gem": "55249320921935663770"          # 💎
     }
 
-# ⭐ ========== AI SETUP FOR GAME (Isolated) ==========
+# ⭐ ========== AI SETUP FOR GAME ==========
 _gkeys = [os.getenv(f"GROQ_API_KEY_{i}") for i in range(1, 101)]
 _gkeys = [k for k in _gkeys if k]
 _game_client = AsyncGroq(api_key=_gkeys[0]) if _gkeys else None
@@ -99,7 +99,7 @@ def get_top_10_players():
 # ⭐ ========== WELCOME KEYBOARD HELPER ==========
 def get_welcome_game_keyboard():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("ᴘʟᴧʏ ꜱɴєʜᴀ'ꜱ ɢᴧϻє 🔥", callback_data="g_guide", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])]
+        [InlineKeyboardButton("Play Game", callback_data="g_guide", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])]
     ])
 
 # ⭐ ========== AI QUESTION GENERATOR ==========
@@ -149,23 +149,6 @@ BEST: <A/B/C/D>"""
 
 # ⭐ ========== GAME UI & LOGIC ==========
 async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # ⭐ DM BLOCK
-    if update.effective_chat.type == "private":
-        bot_username = context.bot.username
-        keyboard = [
-            [InlineKeyboardButton("ᴧᴅᴅ ϻє ʙᴧʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])]
-        ]
-        text = "🔴 <b>DM me game nahi chalta!</b>\n\nMujhe kisi group me add karo aur wahan <code>/play</code> type karo! 🔥"
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        elif update.callback_query:
-            await update.callback_query.answer()
-            try:
-                await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-            except:
-                await update.callback_query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        return
-
     bot_username = context.bot.username
     keyboard = [
         [InlineKeyboardButton("Start Vibe Check", callback_data="g_start", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])],
@@ -174,7 +157,7 @@ async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     ]
     text = (
         f"<tg-emoji emoji-id=\"{PREMIUM_EMOJIS['fire']}\">🔥</tg-emoji> <b>Sneha's Vibe Check</b> <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['fire']}\">🔥</tg-emoji>\n\n"
-        "Kya tum mere dil ke aas paas bhi ho? <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['sparkle']}\">✨</tg-emoji>\n"
+        f"Kya tum mere dil ke aas paas bhi ho? <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['sparkle']}\">✨</tg-emoji>\n"
         "5 AI-generated sawaal honge, har baar naye! Sahi pe +10 points.\n"
         "Chat me koi spam nahi hoga, seedha popup aayega! ⚡\n\n"
         f"Apna score badhao aur <b>Top 10 Leaders</b> me apna naam dekho! <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['trophy']}\">🏆</tg-emoji>"
@@ -229,18 +212,21 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if current_time - active_games[uid].get("last_active", 0) > 300:
             del active_games[uid]
             
+    # ⭐ DM BLOCK: Agar DM me game button dabaye, toh popup do
     if update.effective_chat.type == "private":
-        if data == "g_dm_info":
-            keyboard = [[InlineKeyboardButton("ᴧᴅᴅ ϻє ʙᴧʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])]]
-            text = "🔴 <b>DM me game nahi chalta!</b>\n\nMujhe kisi group me add karo aur wahan <code>/play</code> type karo! 🔥"
-            await query.answer()
-            try:
-                await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-            except:
-                pass
+        keyboard = [
+            [InlineKeyboardButton("ᴧᴅᴅ ϻє ʙᴧʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])]
+        ]
+        text = f"🔴 <b>Game sirf groups me khel sakte ho!</b>\n\nMujhe kisi chat group me add karo aur wahan <code>/play</code> type karo ya /start wala button dabao! <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['fire']}\">🔥</tg-emoji>"
+        await query.answer()
+        try:
+            await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+        except:
+            pass
         return
     
-    if data == "g_dm_info" or data == "g_guide":
+    # Group me button dabaye toh game menu do
+    if data == "g_guide":
         await games_menu(update, context)
         return
         
@@ -276,11 +262,11 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total_pts = get_user_total_points(user.id)
             
             if final_score == 50:
-                remark = "Full Score! Tum sach meri jaan ho <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['heart']}\">❤️</tg-emoji>"
+                remark = f"Full Score! Tum sach meri jaan ho <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['heart']}\">❤️</tg-emoji>"
             elif final_score >= 30:
-                remark = "Mast! Tum mujhe thoda jante ho <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['gem']}\">💎</tg-emoji>"
+                remark = f"Mast! Tum mujhe thoda jante ho <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['gem']}\">💎</tg-emoji>"
             elif final_score >= 10:
-                remark = "Theek hai, try again <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['sparkle']}\">✨</tg-emoji>"
+                remark = f"Theek hai, try again <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['sparkle']}\">✨</tg-emoji>"
             else:
                 remark = "Tumse na ho payega 😂"
                 
