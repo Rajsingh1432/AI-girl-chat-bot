@@ -399,8 +399,14 @@ def init_db():
         try:
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS last_chat_id BIGINT")
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS last_seen REAL")
-            # ⭐ GAME POINTS COLUMN ADDED
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS game_points INTEGER DEFAULT 0")
+            # ⭐ NAYI GROUP LEADERBOARD TABLE
+            c.execute("""CREATE TABLE IF NOT EXISTS group_game_points (
+                            group_id BIGINT, 
+                            user_id BIGINT, 
+                            points INTEGER DEFAULT 0, 
+                            PRIMARY KEY(group_id, user_id)
+                        )""")
             conn.commit()
         except Exception:
             pass
