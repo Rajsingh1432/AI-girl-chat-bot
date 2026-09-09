@@ -124,12 +124,12 @@ async def generate_ai_question():
         
     system_prompt = "You output strictly in the requested format. No markdown, no extra text, no thinking tags."
     user_prompt = """Tu ek flirty game bot hai. Ek fun, casual scenario banao jahan Sneha user se puch rahi hai ki wo kya karega.
-Strictly aur ONLY is format me reply karo:
+Strictly aur ONLY is format me reply karo (options short rakhna):
 Q: <1 line ka scenario>
-A) <Option A (Sweet/Caring)>
-B) <Option B (Funny/Teasing)>
-C) <Option C (Neutral/Boring)>
-D) <Option D (Rude/Toxic)>
+A) <Option A>
+B) <Option B>
+C) <Option C>
+D) <Option D>
 BEST: <A/B/C/D>"""
     
     messages = [
@@ -145,48 +145,42 @@ BEST: <A/B/C/D>"""
                     model="openai/gpt-oss-20b",
                     messages=messages,
                     temperature=0.9,
-                    max_tokens=200
+                    max_tokens=500 # ⭐ TOKEN LIMIT BADHA DI 500 TAAKI TRUNCATE NA HO
                 ),
-                timeout=15.0 # ⭐ Timeout badha kar 15s kar diya
+                timeout=15.0 
             )
             text = response.choices[0].message.content.strip()
-            logger.info(f"✅ Game AI Raw Response: {text[:150]}...")
+            logger.info(f"✅ Game AI Raw Response: {text}")
             
-            # 1. Think Tags Hatao
+            # 1. Think Tags & Markdown Hatao
             text = re.sub(r"<think[\s\S]*?<\/think>", "", text, flags=re.IGNORECASE).strip()
             text = re.sub(r"<think[\s\S]*", "", text, flags=re.IGNORECASE).strip()
-            
-            # 2. Markdown Code Blocks Hatao
             text = re.sub(r"^```[a-zA-Z]*\n?", "", text).strip()
             text = re.sub(r"\n?```$", "", text).strip()
             
-            # 3. Regex Parsing
-            lines = [line.strip() for line in text.split("\n") if line.strip()]
-            q = None
-            opts = []
-            best_letter = None
+            # 2. REGEX SEARCH (Line-by-line fail nahi hoga, seedha text me dhoondhega)
+            q_match = re.search(r"Q\s*[:\-]\s*(.*?)(?=\n\s*\**A)", text, re.DOTALL | re.IGNORECASE)
+            a_match = re.search(r"A\s*[\)\.]\s*(.*?)(?=\n\s*\**B)", text, re.DOTALL | re.IGNORECASE)
+            b_match = re.search(r"B\s*[\)\.]\s*(.*?)(?=\n\s*\**C)", text, re.DOTALL | re.IGNORECASE)
+            c_match = re.search(r"C\s*[\)\.]\s*(.*?)(?=\n\s*\**D)", text, re.DOTALL | re.IGNORECASE)
+            d_match = re.search(r"D\s*[\)\.]\s*(.*?)(?=\n\s*\**BEST)", text, re.DOTALL | re.IGNORECASE)
+            best_match = re.search(r"BEST\s*[:\-]\s*([A-D])", text, re.IGNORECASE)
             
-            for line in lines:
-                q_match = re.match(r"^\**Q\**\s*[:\-]\s*(.*)", line, re.IGNORECASE)
-                if q_match and not q:
-                    q = q_match.group(1).strip()
-                    continue
-                    
-                opt_match = re.match(r"^\**[A-D]\**[\)\.]\s*(.*)", line, re.IGNORECASE)
-                if opt_match and len(opts) < 4:
-                    opts.append(opt_match.group(1).strip())
-                    continue
-                    
-                best_match = re.match(r"^\**BEST\**\s*[:\-]\s*([A-D])", line, re.IGNORECASE)
-                if best_match:
-                    best_letter = best_match.group(1).upper()
-                    
-            if q and len(opts) == 4 and best_letter in ["A", "B", "C", "D"]:
+            if q_match and a_match and b_match and c_match and d_match and best_match:
+                q = q_match.group(1).strip()
+                opts = [
+                    a_match.group(1).strip(),
+                    b_match.group(1).strip(),
+                    c_match.group(1).strip(),
+                    d_match.group(1).strip()
+                ]
+                best_letter = best_match.group(1).upper()
                 best_idx = ["A", "B", "C", "D"].index(best_letter)
+                
                 logger.info("✅ Game AI: Question Parsed Successfully!")
                 return {"q": q, "opts": opts, "best": best_idx}
             else:
-                logger.warning(f"⚠️ Game AI: Parse Fail! Q={q}, Opts={len(opts)}, Best={best_letter}")
+                logger.warning(f"⚠️ Game AI: Parse Fail! Q={bool(q_match)}, A={bool(a_match)}, B={bool(b_match)}, C={bool(c_match)}, D={bool(d_match)}, Best={bool(best_match)}")
                 continue
                 
         except Exception as e:
