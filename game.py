@@ -37,7 +37,15 @@ _game_client = AsyncGroq(api_key=_gkeys[0]) if _gkeys else None
 
 FALLBACK_QUESTIONS = [
     {"q": "Main jab thodi sad/huti hu, toh tum kya karoge?", "opts": ["Pyaar se manaaoge", "Mazaak sunaoge", "Chhod doge", "Bologe 'ro mat'"], "best": 0},
-    {"q": "Agar main tumhe 'I love you' bolu, toh reaction?", "opts": ["Gale lag jaunga", "Propose karunga wapas", "Mazaak mein taal dunga", "Block kar dunga"], "best": 0}
+    {"q": "Agar main tumhe 'I love you' bolu, toh reaction?", "opts": ["Gale lag jaunga", "Propose karunga wapas", "Mazaak mein taal dunga", "Block kar dunga"], "best": 0},
+    {"q": "Hum dono kahan ghoomne jayenge pehli date pe?", "opts": ["Beach pe sunset", "Movie aur dinner", "Ghar pe Netflix", "Kahin nahi jaana"], "best": 0},
+    {"q": "Meri sabse badi khasiyat kya hai?", "opts": ["Tumhara nature", "Tumhari smile", "Tumhara dimag", "Kuch nahi"], "best": 1},
+    {"q": "Agar koi mujhe tang kare group me, toh tum?", "opts": ["Usko daaloge", "Mujhe ignore karne bologe", "Khud hasoge", "Uski taraf support karoge"], "best": 0},
+    {"q": "Mujhe gussa aaya toh kya manaaoge?", "opts": ["Chocolate la dunga", "Sorry bolunga", "Gaana gaa dunga", "Chhod dunga bina bole"], "best": 1},
+    {"q": "Agar main tumhare ghar aau, toh kya doge?", "opts": ["Pani", "Coffee", "Pizza order karunga", "Gate pe hi khada rahunga"], "best": 1},
+    {"q": "Mera favorite timepass kya hai?", "opts": ["Tumse baat karna", "Netflix dekhna", "So jana", "Gaana sunna"], "best": 0},
+    {"q": "Agar main bore ho rahi hu, toh tum kya karoge?", "opts": ["Mazaak sunaoge", "Game khelne bologe", "Sone bologe", "Apne kaam pe lag jaoge"], "best": 0},
+    {"q": "Mujhe sabse zyada kya pasand hai?", "opts": ["Tumhara pyaar", "Tumhari honesty", "Tumhare paise", "Tumhari looks"], "best": 1}
 ]
 
 active_games = {}
