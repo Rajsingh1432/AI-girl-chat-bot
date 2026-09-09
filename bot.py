@@ -1745,9 +1745,15 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
     if is_standalone:
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
         if greeting:
-            user_mention = f"@{user.username}" if user.username else user.first_name
+            # ⭐ BLUE MENTION FIX: HTML tag lagaya aur parse_mode add kiya
+            if user.username:
+                user_mention = f"@{user.username}"
+            else:
+                safe_name = html.escape(user.first_name or "buddy")
+                user_mention = f'<a href="tg://user?id={user.id}">{safe_name}</a>'
+                
             final_reply = f"{user_mention} {greeting}"
-            await safe_reply_text(update, final_reply)
+            await safe_reply_text(update, final_reply, parse_mode="HTML") # ⭐ HTML ADDED
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
@@ -1757,15 +1763,22 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         if not reply: 
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-        user_mention = f"@{user.username}" if user.username else user.first_name
+        
+        # ⭐ BLUE MENTION FIX: Yahan bhi same logic
+        if user.username:
+            user_mention = f"@{user.username}"
+        else:
+            safe_name = html.escape(user.first_name or "buddy")
+            user_mention = f'<a href="tg://user?id={user.id}">{safe_name}</a>'
+            
         final_reply = f"{user_mention} {reply}"
-        await safe_reply_text(update, final_reply)
+        await safe_reply_text(update, final_reply, parse_mode="HTML") # ⭐ HTML ADDED
         return
 
     if is_reply_to_bot:
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
-            await safe_reply_text(update, greeting)
+            await safe_reply_text(update, greeting, parse_mode="HTML") # ⭐ HTML ADDED
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
@@ -1775,13 +1788,13 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         if not reply: 
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-        await safe_reply_text(update, reply)
+        await safe_reply_text(update, reply, parse_mode="HTML") # ⭐ HTML ADDED
         return
 
     if is_bot_mentioned:
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
-            await safe_reply_text(update, greeting)
+            await safe_reply_text(update, greeting, parse_mode="HTML") # ⭐ HTML ADDED
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
@@ -1791,7 +1804,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         if not reply: 
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-        await safe_reply_text(update, reply)
+        await safe_reply_text(update, reply, parse_mode="HTML") # ⭐ HTML ADDED
         return
 
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2058,7 +2071,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("games", games_menu))
     application.add_handler(CommandHandler("game", games_menu))
     application.add_handler(CommandHandler("play", games_menu))
-    application.add_handler(CommandHandler("snehaleaderboard", leaderboard_command))
+    application.add_handler(CommandHandler("leaderboard", leaderboard_command))
     
     application.add_handler(CallbackQueryHandler(master_button_router))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
