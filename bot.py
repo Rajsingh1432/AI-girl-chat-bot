@@ -15,7 +15,8 @@ from groq import AsyncGroq
 from dotenv import load_dotenv
 from sticker_replies import get_random_sticker_reply
 from broadcast import broadcast_command, broadcast_stats_command, broadcastgc_command
-from game import games_menu, button_router
+# ⭐ Updated Import: leaderboard_command aur get_welcome_game_keyboard add kiye
+from game import games_menu, button_router, get_welcome_game_keyboard, leaderboard_command
 
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -33,7 +34,10 @@ except ImportError:
         "developer": "5362079447136610876",
         "channel": "6257898707551785373",
         "support": "5359622339296256165",
-        "fire": "5280588940980542826"
+        "fire": "5280588940980542826",
+        "trophy": "5293002242016136986", # Added for consistency
+        "heart": "5280294061494492616",
+        "sparkle": "5280588940980542826"
     }
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -395,6 +399,8 @@ def init_db():
         try:
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS last_chat_id BIGINT")
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS last_seen REAL")
+            # ⭐ GAME POINTS COLUMN ADDED
+            c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS game_points INTEGER DEFAULT 0")
             conn.commit()
         except Exception:
             pass
@@ -625,10 +631,6 @@ def _protect_permanent_fields(new_summary: str, old_summary: str) -> str:
         label = line.split(":", 1)[0].strip().lower()
         if label not in permanent_labels:
             continue
-        new_value = new_fields.get(label, "").lower()
-        old_value = old_fields.get(label, "")
-        if new_value in empty_values and old_value and old_value.lower() not in empty_values:
-            lines[i] = f"{line.split(':', 1)[0]}: {old_value}"
     return "\n".join(lines)
 
 def _apply_telegram_name_fallback(summary: str, telegram_name: str | None) -> str:
@@ -986,11 +988,11 @@ async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     if not query: return
     data = query.data
-    if data == "g_guide":
-        await query.answer()
-        await games_menu(update, context)
+    
+    # ⭐ STRICT ROUTING: Game ke buttons direct game.py ko bhej do
+    if data.startswith("g_"):
+        await button_router(update, context)
         return
-    await button_router(update, context)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot_username = context.bot.username
@@ -1011,6 +1013,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ϙυᴧɴᴛυϻ ᴄᴏʀє</a>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
         )
+        # ⭐ MINDGAMES BUTTON AS IT IS, CALLBACK POINTS TO g_guide
         full_keyboard = [
             [InlineKeyboardButton("ᴧᴅᴅ ϻє ʙᴧʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])],
             [InlineKeyboardButton("ᴅєᴠєʟᴏᴘєʀ", url="https://t.me/its_raj_king", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]),
@@ -1301,7 +1304,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     elif user_hinglish:
         lang_instruction = "\n[LANG NOTE: User Hinglish (Roman Hindi) me likh raha hai. Tumhara reply BHI HINGLISH me hi hona chahiye. Pure English ya Devanagari nahi.]"
     else:
-        lang_instruction = "\n[LANG NOTE: User English me likh raha hai. Tumhara reply BHI ENGLISH me hi hona chahiye.]"
+        lang_instruction = "\n[LANG NOTE: User English me likh raha hai. Tumhara reply BHI ENGLISH me hi hona chahihe.]"
         
     system_prompt += lang_instruction
 
@@ -1605,7 +1608,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
     text_lower = message_text.lower()
     bot_usr_lower = bot_username.lower()
     
-    is_game_trigger = ("/game" in text_lower) or (f"@{bot_usr_lower} game" in text_lower) or (f"@{bot_usr_lower}/game" in text_lower)
+    is_game_trigger = ("/game" in text_lower) or (f"@{bot_usr_lower} game" in text_lower) or (f"@{bot_usr_lower}/game" in text_lower) or ("/play" in text_lower)
     
     if is_game_trigger:
         if await is_bot_admin(context, chat.id):
@@ -1805,13 +1808,15 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 name = f"@{new_user.username}"
                 welcome_text = get_welcome_message(name)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
-                await update.message.reply_text(welcome_text, parse_mode="HTML")
+                # ⭐ WELCOME GAME BUTTON ADDED
+                await update.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=get_welcome_game_keyboard())
             else:
                 display_name = new_user.first_name or "Dost"
                 mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
                 welcome_text = get_welcome_message(mention_html)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
-                await update.message.reply_text(welcome_text, parse_mode="HTML")
+                # ⭐ WELCOME GAME BUTTON ADDED
+                await update.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=get_welcome_game_keyboard())
     except Exception as e:
         logger.warning(f"new_member_welcome error: {e}")
 
@@ -1844,13 +1849,15 @@ async def chat_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE
             name = f"@{new_user.username}"
             welcome_text = get_welcome_message(name)
             await asyncio.sleep(random.uniform(0.5, 1.5))
-            await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML")
+            # ⭐ WELCOME GAME BUTTON ADDED
+            await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML", reply_markup=get_welcome_game_keyboard())
         else:
             display_name = new_user.first_name or "Dost"
             mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
             welcome_text = get_welcome_message(mention_html)
             await asyncio.sleep(random.uniform(0.5, 1.5))
-            await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML")
+            # ⭐ WELCOME GAME BUTTON ADDED
+            await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML", reply_markup=get_welcome_game_keyboard())
     except Exception as e:
         logger.warning(f"chat_member_welcome error: {e}")
 
@@ -1960,6 +1967,10 @@ async def proactive_message_watcher(bot):
                 proactive_msg = await generate_proactive_message(user_id)
                 if not proactive_msg:
                     continue
+                
+                # ⭐ 20% chance: Organic advertise
+                if random.random() < 0.20:
+                    proactive_msg += f"\n\n(Btw, /play dabake dekho kya tum meri vibe match kar sakte ho? <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['fire']}\">🔥</tg-emoji>)"
                     
                 if last_chat_id and last_chat_id < 0:
                     # Group me message bhejna hai
@@ -2037,8 +2048,12 @@ async def main() -> None:
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("broadcaststats", broadcast_stats_command))
     application.add_handler(CommandHandler("broadcastgc", broadcastgc_command))
+    # ⭐ GAME COMMANDS ADDED
     application.add_handler(CommandHandler("games", games_menu))
     application.add_handler(CommandHandler("game", games_menu))
+    application.add_handler(CommandHandler("play", games_menu))
+    application.add_handler(CommandHandler("snehaleaderboard", leaderboard_command))
+    
     application.add_handler(CallbackQueryHandler(master_button_router))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
     application.add_handler(ChatMemberHandler(chat_member_welcome, ChatMemberHandler.CHAT_MEMBER))
