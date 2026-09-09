@@ -92,7 +92,7 @@ def get_top_10_players():
         c.close(); conn.close()
         results = []
         for uid, summary, pts in rows:
-            name = "Player"
+            name = None
             if summary:
                 for line in summary.split("\n"):
                     if line.strip().lower().startswith("naam:"):
@@ -100,6 +100,8 @@ def get_top_10_players():
                         if val.lower() not in ("not shared", ""):
                             name = val.split("(")[0].strip()
                         break
+            if not name:
+                name = "Anonymous" # Agar naam nahi pata, toh Anonymous dikhao
             results.append((uid, name, pts))
         return results
     except Exception as e:
@@ -214,7 +216,7 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     for i, (uid, name, pts) in enumerate(top_players):
         medal = medals[i] if i < len(medals) else f"{i+1}."
         safe_name = html.escape(name)
-        text += f"{medal} <a href='tg://user?id={uid}'>{safe_name}</a> - <b>{pts} pts</b>\n"
+        text += f"{medal} <a href='tg://user?id={uid}'>{safe_name}</a> <b>| {pts} {HEART}</b>\n"
         
     bot_username = context.bot.username
     keyboard = [
@@ -305,7 +307,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for i, (uid, name, pts) in enumerate(top_players):
                     medal = medals[i] if i < len(medals) else f"{i+1}."
                     safe_name = html.escape(name)
-                    top_text += f"{medal} <a href='tg://user?id={uid}'>{safe_name}</a> - <b>{pts} pts</b>\n"
+                    top_text += f"{medal} <a href='tg://user?id={uid}'>{safe_name}</a> <b>| {pts} {HEART}</b>\n"
             
             final_text = f"<b>Game Khatam!</b>\n\nIs game ka score: <b>{final_score}/50</b>\nTumhara Total Score: <b>{total_pts}</b> {HEART}\n\n{remark}\n\n{top_text}"
             
@@ -325,7 +327,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i, (uid, name, pts) in enumerate(top_players):
                 medal = medals[i] if i < len(medals) else f"{i+1}."
                 safe_name = html.escape(name)
-                text += f"{medal} <a href='tg://user?id={uid}'>{safe_name}</a> - <b>{pts} pts</b>\n"
+                text += f"{medal} <a href='tg://user?id={uid}'>{safe_name}</a> <b>| {pts} {HEART}</b>\n"
         try:
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(main_menu_keyboard), parse_mode="HTML")
         except Exception: pass
