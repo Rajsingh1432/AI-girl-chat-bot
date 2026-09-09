@@ -55,21 +55,33 @@ def get_db_conn():
     if not DATABASE_URL: return None
     return psycopg2.connect(DATABASE_URL)
 
-def add_points_to_db(user_id, points, group_id):
+def add_points_to_db(user_id, points, group_id, user_name):
     if not DATABASE_URL: return
     try:
         conn = get_db_conn()
         c = conn.cursor()
+        
+        # ⭐ SAFETY CHECK: Table me user_name column bhi add karo
+        c.execute("""CREATE TABLE IF NOT EXISTS group_game_points (
+                        group_id BIGINT, 
+                        user_id BIGINT, 
+                        points INTEGER DEFAULT 0,
+                        user_name TEXT DEFAULT 'Anonymous',
+                        PRIMARY KEY(group_id, user_id)
+                    )""")
+        
         # 1. Global Points Update
         c.execute("INSERT INTO user_memory (user_id, game_points) VALUES (%s, %s) "
                   "ON CONFLICT (user_id) DO UPDATE SET game_points = GREATEST(0, COALESCE(user_memory.game_points, 0) + %s)",
                   (user_id, points, points))
-        # 2. Group Specific Points Update
-        c.execute("""INSERT INTO group_game_points (group_id, user_id, points) 
-                     VALUES (%s, %s, %s) 
+                  
+        # 2. Group Specific Points Update (Naam bhi save hoga)
+        c.execute("""INSERT INTO group_game_points (group_id, user_id, points, user_name) 
+                     VALUES (%s, %s, %s, %s) 
                      ON CONFLICT (group_id, user_id) 
-                     DO UPDATE SET points = GREATEST(0, group_game_points.points + %s)""",
-                  (group_id, user_id, points, points))
+                     DO UPDATE SET points = GREATEST(0, group_game_points.points + %s), 
+                                   user_name = EXCLUDED.user_name""",
+                  (group_id, user_id, points, user_name, points, user_name))
         conn.commit()
         c.close(); conn.close()
     except Exception as e:
@@ -80,23 +92,24 @@ def get_top_3_group_players(group_id):
     try:
         conn = get_db_conn()
         c = conn.cursor()
-        c.execute("""SELECT ggp.user_id, um.summary, ggp.points 
-                     FROM group_game_points ggp
-                     LEFT JOIN user_memory um ON ggp.user_id = um.user_id
-                     WHERE ggp.group_id = %s AND ggp.points > 0
-                     ORDER BY ggp.points DESC LIMIT 3""", (group_id,))
+        
+        c.execute("""CREATE TABLE IF NOT EXISTS group_game_points (
+                        group_id BIGINT, 
+                        user_id BIGINT, 
+                        points INTEGER DEFAULT 0,
+                        user_name TEXT DEFAULT 'Anonymous',
+                        PRIMARY KEY(group_id, user_id)
+                    )""")
+        
+        # ⭐ Ab hume user_memory table join karne ki zarurat nahi, direct group_game_points se naam lunga
+        c.execute("""SELECT user_id, user_name, points 
+                     FROM group_game_points 
+                     WHERE group_id = %s AND points > 0
+                     ORDER BY points DESC LIMIT 3""", (group_id,))
         rows = c.fetchall()
         c.close(); conn.close()
         results = []
-        for uid, summary, pts in rows:
-            name = None
-            if summary:
-                for line in summary.split("\n"):
-                    if line.strip().lower().startswith("naam:"):
-                        val = line.split(":", 1)[1].strip()
-                        if val.lower() not in ("not shared", ""):
-                            name = val.split("(")[0].strip()
-                        break
+        for uid, name, pts in rows:
             if not name:
                 name = "Anonymous"
             results.append((uid, name, pts))
@@ -224,7 +237,7 @@ async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_chat.type == "private":
-        await update.message.reply_text("🔴 Leaderboard sirf groups me dekha ja sakta hai! Group me /snehaleaderboard likho.")
+        await update.message.reply_text("🔴 Leaderboard sirf groups me dekha ja sakta hai! Group me /leaderboard likho.")
         return
         
     chat_id = update.effective_chat.id
@@ -311,7 +324,8 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if opt_idx == current_q["best"]:
             # ✅ SAHI JAWAB
             game["locked"] = True
-            add_points_to_db(user.id, 10, chat_id)
+            # ⭐ User ka asli naam save kar rahe hain DB me
+            add_points_to_db(user.id, 10, chat_id, user.first_name)
             
             await query.answer("✅ Sahi Jawab! +10 Points", show_alert=False)
             
@@ -331,7 +345,8 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
         else:
             # ❌ GALAT JAWAB
-            add_points_to_db(user.id, -2, chat_id)
+            # ⭐ User ka asli naam save kar rahe hain DB me
+            add_points_to_db(user.id, -2, chat_id, user.first_name)
             await query.answer("❌ Galat! -2 Points kat gaye.", show_alert=False)
             
     elif data == "g_top":
