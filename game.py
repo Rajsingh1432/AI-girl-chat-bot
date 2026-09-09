@@ -20,14 +20,22 @@ except ImportError:
     class ButtonStyle:
         PRIMARY = "primary"
         DANGER = "danger"
-    # SIRF VERIFIED IDS USE KIYE HAIN TAAKI CRASH NA HO
+    # TUMHARE 5 PREMIUM EMOJIS + KIDNAP (VERIFIED)
     PREMIUM_EMOJIS = {
         "kidnap": "6001154049452283936",
-        "developer": "5362079447136610876",
-        "channel": "6257898707551785373",
-        "support": "5359622339296256165",
-        "fire": "5280588940980542826"
+        "fire": "5064709487953183440",       # 🔥
+        "trophy": "4999002445444023072",      # 🏆
+        "heart": "5064672027248427816",       # ❤️
+        "sparkle": "5247087285538672245",     # ✨
+        "gem": "5249320921935663770"          # 💎
     }
+
+# Shortcuts for HTML tags
+FIRE = f'<tg-emoji emoji-id="{PREMIUM_EMOJIS["fire"]}">🔥</tg-emoji>'
+TROPHY = f'<tg-emoji emoji-id="{PREMIUM_EMOJIS["trophy"]}">🏆</tg-emoji>'
+HEART = f'<tg-emoji emoji-id="{PREMIUM_EMOJIS["heart"]}">❤️</tg-emoji>'
+SPARKLE = f'<tg-emoji emoji-id="{PREMIUM_EMOJIS["sparkle"]}">✨</tg-emoji>'
+GEM = f'<tg-emoji emoji-id="{PREMIUM_EMOJIS["gem"]}">💎</tg-emoji>'
 
 # ⭐ ========== AI SETUP FOR GAME ==========
 _gkeys = [os.getenv(f"GROQ_API_KEY_{i}") for i in range(1, 101)]
@@ -39,12 +47,7 @@ FALLBACK_QUESTIONS = [
     {"q": "Agar main tumhe 'I love you' bolu, toh reaction?", "opts": ["Gale lag jaunga", "Propose karunga wapas", "Mazaak mein taal dunga", "Block kar dunga"], "best": 0},
     {"q": "Hum dono kahan ghoomne jayenge pehli date pe?", "opts": ["Beach pe sunset", "Movie aur dinner", "Ghar pe Netflix", "Kahin nahi jaana"], "best": 0},
     {"q": "Meri sabse badi khasiyat kya hai?", "opts": ["Tumhara nature", "Tumhari smile", "Tumhara dimag", "Kuch nahi"], "best": 1},
-    {"q": "Agar koi mujhe tang kare group me, toh tum?", "opts": ["Usko daaloge", "Mujhe ignore karne bologe", "Khud hasoge", "Uski taraf support karoge"], "best": 0},
-    {"q": "Mujhe gussa aaya toh kya manaaoge?", "opts": ["Chocolate la dunga", "Sorry bolunga", "Gaana gaa dunga", "Chhod dunga bina bole"], "best": 1},
-    {"q": "Agar main tumhare ghar aau, toh kya doge?", "opts": ["Pani", "Coffee", "Pizza order karunga", "Gate pe hi khada rahunga"], "best": 1},
-    {"q": "Mera favorite timepass kya hai?", "opts": ["Tumse baat karna", "Netflix dekhna", "So jana", "Gaana sunna"], "best": 0},
-    {"q": "Agar main bore ho rahi hu, toh tum kya karoge?", "opts": ["Mazaak sunaoge", "Game khelne bologe", "Sone bologe", "Apne kaam pe lag jaoge"], "best": 0},
-    {"q": "Mujhe sabse zyada kya pasand hai?", "opts": ["Tumhara pyaar", "Tumhari honesty", "Tumhare paise", "Tumhari looks"], "best": 1}
+    {"q": "Agar koi mujhe tang kare group me, toh tum?", "opts": ["Usko daaloge", "Mujhe ignore karne bologe", "Khud hasoge", "Uski taraf support karoge"], "best": 0}
 ]
 
 active_games = {}
@@ -125,7 +128,6 @@ BEST: <A/B/C/D>"""
     
     for attempt in range(2): # ⭐ 2 Baar Try Karega
         try:
-            # ⭐ Timeout 4s se badha kar 8s kar diya
             response = await asyncio.wait_for(
                 _game_client.chat.completions.create(
                     model="openai/gpt-oss-20b",
@@ -137,7 +139,6 @@ BEST: <A/B/C/D>"""
             )
             text = response.choices[0].message.content.strip()
             
-            # ⭐ Flexible Parsing
             lines = [line.strip() for line in text.split("\n") if line.strip()]
             q = None
             opts = []
@@ -155,12 +156,11 @@ BEST: <A/B/C/D>"""
                 best_idx = ["A", "B", "C", "D"].index(best_letter)
                 return {"q": q, "opts": opts, "best": best_idx}
             else:
-                continue # Agar format match nahi hua, toh loop dobara chalega
+                continue
                 
         except Exception:
-            continue # Agar timeout ho, toh dobara try karega
+            continue
             
-    # Agar 2 baar try karne ke baad bhi AI fail ho gaya, tabhi fallback use karo
     return random.choice(FALLBACK_QUESTIONS)
 
 # ⭐ ========== GAME UI & LOGIC ==========
@@ -171,7 +171,7 @@ async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         keyboard = [
             [InlineKeyboardButton("Add Me Baby", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])]
         ]
-        text = "🔴 <b>DM me game nahi chalta!</b>\n\nMujhe kisi group me add karo aur wahan <code>/play</code> type karo! 🔥"
+        text = f"🔴 <b>DM me game nahi chalta!</b>\n\nMujhe kisi group me add karo aur wahan <code>/play</code> type karo! {FIRE}"
         if update.message:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
         elif update.callback_query:
@@ -182,21 +182,20 @@ async def games_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     bot_username = context.bot.username
     keyboard = [
         [InlineKeyboardButton("Start Vibe Check", callback_data="g_start", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])],
-        [InlineKeyboardButton("Top 10 Leaders", callback_data="g_top", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])],
+        [InlineKeyboardButton("Top 10 Leaders", callback_data="g_top", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["trophy"])],
         [InlineKeyboardButton("Add Me Baby", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])]
     ]
     text = (
-        "🔥 <b>Sneha's Vibe Check</b> 🔥\n\n"
-        "Kya tum mere dil ke aas paas bhi ho? ✨\n"
+        f"{FIRE} <b>Sneha's Vibe Check</b> {FIRE}\n\n"
+        f"Kya tum mere dil ke aas paas bhi ho? {SPARKLE}\n"
         "5 AI-generated sawaal honge, har baar naye! Sahi pe +10 points.\n"
-        "Chat me koi spam nahi hoga, seedha popup aayega! ⚡\n\n"
-        "Apna score badhao aur <b>Top 10 Leaders</b> me apna naam dekho! 🏆"
+        f"Chat me koi spam nahi hoga, seedha popup aayega! ⚡\n\n"
+        f"Apna score badhao aur <b>Top 10 Leaders</b> me apna naam dekho! {TROPHY}"
     )
     
     if update.message:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     elif update.callback_query:
-        # ⭐ AGAR BUTTON SE INVOKE HUA, TOH PURANA MESSAGE EDIT MAT KARO, NAYA MESSAGE BHEJO
         await update.callback_query.answer()
         await update.callback_query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
@@ -207,10 +206,10 @@ async def leaderboard_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         
     top_players = get_top_10_players()
     if not top_players:
-        await update.message.reply_text("🏆 <b>Leaderboard</b>\n\nAbhi koi khela nahi hai! Start playing to be #1.", parse_mode="HTML")
+        await update.message.reply_text(f"{TROPHY} <b>Leaderboard</b>\n\nAbhi koi khela nahi hai! Start playing to be #1.", parse_mode="HTML")
         return
         
-    text = "🏆 <b>Top 10 Flirters</b> 🏆\n\n"
+    text = f"{TROPHY} <b>Top 10 Flirters</b> {TROPHY}\n\n"
     medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
     for i, (uid, name, pts) in enumerate(top_players):
         medal = medals[i] if i < len(medals) else f"{i+1}."
@@ -232,7 +231,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     main_menu_keyboard = [
         [InlineKeyboardButton("Start Vibe Check", callback_data="g_start", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])],
-        [InlineKeyboardButton("Top 10 Leaders", callback_data="g_top", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])],
+        [InlineKeyboardButton("Top 10 Leaders", callback_data="g_top", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["trophy"])],
         [InlineKeyboardButton("Add Me Baby", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])]
     ]
     
@@ -241,12 +240,11 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if current_time - active_games[uid].get("last_active", 0) > 300:
             del active_games[uid]
             
-    # ⭐ DM BLOCK FOR BUTTONS
     if update.effective_chat.type == "private":
         keyboard = [
             [InlineKeyboardButton("Add Me Baby", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])]
         ]
-        text = "🔴 <b>Game sirf groups me khel sakte ho!</b>\n\nMujhe kisi chat group me add karo aur wahan <code>/play</code> type karo ya /start wala button dabao! 🔥"
+        text = f"🔴 <b>Game sirf groups me khel sakte ho!</b>\n\nMujhe kisi chat group me add karo aur wahan <code>/play</code> type karo ya /start wala button dabao! {FIRE}"
         await query.answer()
         try:
             await query.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -290,16 +288,16 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             total_pts = get_user_total_points(user.id)
             
             if final_score == 50:
-                remark = "Full Score! Tum sach meri jaan ho ❤️"
+                remark = f"Full Score! Tum sach meri jaan ho {HEART}"
             elif final_score >= 30:
-                remark = "Mast! Tum mujhe thoda jante ho 💎"
+                remark = f"Mast! Tum mujhe thoda jante ho {GEM}"
             elif final_score >= 10:
-                remark = "Theek hai, try again ✨"
+                remark = f"Theek hai, try again {SPARKLE}"
             else:
                 remark = "Tumse na ho payega 😂"
                 
             top_players = get_top_10_players()
-            top_text = "🏆 <b>Top 10 Leaders</b> 🏆\n\n"
+            top_text = f"{TROPHY} <b>Top 10 Leaders</b> {TROPHY}\n\n"
             if not top_players:
                 top_text += "Abhi koi khela nahi hai!\n"
             else:
@@ -309,7 +307,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     safe_name = html.escape(name)
                     top_text += f"{medal} <a href='tg://user?id={uid}'>{safe_name}</a> - <b>{pts} pts</b>\n"
             
-            final_text = f"<b>Game Khatam!</b>\n\nIs game ka score: <b>{final_score}/50</b>\nTumhara Total Score: <b>{total_pts}</b> ❤️\n\n{remark}\n\n{top_text}"
+            final_text = f"<b>Game Khatam!</b>\n\nIs game ka score: <b>{final_score}/50</b>\nTumhara Total Score: <b>{total_pts}</b> {HEART}\n\n{remark}\n\n{top_text}"
             
             try:
                 await query.edit_message_text(final_text, reply_markup=InlineKeyboardMarkup(main_menu_keyboard), parse_mode="HTML")
@@ -320,9 +318,9 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         top_players = get_top_10_players()
         if not top_players:
-            text = "🏆 <b>Leaderboard</b> 🏆\n\nAbhi koi khela nahi hai! Start playing to be #1."
+            text = f"{TROPHY} <b>Leaderboard</b> {TROPHY}\n\nAbhi koi khela nahi hai! Start playing to be #1."
         else:
-            text = "🏆 <b>Top 10 Flirters</b> 🏆\n\n"
+            text = f"{TROPHY} <b>Top 10 Flirters</b> {TROPHY}\n\n"
             medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
             for i, (uid, name, pts) in enumerate(top_players):
                 medal = medals[i] if i < len(medals) else f"{i+1}."
@@ -338,7 +336,7 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user)
     q_idx = game_data["q_idx"]
     
     try:
-        await query.edit_message_text(f"<i>Sneha soch rahi hai sawaal {q_idx + 1}/5... ✨</i>", parse_mode="HTML")
+        await query.edit_message_text(f"<i>Sneha soch rahi hai sawaal {q_idx + 1}/5... {SPARKLE}</i>", parse_mode="HTML")
     except Exception: pass
     
     question = await generate_ai_question()
@@ -350,12 +348,12 @@ async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE, user)
     keyboard = []
     for idx, text in opts_with_idx:
         if idx % 2 == 0:
-            btn = InlineKeyboardButton(text, callback_data=f"g_ans_{idx}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])
+            btn = InlineKeyboardButton(text, callback_data=f"g_ans_{idx}", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["gem"])
         else:
-            btn = InlineKeyboardButton(text, callback_data=f"g_ans_{idx}", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])
+            btn = InlineKeyboardButton(text, callback_data=f"g_ans_{idx}", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["sparkle"])
         keyboard.append([btn])
     
-    final_text = f"<b>Sawaal {q_idx + 1}/5</b> 🔥\n\n{question['q']}"
+    final_text = f"<b>Sawaal {q_idx + 1}/5</b> {FIRE}\n\n{question['q']}"
     try:
         await query.edit_message_text(final_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
     except Exception: pass
