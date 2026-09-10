@@ -2005,10 +2005,6 @@ async def proactive_message_watcher(bot):
                 if not proactive_msg:
                     continue
                 
-                # ⭐ 20% chance: Organic advertise
-                if random.random() < 0.20:
-                    proactive_msg += f"\n\n(Btw, /play dabake dekho kya tum meri vibe match kar sakte ho? <tg-emoji emoji-id=\"{PREMIUM_EMOJIS['fire']}\">🔥</tg-emoji>)"
-                    
                 if last_chat_id and last_chat_id < 0:
                     # Group me message bhejna hai
                     if last_chat_id in sent_to_groups:
