@@ -70,18 +70,21 @@ def add_points_to_db(user_id, points, group_id, user_name):
                         PRIMARY KEY(group_id, user_id)
                     )""")
         
+        # ⭐ FIX: Agar table pehle se bana tha aur user_name column missing hai, toh add karo
+        c.execute("ALTER TABLE group_game_points ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT 'Anonymous'")
+        
         # 1. Global Points Update
         c.execute("INSERT INTO user_memory (user_id, game_points) VALUES (%s, %s) "
                   "ON CONFLICT (user_id) DO UPDATE SET game_points = GREATEST(0, COALESCE(user_memory.game_points, 0) + %s)",
                   (user_id, points, points))
                   
-        # 2. Group Specific Points Update (FIXED PARAMETERS)
+        # 2. Group Specific Points Update
         c.execute("""INSERT INTO group_game_points (group_id, user_id, points, user_name) 
                      VALUES (%s, %s, %s, %s) 
                      ON CONFLICT (group_id, user_id) 
                      DO UPDATE SET points = GREATEST(0, group_game_points.points + %s), 
                                    user_name = EXCLUDED.user_name""",
-                  (group_id, user_id, points, user_name, points)) # ⭐ Yahan se extra 'user_name' hata diya gaya hai
+                  (group_id, user_id, points, user_name, points))
         conn.commit()
         c.close(); conn.close()
     except Exception as e:
@@ -93,6 +96,7 @@ def get_top_3_group_players(group_id):
         conn = get_db_conn()
         c = conn.cursor()
         
+        # ⭐ SAFETY CHECK: Table exist nahi kar rha toh khud bana do
         c.execute("""CREATE TABLE IF NOT EXISTS group_game_points (
                         group_id BIGINT, 
                         user_id BIGINT, 
@@ -100,6 +104,9 @@ def get_top_3_group_players(group_id):
                         user_name TEXT DEFAULT 'Anonymous',
                         PRIMARY KEY(group_id, user_id)
                     )""")
+        
+        # ⭐ FIX: Agar table pehle se bana tha aur user_name column missing hai, toh add karo
+        c.execute("ALTER TABLE group_game_points ADD COLUMN IF NOT EXISTS user_name TEXT DEFAULT 'Anonymous'")
         
         # ⭐ Ab hume user_memory table join karne ki zarurat nahi, direct group_game_points se naam lunga
         c.execute("""SELECT user_id, user_name, points 
