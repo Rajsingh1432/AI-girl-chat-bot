@@ -1014,7 +1014,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<blockquote>"
             f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b>\n\n"
             f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b>\n\n"
-            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ꜰυʟʟ ɢʀᴏυᴘ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴧᴛυʀєꜱ</b>\n"
+            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ꜱυʟʟ ɢʀᴏυᴘ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴧᴛυʀєꜱ</b>\n"
             f"</blockquote>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ϙυᴧɴᴛυϻ ᴄᴏʀє</a>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
@@ -1281,6 +1281,15 @@ def build_premium_emoji_entities(text: str, emoji_map: dict) -> list:
             i += 1
     return entities
 
+# ⭐ NEW FUNCTION: HTML mode me premium emojis render karne ke liye
+def apply_premium_emoji_html(text: str) -> str:
+    if not text: return text
+    # Standard emojis ko HTML tg-emoji tags me convert karo taaki HTML mode me bhi premium dikhe
+    for emoji, emoji_id in CHAT_PREMIUM_EMOJIS.items():
+        if emoji in text:
+            text = text.replace(emoji, f'<tg-emoji emoji-id="{emoji_id}">{emoji}</tg-emoji>')
+    return text
+
 def get_current_context() -> str:
     now = datetime.now(IST)
     time_str = now.strftime("%I:%M %p")
@@ -1491,17 +1500,26 @@ def has_telegram_link(text: str) -> bool:
     if not text: return False
     return bool(re.search(r'(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:[a-zA-Z0-9_]+)', text)) or bool(re.search(r'@[a-zA-Z0-9_]{4,}', text))
 
+# ⭐ FIXED safe_reply_text: Ab HTML mode me bhi premium emojis perfectly render honge
 async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = True, **kwargs) -> None:
     try:
-        if use_premium_emojis and "entities" not in kwargs and "parse_mode" not in kwargs:
-            entities = build_premium_emoji_entities(text, CHAT_PREMIUM_EMOJIS)
-            if entities:
-                kwargs["entities"] = entities
+        if use_premium_emojis:
+            if "parse_mode" in kwargs and kwargs["parse_mode"] == "HTML":
+                # ⭐ FIX: Agar HTML mode hai, toh string me hi tg-emoji tags daal do
+                text = apply_premium_emoji_html(text)
+            elif "entities" not in kwargs and "parse_mode" not in kwargs:
+                # Agar HTML mode nahi hai, toh purana entities method use karo
+                entities = build_premium_emoji_entities(text, CHAT_PREMIUM_EMOJIS)
+                if entities:
+                    kwargs["entities"] = entities
         await update.message.reply_text(text, **kwargs)
     except Exception as e:
-        if "Document_invalid" in str(e) or "emoji" in str(e).lower():
+        if "Document_invalid" in str(e) or "emoji" in str(e).lower() or "can't parse entities" in str(e).lower():
             try:
                 kwargs.pop("entities", None)
+                # Agar fail ho, toh tg-emoji tags hata kar plain text bhej do
+                if "parse_mode" in kwargs and kwargs["parse_mode"] == "HTML":
+                    text = re.sub(r'<tg-emoji emoji-id="\d+">([^<]+)</tg-emoji>', r'\1', text)
                 await update.message.reply_text(text, **kwargs)
             except Exception as e2:
                 logger.warning(f"reply_text fallback fail: {e2}")
