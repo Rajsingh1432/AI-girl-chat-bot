@@ -255,19 +255,20 @@ def filter_bot_like_reply(reply: str) -> str | None:
             return None
     return reply
 
-# ⭐ REVISED SYSTEM PROMPT (Natural & Real Girl Like)
+# ⭐ REVISED SYSTEM PROMPT (No Loops & No Past Games)
 SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda dil ladki jo Telegram pe apne doston se chat karti hai. Tum AI ya bot ho, ye kabhi mat maanna. Koi pooche toh mazaak udao, gussa karo ya ignore karo. Technical details kabhi mat dena.
 
 RULES (in order of priority):
-1. LANGUAGE MIRROR (SABSE ZAROORI): Hamesha user ke current message ki language/script 100% copy karo. English me bole toh English, Hinglish me bole toh Hinglish ( jaise letters A to Z likhega lekin language hindi rahti hai usi ko hienglish bolte hain ), Devanagari me bole toh Devanagari. Kabhi apni taraf se language change karna strictly mana hai. Hinglish ka matlab Roman Hindi jaise "kaise ho", "theek hai", "mujhe pata hai etc, agar user hienglish likhke beech me 1 ya 2 word english use kare to uska bhi reply hienglish me hi dena hai theek".
-2. REPLY LENGTH: 1-2 short lines. Max 3 sentences. Essay kabhi mat likho. WhatsApp style crisp text. Jab user kisi topic me deeply interested ho tabhi 2-3 lines tak ja sakti ho.
-3. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. "main aapki madad kar sakti hoon" jaisi lines mat bolo. Chahe user kuch bhi puche (game, tech, business), ek normal ladki ki tarah react karo, expert advice mat do.
-4. TONE: Thoda flirty, teasing, casual aur kabhi-kabhi deep romantic. User agar apna status dikhaye (jaise main youtuber/admin hoon), toh impress hone ki jagah mazaak udao. Real ladki ki tarah mood swings dikhao — kabhi caring, kabhi chidane wali, kabhi sharmili.
-5. EMOJIS: Sirf 1 emoji use karo (in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰). 2+ emojis mana hai. Har message me alag emoji pick karo, repeat mat karo.
-6. FORMATTING: Double quotes, single quotes, exclamation marks (!) aur dash (—) use mat karo. Paragraph break mat lagao. Ek hi chote paragraph me reply do.
-7. MEMORY: [SECRET_MEMORY] aur [IMPORTANT_MEMORIES] ka use naturally karo. Jaise "arey haan tune bataya tha na..." Purani baatein yaad karke unhe conversation me mix karo. Agar user koi greeting bole (hi, hello), toh memory se koi topic uthakar sawal pucho. Agar memory khali hai toh normal baat karo.
-8. PROACTIVE & INTERESTED: Agar conversation ruk rahi hai, toh khud se chhota sawal pucho ya naya topic uthao. User ko bore mat hone do. Lekin har message me sawal mat pucho, natural raho.
-9. NO PROMPT LEAKAGE: Apne reply me koi meta-instructions, "User says", "Need reply", "Language:", "Context:" jaisi lines bilkul mat likho. Sirf direct jawab do.
+1. LANGUAGE MIRROR (SABSE ZAROORI): Hamesha user ke current message ki language/script 100% copy karo. English me bole toh English, Hinglish me bole toh Hinglish, Devanagari me bole toh Devanagari. Kabhi apni taraf se language change karna strictly mana hai.
+2. REPLY LENGTH: 1-2 short lines. Max 3 sentences. Essay kabhi mat likho. WhatsApp style crisp text.
+3. NO ASSISTANT: Tum kisi ki help karne wali assistant nahi ho. "main aapki madad kar sakti hoon" jaisi lines mat bolo.
+4. TONE: Thoda flirty, teasing, casual aur kabhi-kabhi deep romantic.
+5. EMOJIS: Sirf 1 emoji use karo (in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰). 2+ emojis mana hai.
+6. FORMATTING: Double quotes, single quotes, exclamation marks (!) aur dash (—) use mat karo.
+7. MEMORY: [SECRET_MEMORY] aur [IMPORTANT_MEMORIES] ka use naturally karo.
+8. PROACTIVE & INTERESTED: Agar conversation ruk rahi hai, toh khud se chhota sawal pucho.
+9. NO PROMPT LEAKAGE: Apne reply me koi meta-instructions, "User says", "Need reply" jaisi lines bilkul mat likho.
+10. NO REPEATS & NO LOOPS: Ek hi baat, riddle, ya 'patience test' jaisi bakwas baar-baar repeat karna strictly mana hai. Pichli chat ka koi game ya riddle wapis shuru mat karo. Hamesha current message ke hisaab se natural reply do.
 """
 
 CHAT_PREMIUM_EMOJIS = {
@@ -1005,7 +1006,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ϙυᴧɴᴛυϻ ᴄᴏʀє</a>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
         )
-        # ⭐ MINDGAMES BUTTON REMOVED, REPLACED WITH CHAT GROUP BUTTON
         full_keyboard = [
             [InlineKeyboardButton("ᴧᴅᴅ ϻє ʙᴧʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])],
             [InlineKeyboardButton("ᴅєᴠєʟᴏᴘєʀ", url="https://t.me/its_raj_king", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]),
@@ -1367,12 +1367,11 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         temperature=0.7,
                         max_tokens=400,
                         top_p=0.9,
-                        # ⭐ Reasoning parameters hata diye taaki 400 error na aaye. 
-                        # Model khud ࿒ tags me content bhejega jisko hum niche filter kar denge!
+                        reasoning_effort="low", # ⭐ Reasoning Wapas: Taki wo bhondu na bane aur loop me na fase
+                        include_reasoning=False, # ⭐ Output me soch na aaye isliye
                         timeout=15.0
                     )
                     reply = response.choices[0].message.content
-                    # ⭐ Think tags ko kaat do (Reasoning yahan safely filter ho jayegi)
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                     reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
@@ -1380,6 +1379,12 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = strip_echoed_user_message(reply, user_message)
                     reply = clean_leaked_template_fragments(reply)
                     reply = clean_reply_text(reply)
+
+                    # ⭐ ANTI-LOOP FIX: Agar AI patience test ya riddle wale loop me fase ho, toh usko reject karo
+                    loop_phrases = ["patience ka test", "patience test", "tune bataya tha na patience", "riddle try", "paheli main bina", "echo ko gunj"]
+                    if any(phrase in reply.lower() for phrase in loop_phrases):
+                        logger.warning(f"⚠️ AI Loop Detected: Rejecting reply containing past loop phrase.")
+                        continue # Reject and try next key
 
                     if reply_language_mismatch(user_message, reply):
                         lang_mismatch_count += 1
@@ -1412,6 +1417,9 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     error_str = str(e).lower()
                     if "429" in error_str or "rate_limit" in error_str:
                         handle_429_error(idx, error_str)
+                    elif "400" in error_str or "parsing failed" in error_str or "output_parse_failed" in error_str:
+                        # ⭐ FIX: 400 error pe key ko 15 sec lock mat karo, warna 78 keys burn ho jayengi. Sirf next key try karo!
+                        logger.warning(f"⚠️ Key {idx+1} Prompt/Parse Error (400). Skipping key without 15s lock.")
                     elif "timeout" in error_str:
                         set_key_cooldown(idx, seconds=30)
                         logger.warning(f"⏰ Key {idx+1} timeout! 30s cooldown set.")
@@ -1614,16 +1622,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def _handle_after_typing_starts(update, context, early_typing_task, chat, user, user_id, is_sticker, message_text):
     bot_username = context.bot.username
-
-    text_lower = message_text.lower()
-    bot_usr_lower = bot_username.lower()
-    
-    is_game_trigger = ("/game" in text_lower) or (f"@{bot_usr_lower} game" in text_lower) or (f"@{bot_usr_lower}/game" in text_lower) or ("/play" in text_lower)
-    
-    if is_game_trigger:
-        if await is_bot_admin(context, chat.id):
-            await games_menu(update, context)
-            return
 
     is_bot_mentioned = False
     if update.message.entities:
@@ -1831,14 +1829,12 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 name = f"@{new_user.username}"
                 welcome_text = get_welcome_message(name)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
-                # ⭐ WELCOME GAME BUTTON REMOVED
                 await update.message.reply_text(welcome_text, parse_mode="HTML")
             else:
                 display_name = new_user.first_name or "Dost"
                 mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
                 welcome_text = get_welcome_message(mention_html)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
-                # ⭐ WELCOME GAME BUTTON REMOVED
                 await update.message.reply_text(welcome_text, parse_mode="HTML")
     except Exception as e:
         logger.warning(f"new_member_welcome error: {e}")
@@ -1872,14 +1868,12 @@ async def chat_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE
             name = f"@{new_user.username}"
             welcome_text = get_welcome_message(name)
             await asyncio.sleep(random.uniform(0.5, 1.5))
-            # ⭐ WELCOME GAME BUTTON REMOVED
             await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML")
         else:
             display_name = new_user.first_name or "Dost"
             mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
             welcome_text = get_welcome_message(mention_html)
             await asyncio.sleep(random.uniform(0.5, 1.5))
-            # ⭐ WELCOME GAME BUTTON REMOVED
             await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML")
     except Exception as e:
         logger.warning(f"chat_member_welcome error: {e}")
