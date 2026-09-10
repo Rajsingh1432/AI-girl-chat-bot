@@ -61,7 +61,7 @@ def add_points_to_db(user_id, points, group_id, user_name):
         conn = get_db_conn()
         c = conn.cursor()
         
-        # ⭐ SAFETY CHECK: Table me user_name column bhi add karo
+        # ⭐ SAFETY CHECK: Table exist nahi kar rha toh khud bana do
         c.execute("""CREATE TABLE IF NOT EXISTS group_game_points (
                         group_id BIGINT, 
                         user_id BIGINT, 
@@ -75,13 +75,13 @@ def add_points_to_db(user_id, points, group_id, user_name):
                   "ON CONFLICT (user_id) DO UPDATE SET game_points = GREATEST(0, COALESCE(user_memory.game_points, 0) + %s)",
                   (user_id, points, points))
                   
-        # 2. Group Specific Points Update (Naam bhi save hoga)
+        # 2. Group Specific Points Update (FIXED PARAMETERS)
         c.execute("""INSERT INTO group_game_points (group_id, user_id, points, user_name) 
                      VALUES (%s, %s, %s, %s) 
                      ON CONFLICT (group_id, user_id) 
                      DO UPDATE SET points = GREATEST(0, group_game_points.points + %s), 
                                    user_name = EXCLUDED.user_name""",
-                  (group_id, user_id, points, user_name, points, user_name))
+                  (group_id, user_id, points, user_name, points)) # ⭐ Yahan se extra 'user_name' hata diya gaya hai
         conn.commit()
         c.close(); conn.close()
     except Exception as e:
