@@ -15,8 +15,6 @@ from groq import AsyncGroq
 from dotenv import load_dotenv
 from sticker_replies import get_random_sticker_reply
 from broadcast import broadcast_command, broadcast_stats_command, broadcastgc_command
-# ⭐ Updated Import: leaderboard_command aur get_welcome_game_keyboard add kiye
-from game import games_menu, button_router, get_welcome_game_keyboard, leaderboard_command
 
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
@@ -35,7 +33,7 @@ except ImportError:
         "channel": "6257898707551785373",
         "support": "5359622339296256165",
         "fire": "5280588940980542826",
-        "trophy": "5293002242016136986", # Added for consistency
+        "trophy": "5293002242016136986",
         "heart": "5280294061494492616",
         "sparkle": "5280588940980542826"
     }
@@ -400,13 +398,6 @@ def init_db():
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS last_chat_id BIGINT")
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS last_seen REAL")
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS game_points INTEGER DEFAULT 0")
-            # ⭐ NAYI GROUP LEADERBOARD TABLE
-            c.execute("""CREATE TABLE IF NOT EXISTS group_game_points (
-                            group_id BIGINT, 
-                            user_id BIGINT, 
-                            points INTEGER DEFAULT 0, 
-                            PRIMARY KEY(group_id, user_id)
-                        )""")
             conn.commit()
         except Exception:
             pass
@@ -993,12 +984,7 @@ def escape_md_v2(text: str) -> str:
 async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query: return
-    data = query.data
-    
-    # ⭐ STRICT ROUTING: Game ke buttons direct game.py ko bhej do
-    if data.startswith("g_"):
-        await button_router(update, context)
-        return
+    await query.answer() # Game hata di gayi hai, button press hone pe bas ignore karo
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot_username = context.bot.username
@@ -1019,13 +1005,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ϙυᴧɴᴛυϻ ᴄᴏʀє</a>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
         )
-        # ⭐ MINDGAMES BUTTON AS IT IS, CALLBACK POINTS TO g_guide
+        # ⭐ MINDGAMES BUTTON REMOVED, REPLACED WITH CHAT GROUP BUTTON
         full_keyboard = [
             [InlineKeyboardButton("ᴧᴅᴅ ϻє ʙᴧʙʏ", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])],
             [InlineKeyboardButton("ᴅєᴠєʟᴏᴘєʀ", url="https://t.me/its_raj_king", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["developer"]),
              InlineKeyboardButton("ᴊᴏɪɴ ᴄʜᴧɴɴєʟ", url="https://t.me/KnowRajpapa", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["channel"])],
-            [InlineKeyboardButton("ᴄʜᴧᴛ ɢʀᴏυᴘ", url="https://t.me/+0xoXWln4qiM2NTY9", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["support"]),
-             InlineKeyboardButton("ϻɪɴᴅɢᴧϻєꜱ", callback_data="g_guide", style=ButtonStyle.DANGER, icon_custom_emoji_id=PREMIUM_EMOJIS["fire"])]
+            [InlineKeyboardButton("ᴄʜᴧᴛ ɢʀᴏυᴘ", url="https://t.me/+0xoXWln4qiM2NTY9", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["support"])]
         ]
         full_reply_markup = InlineKeyboardMarkup(full_keyboard)
         await update.message.reply_photo(photo=WELCOME_IMAGE_URL, caption=welcome_text, parse_mode="HTML", reply_markup=full_reply_markup)
@@ -1382,11 +1367,12 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         temperature=0.7,
                         max_tokens=400,
                         top_p=0.9,
-                        reasoning_effort="low",
-                        include_reasoning=False,
+                        # ⭐ Reasoning parameters hata diye taaki 400 error na aaye. 
+                        # Model khud ࿒ tags me content bhejega jisko hum niche filter kar denge!
                         timeout=15.0
                     )
                     reply = response.choices[0].message.content
+                    # ⭐ Think tags ko kaat do (Reasoning yahan safely filter ho jayegi)
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                     reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
@@ -1845,15 +1831,15 @@ async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 name = f"@{new_user.username}"
                 welcome_text = get_welcome_message(name)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
-                # ⭐ WELCOME GAME BUTTON ADDED
-                await update.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=get_welcome_game_keyboard())
+                # ⭐ WELCOME GAME BUTTON REMOVED
+                await update.message.reply_text(welcome_text, parse_mode="HTML")
             else:
                 display_name = new_user.first_name or "Dost"
                 mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
                 welcome_text = get_welcome_message(mention_html)
                 await asyncio.sleep(random.uniform(0.5, 1.5))
-                # ⭐ WELCOME GAME BUTTON ADDED
-                await update.message.reply_text(welcome_text, parse_mode="HTML", reply_markup=get_welcome_game_keyboard())
+                # ⭐ WELCOME GAME BUTTON REMOVED
+                await update.message.reply_text(welcome_text, parse_mode="HTML")
     except Exception as e:
         logger.warning(f"new_member_welcome error: {e}")
 
@@ -1886,15 +1872,15 @@ async def chat_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE
             name = f"@{new_user.username}"
             welcome_text = get_welcome_message(name)
             await asyncio.sleep(random.uniform(0.5, 1.5))
-            # ⭐ WELCOME GAME BUTTON ADDED
-            await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML", reply_markup=get_welcome_game_keyboard())
+            # ⭐ WELCOME GAME BUTTON REMOVED
+            await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML")
         else:
             display_name = new_user.first_name or "Dost"
             mention_html = f'<a href="tg://user?id={new_user.id}">{html.escape(display_name)}</a>'
             welcome_text = get_welcome_message(mention_html)
             await asyncio.sleep(random.uniform(0.5, 1.5))
-            # ⭐ WELCOME GAME BUTTON ADDED
-            await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML", reply_markup=get_welcome_game_keyboard())
+            # ⭐ WELCOME GAME BUTTON REMOVED
+            await context.bot.send_message(chat_id=chat.id, text=welcome_text, parse_mode="HTML")
     except Exception as e:
         logger.warning(f"chat_member_welcome error: {e}")
 
@@ -2081,11 +2067,6 @@ async def main() -> None:
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("broadcaststats", broadcast_stats_command))
     application.add_handler(CommandHandler("broadcastgc", broadcastgc_command))
-    # ⭐ GAME COMMANDS ADDED
-    application.add_handler(CommandHandler("games", games_menu))
-    application.add_handler(CommandHandler("game", games_menu))
-    application.add_handler(CommandHandler("play", games_menu))
-    application.add_handler(CommandHandler("leaderboard", leaderboard_command))
     
     application.add_handler(CallbackQueryHandler(master_button_router))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
