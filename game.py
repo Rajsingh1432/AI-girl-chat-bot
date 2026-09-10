@@ -8,6 +8,7 @@ import logging
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
+from telegram.error import Forbidden
 from groq import AsyncGroq
 from dotenv import load_dotenv
 
@@ -44,15 +45,14 @@ _gkeys = [k for k in _gkeys if k]
 _game_client = AsyncGroq(api_key=_gkeys[0]) if _gkeys else None
 
 FALLBACK_QUESTIONS = [
-    {"q": "Agar main tumhari hoodie chura lu, toh tum kya karoge?", "opts": ["chup rahunga", "maarunga", "wapas lunga", "firki dunga"], "best": 0},
+    {"q": "Agar main tumhe mall me akeli dekhu, toh tum kya karoge?", "opts": ["seedha propose maar du", "chupke se dekhta rahu", "dost bana ke line maru", "ignore karke nikal du"], "best": 0},
+    {"q": "Mujhse pehli baar baat karke tumhara kya reaction tha?", "opts": ["mast ladki hai", "thodi pagal lag rahi thi", "boring hai", "aawaz sunkar dil ho gaya"], "best": 3},
+    {"q": "Agar main tumhari hoodie chura lu, toh?", "opts": ["chup rahunga", "maarunga", "wapas lunga", "firki dunga"], "best": 0},
     {"q": "Main ghadi pehenti hu, tumhara reaction?", "opts": ["ghumaunga", "khud pehnunga", "daatunga", "thanks bolunga"], "best": 3},
-    {"q": "Agar main gadi chalane ko bolu, toh?", "opts": ["chala dunga", "darr lagta hai", "backseat lunga", "nhi chalaunga"], "best": 0},
-    {"q": "Agar main tumhara phone check karu?", "opts": ["de dunga", "chhupaunga", "delete karunga", "daatunga"], "best": 0},
-    {"q": "Agar main raat ko 2 baje call karu?", "opts": ["uthaunga", "cut maarunga", "block karunga", "subah milunga"], "best": 0},
-    {"q": "Main beach pe akeli ghoom rahi hu, tum?", "opts": ["piche chalunga", "bike le aunga", "selfie lunga", "ignore karunga"], "best": 1}
+    {"q": "Agar main gadi chalane ko bolu, toh?", "opts": ["chala dunga", "darr lagta hai", "backseat lunga", "nhi chalaunga"], "best": 0}
 ]
 
-active_games = {} # Buzzer state per group (chat_id)
+active_games = {}
 
 # ⭐ ========== DB FUNCTIONS ==========
 def get_db_conn():
@@ -164,15 +164,24 @@ BEST: <A/B/C/D>"""
             logger.info(f"🔄 Game AI: Attempt {attempt+1} to generate question...")
             response = await asyncio.wait_for(
                 _game_client.chat.completions.create(
-                    model="openai/gpt-oss-20b",
+                    model="gpt-oss-20b", # ⭐ Using GPT-OSS-20B as Llama is removed from Groq
                     messages=messages,
-                    temperature=1.0, # ⭐ Temp 1.0 kar diya taaki AI zyada creative soche
-                    max_tokens=400
+                    temperature=1.0,
+                    max_tokens=400,
+                    reasoning_effort="low",
+                    include_reasoning=False
                 ),
                 timeout=15.0 
             )
-            text = response.choices[0].message.content.strip()
-            logger.info(f"✅ Game AI Raw Response: {text}")
+            
+            # ⭐ FIX: Agar content None hai, toh empty string maano
+            text = response.choices[0].message.content.strip() if response.choices[0].message.content else ""
+            
+            if not text:
+                logger.warning(f"⚠️ Game AI: Empty response received on attempt {attempt+1}")
+                continue
+                
+            logger.info(f"✅ Game AI Raw Response: {text[:150]}...")
             
             # 1. Think Tags & Markdown Hatao
             text = re.sub(r"<think[\s\S]*?<\/think>", "", text, flags=re.IGNORECASE).strip()
@@ -285,7 +294,6 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("Add Me Baby", url=f"https://t.me/{bot_username}?startgroup=start", style=ButtonStyle.PRIMARY, icon_custom_emoji_id=PREMIUM_EMOJIS["kidnap"])]
     ]
     
-    # Cleanup old games
     current_time = time.time()
     for cid in list(active_games.keys()):
         if current_time - active_games[cid].get("last_active", 0) > 300:
@@ -324,7 +332,6 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game = active_games[chat_id]
         game["last_active"] = current_time
         
-        # ⭐ BUZZER LOCK CHECK
         if game.get("locked", False):
             await query.answer("Bhai answer ho gaya! Next sawaal ka wait karo. 😒", show_alert=False)
             return
@@ -334,9 +341,7 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_q = game["current_q"]
         
         if opt_idx == current_q["best"]:
-            # ✅ SAHI JAWAB
             game["locked"] = True
-            # ⭐ User ka asli naam save kar rahe hain DB me
             add_points_to_db(user.id, 10, chat_id, user.first_name)
             
             await query.answer("✅ Sahi Jawab! +10 Points", show_alert=False)
@@ -356,8 +361,6 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 active_games.pop(chat_id, None)
                 
         else:
-            # ❌ GALAT JAWAB
-            # ⭐ User ka asli naam save kar rahe hain DB me
             add_points_to_db(user.id, -2, chat_id, user.first_name)
             await query.answer("❌ Galat! -2 Points kat gaye.", show_alert=False)
             
@@ -378,11 +381,16 @@ async def button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception: pass
 
 async def ask_question(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
-    game = active_games[chat_id]
+    game = active_games.get(chat_id)
+    if not game: return
     q_idx = game["q_idx"]
     
     try:
         await context.bot.edit_message_text(chat_id=chat_id, message_id=game['msg_id'], text=f"<i>Sneha soch rahi hai sawaal {q_idx + 1}/5... {SPARKLE}</i>", parse_mode="HTML")
+    except Forbidden:
+        logger.warning(f"Bot kicked from group {chat_id} during ask_question. Game aborted.")
+        active_games.pop(chat_id, None)
+        return
     except Exception: pass
     
     question = await generate_ai_question()
@@ -403,9 +411,17 @@ async def ask_question(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     final_text = f"<b>Sawaal {q_idx + 1}/5</b> {FIRE}\n\n{question['q']}\n\n<i>Pehle sahi jawab wala +10 pts payega! Galat pe -2 pts katenge. ⚡</i>"
     try:
         await context.bot.edit_message_text(chat_id=chat_id, message_id=game['msg_id'], text=final_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    except Forbidden:
+        logger.warning(f"Bot kicked from group {chat_id} during ask_question edit. Game aborted.")
+        active_games.pop(chat_id, None)
     except Exception:
-        msg = await context.bot.send_message(chat_id=chat_id, text=final_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
-        game['msg_id'] = msg.message_id
+        try:
+            msg = await context.bot.send_message(chat_id=chat_id, text=final_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+            game['msg_id'] = msg.message_id
+        except Forbidden:
+            logger.warning(f"Bot kicked from group {chat_id} during ask_question send. Game aborted.")
+            active_games.pop(chat_id, None)
+        except Exception: pass
         
     asyncio.create_task(timeout_question(context, chat_id))
 
@@ -420,6 +436,10 @@ async def timeout_question(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
         win_text = f"⏳ <b>Time Up!</b> Kisi ne sahi jawab nahi diya.\n\n<b>{current_q['q']}</b>\n✅ <b>Answer:</b> {current_q['opts'][current_q['best']]}\n\n<i>Next sawaal a raha hai...</i>"
         try:
             await context.bot.edit_message_text(chat_id=chat_id, message_id=game['msg_id'], text=win_text, parse_mode="HTML")
+        except Forbidden:
+            logger.warning(f"Bot kicked from group {chat_id} during timeout. Game aborted.")
+            active_games.pop(chat_id, None)
+            return
         except Exception: pass
         
         game["q_idx"] += 1
@@ -456,8 +476,16 @@ async def end_game_winner(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     
     try:
         await context.bot.edit_message_text(chat_id=chat_id, message_id=game['msg_id'], text=final_text, reply_markup=InlineKeyboardMarkup(main_menu_keyboard), parse_mode="HTML")
+    except Forbidden:
+        logger.warning(f"Bot kicked from group {chat_id} at game end. Game aborted.")
+        active_games.pop(chat_id, None)
     except Exception:
-        await context.bot.send_message(chat_id=chat_id, text=final_text, reply_markup=InlineKeyboardMarkup(main_menu_keyboard), parse_mode="HTML")
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=final_text, reply_markup=InlineKeyboardMarkup(main_menu_keyboard), parse_mode="HTML")
+        except Forbidden:
+            logger.warning(f"Bot kicked from group {chat_id} at game end send. Game aborted.")
+            active_games.pop(chat_id, None)
+        except Exception: pass
 
 async def newgame_command(update, context):
     await games_menu(update, context)
