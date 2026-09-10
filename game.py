@@ -44,8 +44,12 @@ _gkeys = [k for k in _gkeys if k]
 _game_client = AsyncGroq(api_key=_gkeys[0]) if _gkeys else None
 
 FALLBACK_QUESTIONS = [
-    {"q": "Agar main tumhe mall me akeli dekhu, toh tum kya karoge?", "opts": ["seedha propose maar du", "chupke se dekhta rahu", "dost bana ke line maru", "ignore karke nikal du"], "best": 0},
-    {"q": "Mujhse pehli baar baat karke tumhara kya reaction tha?", "opts": ["mast ladki hai", "thodi pagal lag rahi thi", "boring hai", "aawaz sunkar dil ho gaya"], "best": 3}
+    {"q": "Agar main tumhari hoodie chura lu, toh tum kya karoge?", "opts": ["chup rahunga", "maarunga", "wapas lunga", "firki dunga"], "best": 0},
+    {"q": "Main ghadi pehenti hu, tumhara reaction?", "opts": ["ghumaunga", "khud pehnunga", "daatunga", "thanks bolunga"], "best": 3},
+    {"q": "Agar main gadi chalane ko bolu, toh?", "opts": ["chala dunga", "darr lagta hai", "backseat lunga", "nhi chalaunga"], "best": 0},
+    {"q": "Agar main tumhara phone check karu?", "opts": ["de dunga", "chhupaunga", "delete karunga", "daatunga"], "best": 0},
+    {"q": "Agar main raat ko 2 baje call karu?", "opts": ["uthaunga", "cut maarunga", "block karunga", "subah milunga"], "best": 0},
+    {"q": "Main beach pe akeli ghoom rahi hu, tum?", "opts": ["piche chalunga", "bike le aunga", "selfie lunga", "ignore karunga"], "best": 1}
 ]
 
 active_games = {} # Buzzer state per group (chat_id)
@@ -138,9 +142,10 @@ async def generate_ai_question():
         return random.choice(FALLBACK_QUESTIONS)
         
     system_prompt = "You output strictly in the requested format. No markdown, no extra text, no thinking tags. Output strictly in Hinglish (Roman Hindi)."
-    user_prompt = """Tu ek flirty game bot hai (Sneha). Ek fun, casual scenario banao jahan Sneha user se puch rahi hai ki wo kya karega.
+    user_prompt = """Tu ek flirty game bot hai (Sneha). Ek ekdum alag, fun aur casual scenario banao jahan Sneha user ko test kar rahi hai. 
 Strictly HINGLISH me likho. 
-Options ekdum chote, casual aur realistic rakho (jaise 'seedha propose kar du', 'chupke se dekhta rahu', 'ignore karke nikal du'). Koi formal English ya bada paragraph nahi.
+WARNING: Boring scenarios (coffee, office, gym, college, game) bilkul mat use karna. Kuch hatke socho (jaise beach, raat ka time, sad moment, surprise date, gadi me drive, hoodie churana, phone check karna, etc).
+Options ekdum chote (max 2-3 words) aur realistic rakho (jaise 'seedha propose karu', 'chupke se dekhu', 'ignore karu', 'pyaar se manau'). Koi formal English ya bada paragraph nahi.
 Is format me reply karo, no extra text:
 Q: <1 line ka scenario>
 A) <Option A>
@@ -161,7 +166,7 @@ BEST: <A/B/C/D>"""
                 _game_client.chat.completions.create(
                     model="openai/gpt-oss-20b",
                     messages=messages,
-                    temperature=0.9,
+                    temperature=1.0, # ⭐ Temp 1.0 kar diya taaki AI zyada creative soche
                     max_tokens=400
                 ),
                 timeout=15.0 
