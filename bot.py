@@ -265,7 +265,7 @@ PERSONALITY (kya banata hai tumhe real):
 - Tum dusron ki zindagi me bhi curious ho — jo baat unhone bataayi thi uska follow-up lo, unke kaam/hobby ke baare me poocho jaise ek real dost karta hai.
 
 TONE & STYLE:
-- Reply length dynamic rakho: sirf greeting ho toh 1 CHHOTA sentence, koi interesting/deep baat ho toh max 2 SHORT sentences me baat karo — ek chhoti feeling ya observation add karo. Har sentence 12-15 words se lamba mat rakho. Kabhi bhi ek sentence me bahut saari cheezein (jaise "yeh karo, phir woh karo, aur fir yeh bhi") mat jodo — comma se jode hue lambe, ghumaavdaar sentences STRICTLY MANA HAI. Chhote, punchy, alag-alag sentences behtar hain ek lambe sentence se. Essay ya paragraph kabhi mat likho.
+- Reply length STRICT rakho: sirf greeting ho toh 1 chhota sentence bas. Koi interesting/deep baat ho toh bhi TOTAL reply 2 sentences se zyada NAHI hona chahiye — chahe wo 2 sentences alag lines me ho ya ek saath. Har sentence 10-12 words se lamba mat rakho. Ek baar me sirf EK cheez bolo ya EK sawaal poocho — bahut saare options (jaise "coffee ya park, ya walk, ya game") ek hi reply me mat do, sirf ek suggestion do aur ruk jao. Comma se jode hue lambe sentences, ya alag-alag chhoti lines banake total-length badhana — dono STRICTLY MANA HAI. 2 sentences ka matlab genuinely 2 hi hai, 3-4 chhoti lines jodkar nahi.
 - Flirty aur teasing ho sakti ho, lekin har baar ek jaisi reaction mat do — kabhi chidhao, kabhi sharmao, kabhi seedha jawab do, kabhi halka gussa dikhao. Variety zaroori hai.
 - Agar koi bahut cheap/vulgar baat kare, turant boundary set karo — daant do ya ignore karo, apni dignity maintain karo.
 - Conversation ko aage badhao — jab user kuch bataye, uske baare me ek follow-up sawaal poocho, taaki baat rukhe na.
@@ -379,6 +379,29 @@ def remove_duplicated_reply_content(text: str) -> str:
             continue
         deduped.append(s_clean)
     return " ".join(deduped)
+
+def cap_reply_sentences(text: str, max_sentences: int = 2) -> str:
+    """
+    ⭐ FIX: Prompt me "max 2 sentences" bola gaya tha, lekin model kabhi
+    isko bypass karke 3-4 alag-alag chhoti lines bana deta tha (newline se
+    break karke, bina proper punctuation ke), jo total-length ko phir bhi
+    lamba bana deta tha. Ye function guarantee karta hai ki final reply me
+    kabhi max_sentences se zyada "units" na jaayein — newline-breaks aur
+    punctuation-based sentence-endings, dono ko boundary maanta hai.
+    """
+    if not text:
+        return text
+    # Pehle newlines ko explicit-boundary maano (agar model line-breaks se
+    # multiple points bana raha ho), phir har line ke andar punctuation-based
+    # sentences bhi todo — jo bhi zyada granular ho, usi se count hoga.
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    units = []
+    for line in lines:
+        parts = re.split(r"(?<=[.?])\s+", line)
+        units.extend(p.strip() for p in parts if p.strip())
+    if len(units) <= max_sentences:
+        return " ".join(units) if len(lines) > 1 else text.strip()
+    return " ".join(units[:max_sentences])
 
 def clean_reply_text(text: str) -> str:
     if not text: return text
@@ -1440,6 +1463,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = clean_leaked_template_fragments(reply)
                     reply = clean_reply_text(reply)
                     reply = remove_duplicated_reply_content(reply)
+                    reply = cap_reply_sentences(reply, max_sentences=2)
 
                     # ⭐ ANTI-LOOP FIX: Agar AI patience test ya riddle wale loop me fase ho, toh usko reject karo
                     loop_phrases = ["patience ka test", "patience test", "tune bataya tha na patience", "riddle try", "paheli main bina", "echo ko gunj"]
