@@ -265,7 +265,7 @@ PERSONALITY (kya banata hai tumhe real):
 - Tum dusron ki zindagi me bhi curious ho — jo baat unhone bataayi thi uska follow-up lo, unke kaam/hobby ke baare me poocho jaise ek real dost karta hai.
 
 TONE & STYLE:
-- Reply length dynamic rakho: sirf greeting ho toh 1 line, koi interesting/deep baat ho toh 2-3 lines me khulke baat karo — apni feelings, chhota anecdote, ya observation add karo. Essay kabhi mat likho.
+- Reply length dynamic rakho: sirf greeting ho toh 1 CHHOTA sentence, koi interesting/deep baat ho toh max 2 SHORT sentences me baat karo — ek chhoti feeling ya observation add karo. Har sentence 12-15 words se lamba mat rakho. Kabhi bhi ek sentence me bahut saari cheezein (jaise "yeh karo, phir woh karo, aur fir yeh bhi") mat jodo — comma se jode hue lambe, ghumaavdaar sentences STRICTLY MANA HAI. Chhote, punchy, alag-alag sentences behtar hain ek lambe sentence se. Essay ya paragraph kabhi mat likho.
 - Flirty aur teasing ho sakti ho, lekin har baar ek jaisi reaction mat do — kabhi chidhao, kabhi sharmao, kabhi seedha jawab do, kabhi halka gussa dikhao. Variety zaroori hai.
 - Agar koi bahut cheap/vulgar baat kare, turant boundary set karo — daant do ya ignore karo, apni dignity maintain karo.
 - Conversation ko aage badhao — jab user kuch bataye, uske baare me ek follow-up sawaal poocho, taaki baat rukhe na.
@@ -339,6 +339,46 @@ def sanitize_reply_emojis(text: str) -> str:
     result = _ALL_EMOJI_PATTERN.sub(_replace, text)
     result = re.sub(r"[ \t]{2,}", " ", result)
     return result.strip()
+
+def remove_duplicated_reply_content(text: str) -> str:
+    """
+    ⭐ FIX: Kabhi-kabhi (khaaskar reasoning_effort=medium/high ke saath) model
+    poora sentence ya paragraph do baar likh deta hai — jaise self-correction
+    draft aur final-answer dono accidentally content me mix ho jaate hain.
+    Ye function check karta hai ki agar text ko exactly aadhe me todne se
+    dono halves same/near-identical hon, to sirf pehla half rakhta hai.
+    Isse "X. X." jaisa poora-paragraph-repeat pattern clean ho jaata hai.
+    """
+    if not text or len(text) < 20:
+        return text
+
+    stripped = text.strip()
+    n = len(stripped)
+    mid = n // 2
+
+    # Case 1: Text exactly do copies me split ho (ya bahut kareeb, off-by-few-chars)
+    for split_point in range(max(mid - 5, 1), min(mid + 6, n)):
+        first_half = stripped[:split_point].strip()
+        second_half = stripped[split_point:].strip()
+        if len(first_half) < 10 or len(second_half) < 10:
+            continue
+        # Normalize karke case-insensitive, trailing-punctuation-agnostic compare karo
+        norm_first = re.sub(r"[.,?\s]+$", "", first_half.lower())
+        norm_second = re.sub(r"[.,?\s]+$", "", second_half.lower())
+        if norm_first == norm_second:
+            return first_half
+
+    # Case 2: Same sentence turant repeat ho rahi ho (back-to-back), bina poora-text split ke
+    sentences = re.split(r"(?<=[.?])\s+", stripped)
+    deduped = []
+    for s in sentences:
+        s_clean = s.strip()
+        if not s_clean:
+            continue
+        if deduped and deduped[-1].strip().lower().rstrip(".?") == s_clean.lower().rstrip(".?"):
+            continue
+        deduped.append(s_clean)
+    return " ".join(deduped)
 
 def clean_reply_text(text: str) -> str:
     if not text: return text
@@ -1399,6 +1439,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = strip_echoed_user_message(reply, user_message)
                     reply = clean_leaked_template_fragments(reply)
                     reply = clean_reply_text(reply)
+                    reply = remove_duplicated_reply_content(reply)
 
                     # ⭐ ANTI-LOOP FIX: Agar AI patience test ya riddle wale loop me fase ho, toh usko reject karo
                     loop_phrases = ["patience ka test", "patience test", "tune bataya tha na patience", "riddle try", "paheli main bina", "echo ko gunj"]
