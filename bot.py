@@ -897,7 +897,7 @@ Rules:
                 try:
                     response = await clients[idx].chat.completions.create(
                         model="openai/gpt-oss-120b", messages=messages, temperature=0.9,
-                        max_tokens=150, reasoning_effort="low", include_reasoning=False, timeout=10.0
+                        max_tokens=250, reasoning_effort="medium", include_reasoning=False, timeout=15.0
                     )
                     reply = response.choices[0].message.content
                     reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '').strip().strip('`')
@@ -1385,11 +1385,11 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         model="openai/gpt-oss-120b",
                         messages=messages,
                         temperature=0.7,
-                        max_tokens=400,
+                        max_tokens=600,
                         top_p=0.9,
-                        reasoning_effort="low", # ⭐ Reasoning Wapas: Taki wo bhondu na bane aur loop me na fase
+                        reasoning_effort="medium", # ⭐ Keys/tokens bharpoor hain, isliye speed ki jagah depth priority — model ko poora prompt (personality, memory, boundaries) properly process karne ke liye zyada reasoning-budget diya, taaki confuse na ho aur genuinely rich reply de
                         include_reasoning=False, # ⭐ Output me soch na aaye isliye
-                        timeout=15.0
+                        timeout=20.0
                     )
                     reply = response.choices[0].message.content
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
