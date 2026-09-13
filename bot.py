@@ -320,7 +320,17 @@ _ALL_EMOJI_PATTERN = re.compile(
     flags=re.UNICODE
 )
 
-def sanitize_reply_emojis(text: str) -> str:
+_last_used_emoji = {}  # user_id -> last emoji used, taaki repeat na ho
+
+def sanitize_reply_emojis(text: str, user_id: int | None = None) -> str:
+    """
+    ⭐ FIX: Model consistently ek hi emoji (jaise 🥰) baar-baar use kar raha
+    tha, chahe prompt me "variety rakho" bola gaya ho — prompt-instruction
+    akela reliable nahi tha. Ab code-level guarantee hai: agar naya emoji
+    usi user ke pichle reply wali emoji se match kare, to usse ek
+    alag/random emoji se replace kar dete hain — taaki repetition kabhi na
+    ho, chahe model kuch bhi choose kare.
+    """
     if not text:
         return text
     allowed = set(CHAT_PREMIUM_EMOJIS.keys())
@@ -339,7 +349,19 @@ def sanitize_reply_emojis(text: str) -> str:
         return ""
     result = _ALL_EMOJI_PATTERN.sub(_replace, text)
     result = re.sub(r"[ \t]{2,}", " ", result)
-    return result.strip()
+    result = result.strip()
+
+    if user_id is not None:
+        used_emoji = next((e for e in allowed if e in result), None)
+        if used_emoji:
+            last = _last_used_emoji.get(user_id)
+            if last == used_emoji:
+                choices = [e for e in allowed if e != used_emoji]
+                new_emoji = random.choice(choices)
+                result = result.replace(used_emoji, new_emoji, 1)
+                used_emoji = new_emoji
+            _last_used_emoji[user_id] = used_emoji
+    return result
 
 def remove_duplicated_reply_content(text: str) -> str:
     """
@@ -404,7 +426,7 @@ def cap_reply_sentences(text: str, max_sentences: int = 2) -> str:
         return " ".join(units) if len(lines) > 1 else text.strip()
     return " ".join(units[:max_sentences])
 
-def clean_reply_text(text: str) -> str:
+def clean_reply_text(text: str, user_id: int | None = None) -> str:
     if not text: return text
     
     text = re.sub(r"User says.*?(emoji|emoji\.)", "", text, flags=re.IGNORECASE).strip()
@@ -415,7 +437,7 @@ def clean_reply_text(text: str) -> str:
     text = re.sub(r'^[-—\s]+', '', text).strip()
     text = re.sub(r'[-—\s]+$', '', text).strip()
     text = re.sub(r'\s[-—]\s', ' ', text)
-    text = sanitize_reply_emojis(text)
+    text = sanitize_reply_emojis(text, user_id=user_id)
     return text
 
 def clean_leaked_template_fragments(reply: str) -> str:
@@ -908,7 +930,7 @@ User ne abhi "{user_message}" kaha. 1 line ka reply do. Hinglish me. 1 emoji. Pu
                     reply = response.choices[0].message.content
                     reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                     reply = reply.strip().strip('`')
-                    reply = clean_reply_text(reply)
+                    reply = clean_reply_text(reply, user_id=user_id)
                     update_key_usage_actual(idx, entry_idx, 100)
                     reset_key_429_streak(idx)
                     return reply
@@ -967,7 +989,7 @@ Rules:
                     )
                     reply = response.choices[0].message.content
                     reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '').strip().strip('`')
-                    reply = clean_reply_text(reply)
+                    reply = clean_reply_text(reply, user_id=user_id)
                     update_key_usage_actual(idx, entry_idx, 100)
                     reset_key_429_streak(idx)
                     return reply
@@ -1464,7 +1486,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = reply.strip().strip('`')
                     reply = strip_echoed_user_message(reply, user_message)
                     reply = clean_leaked_template_fragments(reply)
-                    reply = clean_reply_text(reply)
+                    reply = clean_reply_text(reply, user_id=user_id)
                     reply = remove_duplicated_reply_content(reply)
                     reply = cap_reply_sentences(reply, max_sentences=2)
 
