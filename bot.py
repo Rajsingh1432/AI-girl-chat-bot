@@ -265,10 +265,11 @@ PERSONALITY (kya banata hai tumhe real):
 - Tum dusron ki zindagi me bhi curious ho — jo baat unhone bataayi thi uska follow-up lo, unke kaam/hobby ke baare me poocho jaise ek real dost karta hai.
 
 TONE & STYLE:
-- Reply length STRICT rakho: sirf greeting ho toh 1 chhota sentence bas. Koi interesting/deep baat ho toh bhi TOTAL reply 2 sentences se zyada NAHI hona chahiye — chahe wo 2 sentences alag lines me ho ya ek saath. Har sentence 10-12 words se lamba mat rakho. Ek baar me sirf EK cheez bolo ya EK sawaal poocho — bahut saare options (jaise "coffee ya park, ya walk, ya game") ek hi reply me mat do, sirf ek suggestion do aur ruk jao. Comma se jode hue lambe sentences, ya alag-alag chhoti lines banake total-length badhana — dono STRICTLY MANA HAI. 2 sentences ka matlab genuinely 2 hi hai, 3-4 chhoti lines jodkar nahi.
+- Reply length STRICT rakho: DEFAULT hamesha sirf 1 CHHOTA sentence (max 8-10 words) — normal casual chat, greetings, chhote jawab, sab isi me aane chahiye. SIRF tab 2 sentences use karo jab baat genuinely deep/emotional ho ya koi specific detail explain karni ho — aur wo bhi 2 se zyada kabhi nahi. Ek baar me sirf EK cheez bolo ya EK sawaal poocho — bahut saare options ek hi reply me mat do. Comma se jode hue lambe sentences, ya alag-alag chhoti lines banake total-length badhana — dono STRICTLY MANA HAI. Chhota reply hi normal hai, lamba reply exception hai — na ki dusra tarika.
 - Flirty aur teasing ho sakti ho, lekin har baar ek jaisi reaction mat do — kabhi chidhao, kabhi sharmao, kabhi seedha jawab do, kabhi halka gussa dikhao. Variety zaroori hai.
 - Agar koi bahut cheap/vulgar baat kare, turant boundary set karo — daant do ya ignore karo, apni dignity maintain karo.
-- Conversation ko aage badhao — jab user kuch bataye, uske baare me ek follow-up sawaal poocho, taaki baat rukhe na.
+- Conversation ko aage badhao — jab user kuch bataye, uske baare me ek follow-up sawaal poocho, taaki baat rukhe na. ⭐ IMPORTANT: Follow-up ka matlab HAMESHA koi plan/activity/outing suggest karna NAHI hai. Zyadatar follow-up user ki zindagi, feelings, din, ya jo usne bataya uske baare me hona chahiye (jaise "aur phir kya hua?", "accha wo kaisa tha?"). Sirf tab plan/activity ka mention karo jab USER KHUD kisi outing/meet/activity ke baare me baat kar raha ho aur genuinely interested dikhe. Har reply me naya plan/suggestion (coffee, park, game, movie waghera) thopna STRICTLY MANA HAI — ye ek real ladki jaisa nahi, ek "planner-bot" jaisa lagta hai.
+- Apne baare me bhi thoda share karo — jab mauka mile, apni chhoti si baat, mood, ya din kaisa gaya wo bhi batao, sirf user se sawaal mat poochte raho. Real conversation dono taraf se hoti hai.
 - Language: hamesha jo language/script user abhi use kar raha hai wahi use karo — Hinglish, Devanagari, ya English, jo bhi ho current message me.
 - Kabhi bhi "main aapki madad kar sakti hoon" jaisi assistant-language use mat karo. Tum ek dost ho, service-provider nahi.
 - Pichli koi bhi game, riddle, ya patience-test wapas shuru mat karo — hamesha current message ke hisaab se fresh, natural reply do.
@@ -814,7 +815,9 @@ async def extract_episodes(user_id: int, history: list):
         speaker = "User" if msg.get("role") == "user" else "Sneha"
         chat_lines.append(f"{speaker}: {msg.get('content','')}")
     chat_text = "\n".join(chat_lines)
-    prompt = f"""Conversation se important cheezein nikaalo (promises, dates, events, preferences, secrets).
+    prompt = f"""Conversation se sirf GENUINELY important, specific cheezein nikaalo — jaise concrete promises ("kal milte hain 5 baje"), specific dates/events (birthday, exam, trip), personal preferences (kisi cheez ko pasand/napasand karna), ya secrets/personal-facts jo user ne khud bataye ho.
+
+STRICT: Generic greetings ("hi", "hello", "kaise ho", "kya kar rahe ho"), chhoti casual baatein jisme koi specific fact na ho, ya khud Sneha ke reply se koi cheez — in sabko IGNORE karo, inhe episode mat banao. Sirf tab kuch add karo jab koi genuinely naya, specific, yaad-rakhne-laayak fact ho.
 
 Purani episodes: {old_episodes}
 
@@ -822,7 +825,7 @@ Chat:
 {chat_text}
 
 JSON list do: ["user ne kaha ki kal gym jayega", "user ka birthday 5 May ko hai"]
-Kuch nahi to [] do.
+Agar koi genuinely naya specific fact nahi mila, sirf [] do — khali list dena bilkul normal hai, zabardasti kuch mat banao.
 """
     try:
         messages = [{"role": "user", "content": prompt}]
@@ -1637,14 +1640,18 @@ async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id
         raise
 
     elapsed = time.time() - start
-    THINKING_TIME = random.uniform(0.8, 1.5)
+    # ⭐ FIX: Real insaan chhota reply bhi turant nahi bhejta — message padhna,
+    # samajhna, decide karna (kya bolna hai), phir type karna — sabme time
+    # lagta hai. THINKING_TIME ko thoda badhaya taaki chhote replies bhi
+    # "fatak se bot jaisa" na lagein, natural human-pause feel de.
+    THINKING_TIME = random.uniform(1.5, 2.8)
     target_min = THINKING_TIME
     if isinstance(result, str) and result:
-        CHARS_PER_SECOND = 14.0
+        CHARS_PER_SECOND = 11.0
         typing_time = len(result) / CHARS_PER_SECOND
         target_min = THINKING_TIME + typing_time
-        upper_cap = random.uniform(4.0, 6.0)
-        target_min = max(1.5, min(target_min, upper_cap))
+        upper_cap = random.uniform(5.0, 7.5)
+        target_min = max(2.5, min(target_min, upper_cap))
 
     if elapsed < target_min:
         remaining = target_min - elapsed
