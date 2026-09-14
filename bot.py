@@ -496,6 +496,14 @@ def init_db():
             conn.commit()
         except Exception:
             pass
+        try:
+            # ⭐ GENDER-AWARE LANGUAGE: gender AI-inferred hoti hai (naam/tone/context se),
+            # kabhi galat bhi ho sakti hai isliye 'unknown' default rakha — jab tak confident
+            # na ho tab tak gender-specific words use nahi honge.
+            c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'unknown'")
+            conn.commit()
+        except Exception:
+            pass
         c.close()
         conn.close()
         logger.info("✅ PostgreSQL Permanent Database Connected!")
@@ -617,6 +625,34 @@ def update_user_trust_level(user_id: int, level: int):
         conn.commit(); c.close(); conn.close()
     except Exception as e:
         logger.error(f"Trust level update fail: {e}")
+
+def get_user_gender(user_id: int) -> str:
+    """⭐ 'unknown', 'male', ya 'female' return karta hai."""
+    if not DATABASE_URL: return "unknown"
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT gender FROM user_memory WHERE user_id=%s", (user_id,))
+        row = c.fetchone()
+        c.close(); conn.close()
+        return row[0] if row and row[0] else "unknown"
+    except Exception:
+        return "unknown"
+
+def update_user_gender(user_id: int, gender: str):
+    """⭐ Sirf 'male'/'female' confident-guess hi save karo, 'unknown' ko overwrite karne ki zaroorat nahi."""
+    if not DATABASE_URL or gender not in ("male", "female"): return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("UPDATE user_memory SET gender=%s WHERE user_id=%s", (gender, user_id))
+        if c.rowcount == 0:
+            c.execute("INSERT INTO user_memory (user_id, gender, updated_at) VALUES (%s, %s, %s) "
+                      "ON CONFLICT (user_id) DO UPDATE SET gender=%s",
+                      (user_id, gender, time.time(), gender))
+        conn.commit(); c.close(); conn.close()
+    except Exception as e:
+        logger.error(f"Gender update fail: {e}")
 
 async def save_broadcast_user_async(user_id: int):
     if not DATABASE_URL:
@@ -883,6 +919,58 @@ Agar koi genuinely naya specific fact nahi mila, sirf [] do — khali list dena 
                     logger.warning(f"⚠️ Episodes extraction garbage for {user_id}")
     except Exception as e:
         logger.warning(f"Episodes extraction fail for {user_id}: {e}")
+
+async def infer_user_gender(user_id: int, telegram_name: str, history: list):
+    """
+    ⭐ GENDER-AWARE LANGUAGE: AI naam, tone, aur message-content se user ka
+    gender guess karta hai — kabhi galat bhi ho sakta hai isliye sirf tab
+    save karte hain jab AI GENUINELY confident ho ("unsure" ko discard karte
+    hain). Gender ek baar set hone ke baad dobara infer nahi hoti (function
+    caller khud check karta hai ki abhi 'unknown' hai ya nahi).
+    """
+    if not DATABASE_URL or len(history) < 2:
+        return
+    recent = history[-6:]
+    chat_lines = [f"User: {msg.get('content','')}" for msg in recent if msg.get("role") == "user"]
+    chat_text = "\n".join(chat_lines)
+    if not chat_text.strip():
+        return
+    prompt = f"""Naam aur in messages se guess karo ki ye user ladka hai ya ladki — naam ke pattern, tone, self-references (jaise "main gaya", "main gayi"), ya kisi bhi clue se.
+
+Naam: {telegram_name or "pata nahi"}
+Messages:
+{chat_text}
+
+Sirf ek word do: "male", "female", ya "unsure" (agar genuinely confident nahi ho toh "unsure" hi do, guess mat maaro).
+"""
+    try:
+        messages = [{"role": "user", "content": prompt}]
+        idx = pick_best_key(time.time())
+        if idx is None:
+            return
+        async with _key_locks[idx]:
+            if not key_has_room(idx):
+                return
+            entry_idx = pre_record_key_usage(idx)
+            async with _concurrency_semaphore:
+                await throttle_dispatch()
+                response = await clients[idx].chat.completions.create(
+                    model="openai/gpt-oss-20b",
+                    messages=messages,
+                    temperature=0.1,
+                    max_tokens=10,
+                    reasoning_effort="low",
+                    include_reasoning=False,
+                    timeout=8.0
+                )
+                content = response.choices[0].message.content.strip().lower()
+                if content in ("male", "female"):
+                    update_user_gender(user_id, content)
+                    update_key_usage_actual(idx, entry_idx, 30)
+                    reset_key_429_streak(idx)
+                    logger.info(f"🚻 Gender inferred for {user_id}: {content}")
+    except Exception as e:
+        logger.warning(f"Gender inference fail for {user_id}: {e}")
 
 async def generate_greeting(user_id: int, user_message: str) -> str | None:
     summary = get_user_summary(user_id)
@@ -1427,6 +1515,14 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     
     system_prompt += trust_context
 
+    user_gender = get_user_gender(user_id)
+    gender_context = ""
+    if user_gender == "male":
+        gender_context = "\n[USER GENDER: Ladka hai. 'Boss', 'dude', 'bhai' jaise words use kar sakti ho jab natural lage. Usse baat karte waqt 'chahte ho', 'kar rahe ho', 'gaye the' jaisa masculine-grammar use karo — 'chahti ho' jaisa feminine-grammar mat use karo.]"
+    elif user_gender == "female":
+        gender_context = "\n[USER GENDER: Ladki hai. 'Didi', 'behen', 'bestu' jaise words use kar sakti ho jab natural lage (agar close-dost jaisa tone ho). Usse baat karte waqt 'chahti ho', 'kar rahi ho', 'gayi thi' jaisa feminine-grammar use karo — 'chahte ho' jaisa masculine-grammar mat use karo.]"
+    system_prompt += gender_context
+
     messages = [{"role": "system", "content": system_prompt}]
     if history:
         messages.extend(history)
@@ -1553,6 +1649,28 @@ _background_tasks = set()
 _last_activity = {}
 _last_summarized_count = {}
 
+# ⭐ GROUP CONVERSATION AWARENESS
+# Har group ka rolling-buffer: chat_id -> list of {"name": str, "text": str, "time": float}
+# Bot ko mention na kiya gaya ho tab bhi, ye buffer silently sab track karta hai.
+_group_message_buffer = {}
+GROUP_BUFFER_MAX = 20          # per-group max messages yaad rakhte hain
+GROUP_BUFFER_WINDOW = 600      # 10 minute se purani entries automatically discard
+_group_last_intervention = {}  # chat_id -> timestamp jab Sneha ne last baar khud se bola
+GROUP_INTERVENTION_COOLDOWN = 900  # 15 minute — spam na ho isliye strict cooldown
+
+def add_to_group_buffer(chat_id: int, user_name: str, text: str):
+    if not text or len(text.strip()) < 2:
+        return
+    buf = _group_message_buffer.setdefault(chat_id, [])
+    now = time.time()
+    buf.append({"name": user_name, "text": text.strip(), "time": now})
+    # Purani entries (window se bahar) hata do
+    cutoff = now - GROUP_BUFFER_WINDOW
+    buf[:] = [m for m in buf if m["time"] >= cutoff]
+    # Max-size bhi maintain karo
+    if len(buf) > GROUP_BUFFER_MAX:
+        del buf[:len(buf) - GROUP_BUFFER_MAX]
+
 def update_history(user_id: int, user_message: str, bot_reply: str, telegram_name: str | None = None, chat_id: int = None) -> None:
     history = conversation_memory.setdefault(user_id, get_history(user_id))
     history.append({"role": "user", "content": user_message})
@@ -1597,6 +1715,13 @@ def update_history(user_id: int, user_message: str, bot_reply: str, telegram_nam
         task2 = asyncio.create_task(extract_episodes(user_id, history))
         _background_tasks.add(task2)
         task2.add_done_callback(_background_tasks.discard)
+
+        # ⭐ GENDER-AWARE LANGUAGE: sirf tab infer karo jab abhi tak pata nahi
+        # hai — ek baar confident-set hone ke baad dobara nahi chalta.
+        if get_user_gender(user_id) == "unknown":
+            task3 = asyncio.create_task(infer_user_gender(user_id, telegram_name, history))
+            _background_tasks.add(task3)
+            task3.add_done_callback(_background_tasks.discard)
 
         _last_summarized_count[user_id] = count
 
@@ -1770,9 +1895,15 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                     break
 
     if has_other_mentions and not is_bot_mentioned:
+        # ⭐ GROUP AWARENESS: bot ko mention nahi kiya gaya, lekin message ko
+        # silently buffer me daal dete hain taaki background-analyzer baad
+        # me is conversation ko "dekh" sake — chahe Sneha turant reply na de.
+        if chat.type in ("group", "supergroup"):
+            add_to_group_buffer(chat.id, user.first_name or "Someone", message_text)
         return
 
     if chat.type in ("group", "supergroup"):
+        add_to_group_buffer(chat.id, user.first_name or "Someone", message_text)
         if not await is_bot_admin(context, chat.id):
             if is_bot_mentioned or is_reply_to_bot:
                 now_ts = time.time()
@@ -2149,6 +2280,127 @@ async def proactive_message_watcher(bot):
             logger.error(f"proactive_message_watcher error: {e}")
         await asyncio.sleep(300) # 5 minute me check karo
 
+async def analyze_group_buffer_for_intervention(chat_id: int, messages: list) -> dict | None:
+    """
+    ⭐ GROUP CONVERSATION AWARENESS: Recent group-messages ko analyze karta
+    hai — agar koi genuinely interesting pattern mile (do logon ki ladai,
+    flirting, ek ladka kisi ladki ko impress karne ki koshish kar raha ho,
+    ya koi mazedaar topic chal raha ho), toh ek chhota, natural,
+    tagged-intervention-message generate karta hai. Agar kuch bhi
+    intervention-worthy nahi hai, None return karta hai — chup rehna hi
+    default hai, spam nahi.
+    """
+    if len(messages) < 4:
+        return None
+
+    chat_lines = [f"{m['name']}: {m['text']}" for m in messages[-15:]]
+    chat_text = "\n".join(chat_lines)
+
+    prompt = f"""Neeche ek Telegram group ki recent chat hai. Tum Sneha ho, group me chup-chap observe kar rahi thi.
+
+Chat:
+{chat_text}
+
+Dekho ki koi GENUINELY interesting cheez ho rahi hai kya — jaise:
+- Do log aapas me lad rahe hain (mazaak me ya serious)
+- Koi flirting/romance chal raha hai, ya koi kisi ko impress karne ki koshish kar raha hai
+- Koi genuinely mazedaar/dramatic topic discuss ho raha hai jisme tum ek chhota funny comment daal sakti ho
+
+Agar aisa kuch mila, JSON do:
+{{"intervene": true, "target_names": ["Name1", "Name2"], "message": "ek chhota, natural, teasing/funny comment jo Sneha bolegi — max 1 sentence, jaise ek dost beech me bolta hai"}}
+
+Agar chat normal/boring hai, koi drama/flirting/interesting-cheez nahi hai, JSON do:
+{{"intervene": false}}
+
+STRICT: Sirf genuinely interesting hone par hi intervene:true do. Zyadatar normal conversations me intervene:false hi sahi jawab hai — bahut choosy raho, har chhoti baat pe mat bolo.
+"""
+    try:
+        messages_payload = [{"role": "user", "content": prompt}]
+        idx = pick_best_key(time.time())
+        if idx is None:
+            return None
+        async with _key_locks[idx]:
+            if not key_has_room(idx):
+                return None
+            entry_idx = pre_record_key_usage(idx)
+            async with _concurrency_semaphore:
+                await throttle_dispatch()
+                response = await clients[idx].chat.completions.create(
+                    model="openai/gpt-oss-20b",
+                    messages=messages_payload,
+                    temperature=0.4,
+                    max_tokens=150,
+                    reasoning_effort="low",
+                    include_reasoning=False,
+                    timeout=10.0
+                )
+                content = response.choices[0].message.content.strip()
+                content = re.sub(r"^```json\s*|\s*```$", "", content).strip()
+                try:
+                    result = json.loads(content)
+                    update_key_usage_actual(idx, entry_idx, 100)
+                    reset_key_429_streak(idx)
+                    if isinstance(result, dict) and result.get("intervene"):
+                        return result
+                    return None
+                except json.JSONDecodeError:
+                    return None
+    except Exception as e:
+        logger.warning(f"Group buffer analysis fail for {chat_id}: {e}")
+        return None
+
+async def group_conversation_watcher(bot):
+    """
+    ⭐ GROUP CONVERSATION AWARENESS: Har group ke recent-message-buffer ko
+    periodically check karta hai. Agar genuinely interesting ho raha ho
+    (ladai, flirting, dramatic-topic), Sneha proactively ek chhota,
+    tagged-message bhejti hai — strict per-group cooldown ke saath, taaki
+    spam kabhi na ho.
+    """
+    while True:
+        try:
+            now = time.time()
+            for chat_id, buf in list(_group_message_buffer.items()):
+                if len(buf) < 4:
+                    continue
+                last_intervention = _group_last_intervention.get(chat_id, 0)
+                if now - last_intervention < GROUP_INTERVENTION_COOLDOWN:
+                    continue
+
+                result = await analyze_group_buffer_for_intervention(chat_id, buf)
+                if not result:
+                    continue
+
+                target_names = result.get("target_names", [])
+                message = result.get("message", "").strip()
+                if not message:
+                    continue
+
+                # Sanitize: sirf 1 emoji, koi quotes/exclamation nahi
+                message = message.replace('!', '').replace('"', '').replace("'", '')
+                message = sanitize_reply_emojis(message)
+
+                mention_prefix = ""
+                if target_names:
+                    mention_prefix = " ".join(f"@{n}" if not n.startswith("@") else n for n in target_names[:2]) + " "
+
+                final_text = f"{mention_prefix}{message}".strip()
+
+                try:
+                    member = await bot.get_chat_member(chat_id, bot.id)
+                    if member.status in ("administrator", "creator"):
+                        await bot.send_message(chat_id=chat_id, text=final_text)
+                        _group_last_intervention[chat_id] = now
+                        _group_message_buffer[chat_id] = []  # buffer clear, fresh start
+                        logger.info(f"💬 Group intervention sent to {chat_id}: {final_text}")
+                except Exception as e:
+                    logger.warning(f"Group intervention send fail for {chat_id}: {e}")
+
+                await asyncio.sleep(5)  # groups ke beech thoda gap
+        except Exception as e:
+            logger.error(f"group_conversation_watcher error: {e}", exc_info=e)
+        await asyncio.sleep(180)  # har 3 minute me check
+
 async def main() -> None:
     init_db()
     asyncio.create_task(daily_reset_watcher())
@@ -2163,6 +2415,7 @@ async def main() -> None:
     )
     
     asyncio.create_task(proactive_message_watcher(application.bot))
+    asyncio.create_task(group_conversation_watcher(application.bot))
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
