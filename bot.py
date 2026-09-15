@@ -920,6 +920,48 @@ Agar koi genuinely naya specific fact nahi mila, sirf [] do — khali list dena 
     except Exception as e:
         logger.warning(f"Episodes extraction fail for {user_id}: {e}")
 
+# ⭐ FAST GENDER-DETECTION: Common Indian naam se turant, instant guess —
+# koi API-call ki zaroorat nahi. Sirf tab kaam aata hai jab telegram_name
+# ek clean, exact-match common-naam ho. Ambiguous/generic naam (Queen,
+# King, koi bhi nickname) is list me match nahi karenge, wahan AI-based
+# infer_user_gender() (message-content dekh kar) fallback hoga.
+COMMON_MALE_NAMES = {
+    "rohit", "raj", "aryan", "rahul", "amit", "vikas", "vikram", "arjun", "karan",
+    "sagar", "sahil", "akash", "aditya", "abhishek", "ankit", "ashish", "deepak",
+    "gaurav", "harsh", "kartik", "manish", "mohit", "nikhil", "pankaj", "pranav",
+    "rajesh", "ravi", "rishabh", "rohan", "sandeep", "saurabh", "shivam", "suraj",
+    "tarun", "varun", "vishal", "yash", "arjit", "dev", "kunal", "naman", "om",
+    "prateek", "raunak", "rudra", "shaurya", "siddharth", "vivek", "ishaan",
+    "krishna", "lakshya", "mayank", "parth", "tanish", "uday", "vansh", "yuvraj",
+    "aman", "anish", "chirag", "dhruv", "faisal", "imran", "jatin", "kabir",
+    "lokesh", "mukesh", "nitin", "pawan", "rakesh", "sanjay", "tushar", "utkarsh",
+}
+COMMON_FEMALE_NAMES = {
+    "soniya", "sonali", "misty", "priya", "pooja", "neha", "riya", "anjali",
+    "kavya", "ananya", "aditi", "isha", "diya", "kritika", "muskan", "nisha",
+    "shreya", "tanvi", "vidya", "aarti", "bhavna", "chhavi", "deepika", "ekta",
+    "gauri", "ishita", "jyoti", "kajal", "komal", "lavanya", "meera", "nikita",
+    "palak", "radhika", "ruchi", "sakshi", "simran", "tanya", "urvashi", "vaishnavi",
+    "yamini", "zara", "aisha", "avni", "bhumi", "charvi", "disha", "esha",
+    "falak", "geetika", "harshita", "ira", "jiya", "kiara", "leela", "manvi",
+    "naina", "oviya", "pihu", "riddhi", "sana", "tara", "unnati", "vanya",
+    "sneha", "shweta", "swati", "megha", "monika", "preeti", "reena", "seema",
+}
+
+def fast_guess_gender_from_name(telegram_name: str) -> str | None:
+    """Instant, no-API naam-based gender-guess. None agar match na mile."""
+    if not telegram_name:
+        return None
+    # Sirf pehla word lo (agar full-name ho jaise "Rohit Sharma"), aur clean karo
+    first_word = re.sub(r"[^a-zA-Z]", "", telegram_name.strip().split()[0] if telegram_name.strip() else "").lower()
+    if not first_word:
+        return None
+    if first_word in COMMON_MALE_NAMES:
+        return "male"
+    if first_word in COMMON_FEMALE_NAMES:
+        return "female"
+    return None
+
 async def infer_user_gender(user_id: int, telegram_name: str, history: list):
     """
     ⭐ GENDER-AWARE LANGUAGE: AI naam, tone, aur message-content se user ka
@@ -935,13 +977,18 @@ async def infer_user_gender(user_id: int, telegram_name: str, history: list):
     chat_text = "\n".join(chat_lines)
     if not chat_text.strip():
         return
-    prompt = f"""Naam aur in messages se guess karo ki ye user ladka hai ya ladki — naam ke pattern, tone, self-references (jaise "main gaya", "main gayi"), ya kisi bhi clue se.
+    prompt = f"""In messages se guess karo ki ye user ladka hai ya ladki.
+
+STRICT PRIORITY ORDER:
+1. Sabse pehle sirf MESSAGE-CONTENT dekho — self-references jaise "main gaya"/"main gayi", "kar raha tha"/"kar rahi thi", ya explicit statements ("main ladka/ladki hoon"). Ye sabse reliable signal hai.
+2. Telegram ka display-name ("Naam" field) PAR ZYADA BHAROSA MAT KARO — log apna naam kuch bhi rakh sakte hain (jaise "Queen", "King", "Boss", "Cute Girl", koi bhi nickname/title) jo unke asli gender se match nahi karta. Naam sirf tab use karo jab wo ek clearly common, specific real-naam ho (jaise "Priya", "Rahul") — generic titles/nicknames/English-words ko naam ke roop me IGNORE karo.
+3. Agar sirf naam se pata chal raha ho aur wo generic/ambiguous/title-jaisa lage (Queen, King, Boss, Star, Angel, waghera), ya message-content me koi clear gender-signal na ho, toh "unsure" do — guess mat maaro.
 
 Naam: {telegram_name or "pata nahi"}
 Messages:
 {chat_text}
 
-Sirf ek word do: "male", "female", ya "unsure" (agar genuinely confident nahi ho toh "unsure" hi do, guess mat maaro).
+Sirf ek word do: "male", "female", ya "unsure".
 """
     try:
         messages = [{"role": "user", "content": prompt}]
@@ -1309,6 +1356,55 @@ async def dbcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         await update.message.reply_text(f"DB check error: {e}")
 
+async def setgender_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    ⭐ Owner-only: gender-inference galat ho jaaye to manually correct karne
+    ke liye. Usage: kisi user ke message ko reply karke '/setgender male'
+    ya '/setgender female' bolo, ya '/setgender <user_id> male' bhi chalega.
+    """
+    if update.effective_user.id != OWNER_ID:
+        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
+        return
+    if not DATABASE_URL:
+        await update.message.reply_text("❌ DATABASE_URL set nahi hai.")
+        return
+
+    args = context.args
+    target_user_id = None
+    target_gender = None
+
+    if update.message.reply_to_message and update.message.reply_to_message.from_user:
+        target_user_id = update.message.reply_to_message.from_user.id
+        if args:
+            target_gender = args[0].lower()
+    elif len(args) >= 2:
+        try:
+            target_user_id = int(args[0])
+            target_gender = args[1].lower()
+        except ValueError:
+            pass
+
+    if not target_user_id or target_gender not in ("male", "female", "unknown"):
+        await update.message.reply_text(
+            "Usage:\n"
+            "Kisi user ke message ko reply karke: /setgender male (ya female/unknown)\n"
+            "Ya seedha: /setgender <user_id> male"
+        )
+        return
+
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("UPDATE user_memory SET gender=%s WHERE user_id=%s", (target_gender, target_user_id))
+        if c.rowcount == 0:
+            c.execute("INSERT INTO user_memory (user_id, gender, updated_at) VALUES (%s, %s, %s) "
+                      "ON CONFLICT (user_id) DO UPDATE SET gender=%s",
+                      (target_user_id, target_gender, time.time(), target_gender))
+        conn.commit(); c.close(); conn.close()
+        await update.message.reply_text(f"✅ User {target_user_id} ka gender ab '{target_gender}' set ho gaya.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {e}")
+
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -1521,6 +1617,14 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         gender_context = "\n[USER GENDER: Ladka hai. 'Boss', 'dude', 'bhai' jaise words use kar sakti ho jab natural lage. Usse baat karte waqt 'chahte ho', 'kar rahe ho', 'gaye the' jaisa masculine-grammar use karo — 'chahti ho' jaisa feminine-grammar mat use karo.]"
     elif user_gender == "female":
         gender_context = "\n[USER GENDER: Ladki hai. 'Didi', 'behen', 'bestu' jaise words use kar sakti ho jab natural lage (agar close-dost jaisa tone ho). Usse baat karte waqt 'chahti ho', 'kar rahi ho', 'gayi thi' jaisa feminine-grammar use karo — 'chahte ho' jaisa masculine-grammar mat use karo.]"
+    else:
+        # ⭐ FIX: Gender abhi pata nahi hai — is case me DEFAULT-feminine
+        # grammar (jaise "rahi ho", "gayi thi") use karna galat hai kyunki
+        # user ladka bhi ho sakta hai. Jab tak gender confirm na ho, GENDER-
+        # NEUTRAL phrasing use karo — jaise "kar rahe ho", "gaye", "kaisa
+        # laga" (in dono gender ke liye chalte hain), 'karti/karta' jaisi
+        # gendered word-endings avoid karo.
+        gender_context = "\n[USER GENDER: Abhi pata nahi hai. Jab tak clear na ho, GENDER-NEUTRAL phrasing use karo — jaise 'kar rahe ho', 'kaisa laga', 'gaye kya' — kabhi bhi feminine ('rahi ho', 'gayi thi', 'karti ho') ya masculine-specific ('boss', 'dude') words zabardasti mat use karo jab tak gender pata na ho.]"
     system_prompt += gender_context
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -1716,14 +1820,26 @@ def update_history(user_id: int, user_message: str, bot_reply: str, telegram_nam
         _background_tasks.add(task2)
         task2.add_done_callback(_background_tasks.discard)
 
-        # ⭐ GENDER-AWARE LANGUAGE: sirf tab infer karo jab abhi tak pata nahi
-        # hai — ek baar confident-set hone ke baad dobara nahi chalta.
-        if get_user_gender(user_id) == "unknown":
-            task3 = asyncio.create_task(infer_user_gender(user_id, telegram_name, history))
-            _background_tasks.add(task3)
-            task3.add_done_callback(_background_tasks.discard)
-
         _last_summarized_count[user_id] = count
+
+    # ⭐ GENDER-AWARE LANGUAGE FIX: Do-step approach —
+    # STEP 1 (instant, koi API-call nahi): Pehle hi message pe telegram_name
+    # ko common-naam-list se check karte hain (Rohit/Raj/Aryan → male,
+    # Soniya/Sonali/Priya → female). Agar match mil jaaye, turant set ho
+    # jaata hai — 2nd message ka wait nahi karna padta.
+    # STEP 2 (AI-fallback): Agar naam list me match nahi hua (generic naam
+    # jaise "Queen" ya "King"), purana AI-based content-analysis fallback
+    # chalta hai, jo message-content dekh kar guess karta hai.
+    if count == 1 and get_user_gender(user_id) == "unknown":
+        fast_guess = fast_guess_gender_from_name(telegram_name)
+        if fast_guess:
+            update_user_gender(user_id, fast_guess)
+            logger.info(f"🚻 Fast gender-guess (naam se) for {user_id}: {fast_guess}")
+
+    if count >= 2 and (count == 2 or count % 3 == 0) and get_user_gender(user_id) == "unknown":
+        task3 = asyncio.create_task(infer_user_gender(user_id, telegram_name, history))
+        _background_tasks.add(task3)
+        task3.add_done_callback(_background_tasks.discard)
 
 def has_telegram_link(text: str) -> bool:
     if not text: return False
@@ -2422,6 +2538,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("resetkeys", resetkeys_command))
     application.add_handler(CommandHandler("memory", memory_command))
     application.add_handler(CommandHandler("dbcheck", dbcheck_command))
+    application.add_handler(CommandHandler("setgender", setgender_command))
     application.add_handler(CommandHandler("backup", backup_command))
     application.add_handler(CommandHandler("migrate_memory", migrate_memory_command))
     application.add_handler(CommandHandler("syncgroup", syncgroup_command))
