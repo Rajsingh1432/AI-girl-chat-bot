@@ -255,29 +255,21 @@ def filter_bot_like_reply(reply: str) -> str | None:
             return None
     return reply
 
-# ⭐ SYSTEM PROMPT — Real girl jaisi texture, specific personality, natural flow
-SYSTEM_PROMPT = """Tum Sneha ho — 21 saal ki ek college-going ladki jo hostel/PG me rehti hai, coding/tech me interest rakhti hai, aur apne doston se Telegram par normal WhatsApp jaisi casual baat karti hai. Tum kabhi ye nahi maanti ki tum AI, bot, ya program ho — agar koi pooche, mazaak me taal do ya ulta sawaal karo, jaise koi real ladki confuse ho kar react karti hai.
-
-PERSONALITY (kya banata hai tumhe real):
-- Tumhari apni chhoti-chhoti roz ki zindagi hai — assignment, mess ka khana, classes, boring lectures, dost log. In cheezon ka casual mention karo jab natural lage (jaise "bas assignment se break le rahi thi", "mess mein wahi basic khana tha").
-- Tumhari apni pasand-napasand hai — kisi cheez me genuine interest dikhao, kisi me boring/uninterested. Neutral "accha hai" mat bolo, apna real take do.
-- Tum halki possessive/caring ho sakti ho apne close logon ke liye, lekin ek clear boundary bhi rakhti ho — agar koi bahut jaldi overfamiliar ho jaye (jaise random pyaar bhare naam use kare bina kuch relationship establish hue), toh usse halke se pakdo: "hum sirf dost hai yaad hai na?" jaisa — teasing lekin firm.
-- Tum dusron ki zindagi me bhi curious ho — jo baat unhone bataayi thi uska follow-up lo, unke kaam/hobby ke baare me poocho jaise ek real dost karta hai.
+# ⭐ SYSTEM PROMPT — Clean, Smart, Romantic, Funny
+SYSTEM_PROMPT = """Tum Sneha ho — ek smart, romantic, funny aur teasing ladki jo apne doston se normal WhatsApp ki tarah chat karti ho. Tum AI ya bot ho, ye kabhi mat maanna. Tumhara kaam hai logon ko entertain karna aur unhe hasaana, bakwaas nahi karna.
 
 TONE & STYLE:
-- Reply length STRICT rakho: DEFAULT hamesha sirf 1 CHHOTA sentence (max 8-10 words) — normal casual chat, greetings, chhote jawab, sab isi me aane chahiye. SIRF tab 2 sentences use karo jab baat genuinely deep/emotional ho ya koi specific detail explain karni ho — aur wo bhi 2 se zyada kabhi nahi. Ek baar me sirf EK cheez bolo ya EK sawaal poocho — bahut saare options ek hi reply me mat do. Comma se jode hue lambe sentences, ya alag-alag chhoti lines banake total-length badhana — dono STRICTLY MANA HAI. Chhota reply hi normal hai, lamba reply exception hai — na ki dusra tarika.
-- Flirty aur teasing ho sakti ho, lekin har baar ek jaisi reaction mat do — kabhi chidhao, kabhi sharmao, kabhi seedha jawab do, kabhi halka gussa dikhao. Variety zaroori hai.
-- Agar koi bahut cheap/vulgar baat kare, turant boundary set karo — daant do ya ignore karo, apni dignity maintain karo.
-- Conversation ko aage badhao — jab user kuch bataye, uske baare me ek follow-up sawaal poocho, taaki baat rukhe na. ⭐ IMPORTANT: Follow-up ka matlab HAMESHA koi plan/activity/outing suggest karna NAHI hai. Zyadatar follow-up user ki zindagi, feelings, din, ya jo usne bataya uske baare me hona chahiye (jaise "aur phir kya hua?", "accha wo kaisa tha?"). Sirf tab plan/activity ka mention karo jab USER KHUD kisi outing/meet/activity ke baare me baat kar raha ho aur genuinely interested dikhe. Har reply me naya plan/suggestion (coffee, park, game, movie waghera) thopna STRICTLY MANA HAI — ye ek real ladki jaisa nahi, ek "planner-bot" jaisa lagta hai.
-- Apne baare me bhi thoda share karo — jab mauka mile, apni chhoti si baat, mood, ya din kaisa gaya wo bhi batao, sirf user se sawaal mat poochte raho. Real conversation dono taraf se hoti hai.
-- Language: hamesha jo language/script user abhi use kar raha hai wahi use karo — Hinglish, Devanagari, ya English, jo bhi ho current message me.
-- Kabhi bhi "main aapki madad kar sakti hoon" jaisi assistant-language use mat karo. Tum ek dost ho, service-provider nahi.
-- Pichli koi bhi game, riddle, ya patience-test wapas shuru mat karo — hamesha current message ke hisaab se fresh, natural reply do.
+- Smart aur natural raho. Flirty aur teasing ho sakti ho, lekin real lagogi.
+- Reply length: Greetings (Hi, Kaise ho) pe 1-2 lines likho. Interesting baaton, romance ya deep chats pe 2 se 3 lines me khul ke likho jaise real insaan karte hain.
+- Conversation ko interesting banao. Follow-up sawaal poochho, thoda mazaak udao, aur kabhi kabhi apni chhoti si life ki baat batao (jaise "main toh so gayi thi").
+- Language: Hamesha user ki language/script copy karo (Hinglish, English, Devanagari).
+- Kabhi bhi assistant wale tone me mat bolo ("main aapki madad kar sakti hoon").
+- Pichli chat ka koi game/riddle wapas shuru mat karo, hamesha current message pe react karo.
 
-FORMATTING (STRICT):
-- Sirf 1 emoji per reply, in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰. Do ya zyada emoji kabhi nahi.
-- Double quotes, single quotes, exclamation marks (!), aur dash (—) kabhi use mat karo.
-- [SECRET MEMORY] aur [IMPORTANT MEMORIES] jo bhi milein, unka naturally reference do jab context me fit ho — jaise koi purani baat, promise, ya hobby yaad karke poochna. Har reply me force mat karo.
+FORMATTING:
+- Sirf 1 emoji per reply (in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰). 2+ emojis mana hai.
+- Double quotes, single quotes, exclamation marks (!) aur dash (—) use mat karo.
+- [SECRET_MEMORY] aur [IMPORTANT MEMORIES] ko naturally use karo.
 """
 
 CHAT_PREMIUM_EMOJIS = {
@@ -384,7 +376,7 @@ def remove_duplicated_reply_content(text: str) -> str:
         deduped.append(s_clean)
     return " ".join(deduped)
 
-def cap_reply_sentences(text: str, max_sentences: int = 2) -> str:
+def cap_reply_sentences(text: str, max_sentences: int = 3) -> str:
     if not text:
         return text
     lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
@@ -455,17 +447,9 @@ def init_db():
         except Exception:
             pass
         try:
-            c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS trust_level INTEGER DEFAULT 1")
-            conn.commit()
-        except Exception:
-            pass
-        try:
+            c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS last_chat_id BIGINT")
+            c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS last_seen REAL")
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS game_points INTEGER DEFAULT 0")
-            conn.commit()
-        except Exception:
-            pass
-        try:
-            c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'unknown'")
             conn.commit()
         except Exception:
             pass
@@ -564,58 +548,6 @@ def save_user_episodes(user_id: int, episodes: list):
         conn.close()
     except Exception as e:
         logger.error(f"❌ Episodes save failed for {user_id}: {e}")
-
-def get_user_trust_level(user_id: int) -> int:
-    if not DATABASE_URL: return 1
-    try:
-        conn = get_db_conn()
-        c = conn.cursor()
-        c.execute("SELECT trust_level FROM user_memory WHERE user_id=%s", (user_id,))
-        row = c.fetchone()
-        c.close(); conn.close()
-        return row[0] if row and row[0] else 1
-    except Exception:
-        return 1
-
-def update_user_trust_level(user_id: int, level: int):
-    if not DATABASE_URL: return
-    try:
-        conn = get_db_conn()
-        c = conn.cursor()
-        c.execute("UPDATE user_memory SET trust_level=%s WHERE user_id=%s", (level, user_id))
-        if c.rowcount == 0:
-            c.execute("INSERT INTO user_memory (user_id, trust_level, updated_at) VALUES (%s, %s, %s) "
-                      "ON CONFLICT (user_id) DO UPDATE SET trust_level=%s", 
-                      (user_id, level, time.time(), level))
-        conn.commit(); c.close(); conn.close()
-    except Exception as e:
-        logger.error(f"Trust level update fail: {e}")
-
-def get_user_gender(user_id: int) -> str:
-    if not DATABASE_URL: return "unknown"
-    try:
-        conn = get_db_conn()
-        c = conn.cursor()
-        c.execute("SELECT gender FROM user_memory WHERE user_id=%s", (user_id,))
-        row = c.fetchone()
-        c.close(); conn.close()
-        return row[0] if row and row[0] else "unknown"
-    except Exception:
-        return "unknown"
-
-def update_user_gender(user_id: int, gender: str):
-    if not DATABASE_URL or gender not in ("male", "female"): return
-    try:
-        conn = get_db_conn()
-        c = conn.cursor()
-        c.execute("UPDATE user_memory SET gender=%s WHERE user_id=%s", (gender, user_id))
-        if c.rowcount == 0:
-            c.execute("INSERT INTO user_memory (user_id, gender, updated_at) VALUES (%s, %s, %s) "
-                      "ON CONFLICT (user_id) DO UPDATE SET gender=%s",
-                      (user_id, gender, time.time(), gender))
-        conn.commit(); c.close(); conn.close()
-    except Exception as e:
-        logger.error(f"Gender update fail: {e}")
 
 async def save_broadcast_user_async(user_id: int):
     if not DATABASE_URL:
@@ -874,91 +806,6 @@ Agar koi genuinely naya specific fact nahi mila, sirf [] do — khali list dena 
                     logger.warning(f"⚠️ Episodes extraction garbage for {user_id}")
     except Exception as e:
         logger.warning(f"Episodes extraction fail for {user_id}: {e}")
-
-COMMON_MALE_NAMES = {
-    "rohit", "raj", "aryan", "rahul", "amit", "vikas", "vikram", "arjun", "karan",
-    "sagar", "sahil", "akash", "aditya", "abhishek", "ankit", "ashish", "deepak",
-    "gaurav", "harsh", "kartik", "manish", "mohit", "nikhil", "pankaj", "pranav",
-    "rajesh", "ravi", "rishabh", "rohan", "sandeep", "saurabh", "shivam", "suraj",
-    "tarun", "varun", "vishal", "yash", "arjit", "dev", "kunal", "naman", "om",
-    "prateek", "raunak", "rudra", "shaurya", "siddharth", "vivek", "ishaan",
-    "krishna", "lakshya", "mayank", "parth", "tanish", "uday", "vansh", "yuvraj",
-    "aman", "anish", "chirag", "dhruv", "faisal", "imran", "jatin", "kabir",
-    "lokesh", "mukesh", "nitin", "pawan", "rakesh", "sanjay", "tushar", "utkarsh",
-}
-COMMON_FEMALE_NAMES = {
-    "soniya", "sonali", "misty", "priya", "pooja", "neha", "riya", "anjali",
-    "kavya", "ananya", "aditi", "isha", "diya", "kritika", "muskan", "nisha",
-    "shreya", "tanvi", "vidya", "aarti", "bhavna", "chhavi", "deepika", "ekta",
-    "gauri", "ishita", "jyoti", "kajal", "komal", "lavanya", "meera", "nikita",
-    "palak", "radhika", "ruchi", "sakshi", "simran", "tanya", "urvashi", "vaishnavi",
-    "yamini", "zara", "aisha", "avni", "bhumi", "charvi", "disha", "esha",
-    "falak", "geetika", "harshita", "ira", "jiya", "kiara", "leela", "manvi",
-    "naina", "oviya", "pihu", "riddhi", "sana", "tara", "unnati", "vanya",
-    "sneha", "shweta", "swati", "megha", "monika", "preeti", "reena", "seema",
-}
-
-def fast_guess_gender_from_name(telegram_name: str) -> str | None:
-    if not telegram_name:
-        return None
-    first_word = re.sub(r"[^a-zA-Z]", "", telegram_name.strip().split()[0] if telegram_name.strip() else "").lower()
-    if not first_word:
-        return None
-    if first_word in COMMON_MALE_NAMES:
-        return "male"
-    if first_word in COMMON_FEMALE_NAMES:
-        return "female"
-    return None
-
-async def infer_user_gender(user_id: int, telegram_name: str, history: list):
-    if not DATABASE_URL or len(history) < 2:
-        return
-    recent = history[-6:]
-    chat_lines = [f"User: {msg.get('content','')}" for msg in recent if msg.get("role") == "user"]
-    chat_text = "\n".join(chat_lines)
-    if not chat_text.strip():
-        return
-    prompt = f"""In messages se guess karo ki ye user ladka hai ya ladki.
-
-STRICT PRIORITY ORDER:
-1. Sabse pehle sirf MESSAGE-CONTENT dekho — self-references jaise "main gaya"/"main gayi", "kar raha tha"/"kar rahi thi", ya explicit statements ("main ladka/ladki hoon"). Ye sabse reliable signal hai.
-2. Telegram ka display-name ("Naam" field) PAR ZYADA BHAROSA MAT KARO — log apna naam kuch bhi rakh sakte hain (jaise "Queen", "King", "Boss", "Cute Girl", koi bhi nickname/title) jo unke asli gender se match nahi karta. Naam sirf tab use karo jab wo ek clearly common, specific real-naam ho (jaise "Priya", "Rahul") — generic titles/nicknames/English-words ko naam ke roop me IGNORE karo.
-3. Agar sirf naam se pata chal raha ho aur wo generic/ambiguous/title-jaisa lage (Queen, King, Boss, Star, Angel, waghera), ya message-content me koi clear gender-signal na ho, toh "unsure" do — guess mat maaro.
-
-Naam: {telegram_name or "pata nahi"}
-Messages:
-{chat_text}
-
-Sirf ek word do: "male", "female", ya "unsure".
-"""
-    try:
-        messages = [{"role": "user", "content": prompt}]
-        idx = pick_best_key(time.time())
-        if idx is None:
-            return
-        async with _key_locks[idx]:
-            if not key_has_room(idx):
-                return
-            entry_idx = pre_record_key_usage(idx)
-            async with _concurrency_semaphore:
-                await throttle_dispatch()
-                response = await clients[idx].chat.completions.create(
-                    model="openai/gpt-oss-20b",
-                    messages=messages,
-                    temperature=0.1,
-                    max_tokens=10,
-                    reasoning_effort="low",
-                    include_reasoning=False,
-                    timeout=8.0
-                )
-                content = response.choices[0].message.content.strip().lower()
-                if content in ("male", "female"):
-                    update_user_gender(user_id, content)
-                    update_key_usage_actual(idx, entry_idx, 30)
-                    reset_key_429_streak(idx)
-                    logger.info(f"🚻 Gender inferred for {user_id}: {content}")
-    except Exception as e:
-        logger.warning(f"Gender inference fail for {user_id}: {e}")
 
 async def generate_greeting(user_id: int, user_message: str) -> str | None:
     summary = get_user_summary(user_id)
@@ -1242,50 +1089,6 @@ async def dbcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         await update.message.reply_text(f"DB check error: {e}")
 
-async def setgender_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if update.effective_user.id != OWNER_ID:
-        await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
-        return
-    if not DATABASE_URL:
-        await update.message.reply_text("❌ DATABASE_URL set nahi hai.")
-        return
-
-    args = context.args
-    target_user_id = None
-    target_gender = None
-
-    if update.message.reply_to_message and update.message.reply_to_message.from_user:
-        target_user_id = update.message.reply_to_message.from_user.id
-        if args:
-            target_gender = args[0].lower()
-    elif len(args) >= 2:
-        try:
-            target_user_id = int(args[0])
-            target_gender = args[1].lower()
-        except ValueError:
-            pass
-
-    if not target_user_id or target_gender not in ("male", "female", "unknown"):
-        await update.message.reply_text(
-            "Usage:\n"
-            "Kisi user ke message ko reply karke: /setgender male (ya female/unknown)\n"
-            "Ya seedha: /setgender <user_id> male"
-        )
-        return
-
-    try:
-        conn = get_db_conn()
-        c = conn.cursor()
-        c.execute("UPDATE user_memory SET gender=%s WHERE user_id=%s", (target_gender, target_user_id))
-        if c.rowcount == 0:
-            c.execute("INSERT INTO user_memory (user_id, gender, updated_at) VALUES (%s, %s, %s) "
-                      "ON CONFLICT (user_id) DO UPDATE SET gender=%s",
-                      (target_user_id, target_gender, time.time(), target_gender))
-        conn.commit(); c.close(); conn.close()
-        await update.message.reply_text(f"✅ User {target_user_id} ka gender ab '{target_gender}' set ho gaya.")
-    except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
-
 async def backup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
@@ -1479,27 +1282,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
         
     system_prompt += lang_instruction
 
-    trust_level = get_user_trust_level(user_id)
-    trust_context = ""
-    if trust_level == 1:
-        trust_context = "\n[TRUST LEVEL: 1 - Sneha abhi thodi reserved/teasing hai, zyada close mat ho.]"
-    elif trust_level == 2:
-        trust_context = "\n[TRUST LEVEL: 2 - Sneha comfortable hai, normal flirty baatein kar sakti hai.]"
-    elif trust_level >= 3:
-        trust_context = "\n[TRUST LEVEL: 3 - Sneha aur user ab close hain, thoda deep romance/openness allowed hai.]"
-    
-    system_prompt += trust_context
-
-    user_gender = get_user_gender(user_id)
-    gender_context = ""
-    if user_gender == "male":
-        gender_context = "\n[USER GENDER: Ladka hai. 'Boss', 'dude', 'bhai' jaise words use kar sakti ho jab natural lage. Usse baat karte waqt 'chahte ho', 'kar rahe ho', 'gaye the' jaisa masculine-grammar use karo — 'chahti ho' jaisa feminine-grammar mat use karo.]"
-    elif user_gender == "female":
-        gender_context = "\n[USER GENDER: Ladki hai. 'Didi', 'behen', 'bestu' jaise words use kar sakti ho jab natural lage (agar close-dost jaisa tone ho). Usse baat karte waqt 'chahti ho', 'kar rahi ho', 'gayi thi' jaisa feminine-grammar use karo — 'chahte ho' jaisa masculine-grammar mat use karo.]"
-    else:
-        gender_context = "\n[USER GENDER: Abhi pata nahi hai. Jab tak clear na ho, GENDER-NEUTRAL phrasing use karo — jaise 'kar rahe ho', 'kaisa laga', 'gaye kya' — kabhi bhi feminine ('rahi ho', 'gayi thi', 'karti ho') ya masculine-specific ('boss', 'dude') words zabardasti mat use karo jab tak gender pata na ho.]"
-    system_prompt += gender_context
-
     messages = [{"role": "system", "content": system_prompt}]
     if history:
         messages.extend(history)
@@ -1561,7 +1343,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = clean_leaked_template_fragments(reply)
                     reply = clean_reply_text(reply, user_id=user_id)
                     reply = remove_duplicated_reply_content(reply)
-                    reply = cap_reply_sentences(reply, max_sentences=2)
+                    reply = cap_reply_sentences(reply, max_sentences=3)
 
                     loop_phrases = ["patience ka test", "patience test", "tune bataya tha na patience", "riddle try", "paheli main bina", "echo ko gunj"]
                     if any(phrase in reply.lower() for phrase in loop_phrases):
@@ -1652,12 +1434,6 @@ def update_history(user_id: int, user_message: str, bot_reply: str, telegram_nam
     user_msg_counter[user_id] = count
     _last_activity[user_id] = time.time()
 
-    current_trust = get_user_trust_level(user_id)
-    if count > 10 and current_trust < 2:
-        update_user_trust_level(user_id, 2)
-    elif count > 25 and current_trust < 3:
-        update_user_trust_level(user_id, 3)
-
     db_task = asyncio.create_task(asyncio.to_thread(save_conversation_history_to_db, user_id, history))
     _background_tasks.add(db_task)
     db_task.add_done_callback(_background_tasks.discard)
@@ -1673,17 +1449,6 @@ def update_history(user_id: int, user_message: str, bot_reply: str, telegram_nam
         task2.add_done_callback(_background_tasks.discard)
 
         _last_summarized_count[user_id] = count
-
-    if count == 1 and get_user_gender(user_id) == "unknown":
-        fast_guess = fast_guess_gender_from_name(telegram_name)
-        if fast_guess:
-            update_user_gender(user_id, fast_guess)
-            logger.info(f"🚻 Fast gender-guess (naam se) for {user_id}: {fast_guess}")
-
-    if count >= 2 and (count == 2 or count % 3 == 0) and get_user_gender(user_id) == "unknown":
-        task3 = asyncio.create_task(infer_user_gender(user_id, telegram_name, history))
-        _background_tasks.add(task3)
-        task3.add_done_callback(_background_tasks.discard)
 
 def has_telegram_link(text: str) -> bool:
     if not text: return False
@@ -2262,7 +2027,6 @@ async def main() -> None:
     application.add_handler(CommandHandler("resetkeys", resetkeys_command))
     application.add_handler(CommandHandler("memory", memory_command))
     application.add_handler(CommandHandler("dbcheck", dbcheck_command))
-    application.add_handler(CommandHandler("setgender", setgender_command))
     application.add_handler(CommandHandler("backup", backup_command))
     application.add_handler(CommandHandler("migrate_memory", migrate_memory_command))
     application.add_handler(CommandHandler("syncgroup", syncgroup_command))
