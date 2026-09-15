@@ -460,8 +460,6 @@ def init_db():
         except Exception:
             pass
         try:
-            c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS last_chat_id BIGINT")
-            c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS last_seen REAL")
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS game_points INTEGER DEFAULT 0")
             conn.commit()
         except Exception:
@@ -1021,61 +1019,6 @@ User ne abhi "{user_message}" kaha. 1 line ka reply do. Hinglish me. 1 emoji. Pu
                     continue
     return None
 
-# ⭐ Proactive Message Generator (Improved Prompt for Variety)
-async def generate_proactive_message(user_id: int) -> str | None:
-    summary = get_user_summary(user_id)
-    episodes = load_user_episodes(user_id)
-    if not summary and not episodes: return None
-    
-    ep_text = "\n".join(f"- {ep}" for ep in episodes[-3:]) if episodes else "Kuch nahi"
-    
-    prompt = f"""Tu Sneha hai. User ne tujhse 12 ghante pehle baat ki thi aur abhi tak reply nahi kiya. Ab tu usko khud ek random message bhejna chahti hai.
-
-User ki Memory:
-Summary: {summary if summary else 'Kuch nahi'}
-Important Events/Facts:
-{ep_text}
-
-Rules:
-- 1-2 short lines. Hinglish. 1 emoji (allowed: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰).
-- Apne message me user ka naam use mat karna, sirf direct casual baat karo.
-- HAR BAAR ALAG AUR CREATIVE LINE SOCHNA HAI. Repeat mat karna. Pichhle messages yaad nahi hain, isliye hamesha naya style use karo.
-- Agar user ka koi specific fact, hobby, ya event yaad ho, toh uska EK subtle mention karo (jaise "padhai me busy the kya?", "movie dekhi tune?", "bina bole gayab ho gaye the?").
-- Tone thoda complaining, cute aur teasing hona chahiye.
-- Kabhi-kabhi simple "kya kar raha hai?" bhi chalega, lekin variety zaroori hai.
-- WARNING: Sirf "game" ya "gym" ki baat mat kar.
-- No quotes, no exclamation marks, no dash. Ekdum natural WhatsApp style text bhej.
-"""
-    messages = [{"role": "user", "content": prompt}]
-    tried = set()
-    for _ in range(len(clients)):
-        now = time.time()
-        idx = pick_best_key(now)
-        if idx is None or idx in tried: break
-        tried.add(idx)
-        lock = _key_locks[idx]
-        if lock.locked(): continue
-        async with lock:
-            if not key_has_room(idx): continue
-            entry_idx = pre_record_key_usage(idx)
-            async with _concurrency_semaphore:
-                await throttle_dispatch()
-                try:
-                    response = await clients[idx].chat.completions.create(
-                        model="openai/gpt-oss-120b", messages=messages, temperature=0.9,
-                        max_tokens=250, reasoning_effort="medium", include_reasoning=False, timeout=15.0
-                    )
-                    reply = response.choices[0].message.content
-                    reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '').strip().strip('`')
-                    reply = clean_reply_text(reply, user_id=user_id)
-                    update_key_usage_actual(idx, entry_idx, 100)
-                    reset_key_429_streak(idx)
-                    return reply
-                except Exception as e:
-                    if "429" in str(e).lower(): handle_429_error(idx, str(e))
-                    continue
-    return None
-
 async def is_bot_admin(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> bool:
     now = time.time()
     cached = chat_admin_cache.get(chat_id)
@@ -1131,7 +1074,6 @@ user_msg_counter = {}
 _greeted_once = set()
 _welcomed_users = {}
 conversation_memory = {}
-# ⭐ BANDWIDTH FIX: 10 se 6 kar diya — har Groq API call me ~40% kam data jayega
 MAX_HISTORY_MESSAGES = 6
 
 WELCOME_IMAGE_URL = "https://ibb.co/7H2zgCT"
@@ -1720,20 +1662,6 @@ def update_history(user_id: int, user_message: str, bot_reply: str, telegram_nam
     _background_tasks.add(db_task)
     db_task.add_done_callback(_background_tasks.discard)
 
-    if DATABASE_URL and chat_id:
-        try:
-            conn = get_db_conn()
-            c = conn.cursor()
-            c.execute(
-                "INSERT INTO user_memory (user_id, last_seen, last_chat_id, updated_at) VALUES (%s, %s, %s, %s) "
-                "ON CONFLICT (user_id) DO UPDATE SET last_seen=%s, last_chat_id=%s",
-                (user_id, time.time(), chat_id, time.time(), time.time(), chat_id)
-            )
-            conn.commit()
-            c.close(); conn.close()
-        except Exception as e:
-            logger.error(f"last_seen update fail: {e}")
-
     SUMMARY_TRIGGER_EVERY = 6
     if count % SUMMARY_TRIGGER_EVERY == 0:
         task = asyncio.create_task(generate_summary(user_id, history, telegram_name))
@@ -2210,90 +2138,6 @@ async def idle_memory_flush_watcher():
             logger.error(f"idle_memory_flush_watcher error: {e}", exc_info=e)
         await asyncio.sleep(60)
 
-# ⭐ Proactive Message Watcher (1 Group me 1 Message Rule + Delay Fixed)
-async def proactive_message_watcher(bot):
-    PROACTIVE_COOLDOWN = 12 * 3600 # 12 Ghante
-    
-    while True:
-        try:
-            if not DATABASE_URL:
-                await asyncio.sleep(3600)
-                continue
-            
-            now = time.time()
-            threshold = now - PROACTIVE_COOLDOWN
-            
-            conn = get_db_conn()
-            c = conn.cursor()
-            c.execute("""
-                SELECT user_id, last_chat_id FROM user_memory 
-                WHERE last_seen IS NOT NULL AND last_seen < %s 
-                AND (summary IS NOT NULL OR episodes_json IS NOT NULL)
-                LIMIT 5
-            """, (threshold,))
-            users = c.fetchall()
-            c.close(); conn.close()
-            
-            sent_to_groups = set()
-            
-            for user_id, last_chat_id in users:
-                try:
-                    conn = get_db_conn()
-                    c = conn.cursor()
-                    c.execute("UPDATE user_memory SET last_seen=%s WHERE user_id=%s", (now, user_id))
-                    conn.commit(); c.close(); conn.close()
-                except:
-                    pass
-                    
-                proactive_msg = await generate_proactive_message(user_id)
-                if not proactive_msg:
-                    continue
-                
-                if last_chat_id and last_chat_id < 0:
-                    if last_chat_id in sent_to_groups:
-                        logger.info(f"⏭️ Skipping proactive for {user_id} in {last_chat_id}, already sent to this group this cycle.")
-                        continue
-                        
-                    try:
-                        member = await bot.get_chat_member(last_chat_id, bot.id)
-                        if member.status in ["administrator", "creator"]:
-                            try:
-                                user_chat = await bot.get_chat(user_id)
-                                
-                                if user_chat.username:
-                                    mention = f"@{user_chat.username}"
-                                else:
-                                    safe_name = html.escape(user_chat.first_name or "buddy")
-                                    mention = f'<a href="tg://user?id={user_id}">{safe_name}</a>'
-                                
-                                safe_proactive_msg = html.escape(proactive_msg)
-                                final_text = f"{mention} {safe_proactive_msg}"
-                                
-                                await bot.send_message(chat_id=last_chat_id, text=final_text, parse_mode="HTML")
-                                sent_to_groups.add(last_chat_id)
-                                logger.info(f"💌 Proactive group message sent to {user_id} in {last_chat_id}")
-                            except Exception as e:
-                                logger.warning(f"Proactive group send fail: {e}")
-                        else:
-                            logger.warning(f"Skipping proactive msg for group {last_chat_id}, not admin anymore.")
-                    except Exception as e:
-                        logger.warning(f"Skipping proactive msg for group {last_chat_id}, maybe not admin anymore.")
-                        
-                elif last_chat_id and last_chat_id > 0:
-                    try:
-                        await bot.send_message(chat_id=last_chat_id, text=proactive_msg)
-                        logger.info(f"💌 Proactive DM sent to {user_id}")
-                    except Forbidden:
-                        logger.warning(f"User {user_id} blocked the bot. Skipping.")
-                    except Exception as e:
-                        logger.warning(f"Proactive DM send fail for {user_id}: {e}")
-                        
-                await asyncio.sleep(10)
-        except Exception as e:
-            logger.error(f"proactive_message_watcher error: {e}")
-        # ⭐ BANDWIDTH FIX: 5 minute (300s) ki jagah ab 1 ghanta (3600s) — DB polling 12x kam ho gayi
-        await asyncio.sleep(3600)
-
 async def analyze_group_buffer_for_intervention(chat_id: int, messages: list) -> dict | None:
     if len(messages) < 4:
         return None
@@ -2411,7 +2255,6 @@ async def main() -> None:
         .build()
     )
     
-    asyncio.create_task(proactive_message_watcher(application.bot))
     asyncio.create_task(group_conversation_watcher(application.bot))
     
     application.add_handler(CommandHandler("start", start))
