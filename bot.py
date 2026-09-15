@@ -320,17 +320,9 @@ _ALL_EMOJI_PATTERN = re.compile(
     flags=re.UNICODE
 )
 
-_last_used_emoji = {}  # user_id -> last emoji used, taaki repeat na ho
+_last_used_emoji = {}
 
 def sanitize_reply_emojis(text: str, user_id: int | None = None) -> str:
-    """
-    ⭐ FIX: Model consistently ek hi emoji (jaise 🥰) baar-baar use kar raha
-    tha, chahe prompt me "variety rakho" bola gaya ho — prompt-instruction
-    akela reliable nahi tha. Ab code-level guarantee hai: agar naya emoji
-    usi user ke pichle reply wali emoji se match kare, to usse ek
-    alag/random emoji se replace kar dete hain — taaki repetition kabhi na
-    ho, chahe model kuch bhi choose kare.
-    """
     if not text:
         return text
     allowed = set(CHAT_PREMIUM_EMOJIS.keys())
@@ -364,14 +356,6 @@ def sanitize_reply_emojis(text: str, user_id: int | None = None) -> str:
     return result
 
 def remove_duplicated_reply_content(text: str) -> str:
-    """
-    ⭐ FIX: Kabhi-kabhi (khaaskar reasoning_effort=medium/high ke saath) model
-    poora sentence ya paragraph do baar likh deta hai — jaise self-correction
-    draft aur final-answer dono accidentally content me mix ho jaate hain.
-    Ye function check karta hai ki agar text ko exactly aadhe me todne se
-    dono halves same/near-identical hon, to sirf pehla half rakhta hai.
-    Isse "X. X." jaisa poora-paragraph-repeat pattern clean ho jaata hai.
-    """
     if not text or len(text) < 20:
         return text
 
@@ -379,19 +363,16 @@ def remove_duplicated_reply_content(text: str) -> str:
     n = len(stripped)
     mid = n // 2
 
-    # Case 1: Text exactly do copies me split ho (ya bahut kareeb, off-by-few-chars)
     for split_point in range(max(mid - 5, 1), min(mid + 6, n)):
         first_half = stripped[:split_point].strip()
         second_half = stripped[split_point:].strip()
         if len(first_half) < 10 or len(second_half) < 10:
             continue
-        # Normalize karke case-insensitive, trailing-punctuation-agnostic compare karo
         norm_first = re.sub(r"[.,?\s]+$", "", first_half.lower())
         norm_second = re.sub(r"[.,?\s]+$", "", second_half.lower())
         if norm_first == norm_second:
             return first_half
 
-    # Case 2: Same sentence turant repeat ho rahi ho (back-to-back), bina poora-text split ke
     sentences = re.split(r"(?<=[.?])\s+", stripped)
     deduped = []
     for s in sentences:
@@ -404,19 +385,8 @@ def remove_duplicated_reply_content(text: str) -> str:
     return " ".join(deduped)
 
 def cap_reply_sentences(text: str, max_sentences: int = 2) -> str:
-    """
-    ⭐ FIX: Prompt me "max 2 sentences" bola gaya tha, lekin model kabhi
-    isko bypass karke 3-4 alag-alag chhoti lines bana deta tha (newline se
-    break karke, bina proper punctuation ke), jo total-length ko phir bhi
-    lamba bana deta tha. Ye function guarantee karta hai ki final reply me
-    kabhi max_sentences se zyada "units" na jaayein — newline-breaks aur
-    punctuation-based sentence-endings, dono ko boundary maanta hai.
-    """
     if not text:
         return text
-    # Pehle newlines ko explicit-boundary maano (agar model line-breaks se
-    # multiple points bana raha ho), phir har line ke andar punctuation-based
-    # sentences bhi todo — jo bhi zyada granular ho, usi se count hoga.
     lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
     units = []
     for line in lines:
@@ -497,9 +467,6 @@ def init_db():
         except Exception:
             pass
         try:
-            # ⭐ GENDER-AWARE LANGUAGE: gender AI-inferred hoti hai (naam/tone/context se),
-            # kabhi galat bhi ho sakti hai isliye 'unknown' default rakha — jab tak confident
-            # na ho tab tak gender-specific words use nahi honge.
             c.execute("ALTER TABLE user_memory ADD COLUMN IF NOT EXISTS gender TEXT DEFAULT 'unknown'")
             conn.commit()
         except Exception:
@@ -627,7 +594,6 @@ def update_user_trust_level(user_id: int, level: int):
         logger.error(f"Trust level update fail: {e}")
 
 def get_user_gender(user_id: int) -> str:
-    """⭐ 'unknown', 'male', ya 'female' return karta hai."""
     if not DATABASE_URL: return "unknown"
     try:
         conn = get_db_conn()
@@ -640,7 +606,6 @@ def get_user_gender(user_id: int) -> str:
         return "unknown"
 
 def update_user_gender(user_id: int, gender: str):
-    """⭐ Sirf 'male'/'female' confident-guess hi save karo, 'unknown' ko overwrite karne ki zaroorat nahi."""
     if not DATABASE_URL or gender not in ("male", "female"): return
     try:
         conn = get_db_conn()
@@ -746,14 +711,6 @@ def _parse_summary_fields(summary: str) -> dict:
     return fields
 
 def _protect_permanent_fields(new_summary: str, old_summary: str) -> str:
-    """
-    ⭐ FIX: Ye function pehle broken thi — loop ke andar 'continue' ke baad
-    koi actual restore-logic nahi thi, isliye Naam/Hobby/Facts fields kabhi
-    protect hi nahi ho rahe the. Agar AI galti se in fields ko "Not
-    shared"/"None" bana de (jabki purani memory me data tha), to yahan use
-    purani value se restore karte hain. Sirf "Topics" field is protection
-    se bahar hai kyunki wo genuinely rolling/trim honi chahiye.
-    """
     if not old_summary:
         return new_summary
     old_fields = _parse_summary_fields(old_summary)
@@ -920,11 +877,6 @@ Agar koi genuinely naya specific fact nahi mila, sirf [] do — khali list dena 
     except Exception as e:
         logger.warning(f"Episodes extraction fail for {user_id}: {e}")
 
-# ⭐ FAST GENDER-DETECTION: Common Indian naam se turant, instant guess —
-# koi API-call ki zaroorat nahi. Sirf tab kaam aata hai jab telegram_name
-# ek clean, exact-match common-naam ho. Ambiguous/generic naam (Queen,
-# King, koi bhi nickname) is list me match nahi karenge, wahan AI-based
-# infer_user_gender() (message-content dekh kar) fallback hoga.
 COMMON_MALE_NAMES = {
     "rohit", "raj", "aryan", "rahul", "amit", "vikas", "vikram", "arjun", "karan",
     "sagar", "sahil", "akash", "aditya", "abhishek", "ankit", "ashish", "deepak",
@@ -949,10 +901,8 @@ COMMON_FEMALE_NAMES = {
 }
 
 def fast_guess_gender_from_name(telegram_name: str) -> str | None:
-    """Instant, no-API naam-based gender-guess. None agar match na mile."""
     if not telegram_name:
         return None
-    # Sirf pehla word lo (agar full-name ho jaise "Rohit Sharma"), aur clean karo
     first_word = re.sub(r"[^a-zA-Z]", "", telegram_name.strip().split()[0] if telegram_name.strip() else "").lower()
     if not first_word:
         return None
@@ -963,13 +913,6 @@ def fast_guess_gender_from_name(telegram_name: str) -> str | None:
     return None
 
 async def infer_user_gender(user_id: int, telegram_name: str, history: list):
-    """
-    ⭐ GENDER-AWARE LANGUAGE: AI naam, tone, aur message-content se user ka
-    gender guess karta hai — kabhi galat bhi ho sakta hai isliye sirf tab
-    save karte hain jab AI GENUINELY confident ho ("unsure" ko discard karte
-    hain). Gender ek baar set hone ke baad dobara infer nahi hoti (function
-    caller khud check karta hai ki abhi 'unknown' hai ya nahi).
-    """
     if not DATABASE_URL or len(history) < 2:
         return
     recent = history[-6:]
@@ -1188,7 +1131,8 @@ user_msg_counter = {}
 _greeted_once = set()
 _welcomed_users = {}
 conversation_memory = {}
-MAX_HISTORY_MESSAGES = 10
+# ⭐ BANDWIDTH FIX: 10 se 6 kar diya — har Groq API call me ~40% kam data jayega
+MAX_HISTORY_MESSAGES = 6
 
 WELCOME_IMAGE_URL = "https://ibb.co/7H2zgCT"
 
@@ -1228,7 +1172,7 @@ def escape_md_v2(text: str) -> str:
 async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not query: return
-    await query.answer() # Game hata di gayi hai, button press hone pe bas ignore karo
+    await query.answer()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     bot_username = context.bot.username
@@ -1357,11 +1301,6 @@ async def dbcheck_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text(f"DB check error: {e}")
 
 async def setgender_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    ⭐ Owner-only: gender-inference galat ho jaaye to manually correct karne
-    ke liye. Usage: kisi user ke message ko reply karke '/setgender male'
-    ya '/setgender female' bolo, ya '/setgender <user_id> male' bhi chalega.
-    """
     if update.effective_user.id != OWNER_ID:
         await update.message.reply_text("❌ Sirf owner use kar sakta hai.")
         return
@@ -1558,10 +1497,8 @@ def build_premium_emoji_entities(text: str, emoji_map: dict) -> list:
             i += 1
     return entities
 
-# ⭐ NEW FUNCTION: HTML mode me premium emojis render karne ke liye
 def apply_premium_emoji_html(text: str) -> str:
     if not text: return text
-    # Standard emojis ko HTML tg-emoji tags me convert karo taaki HTML mode me bhi premium dikhe
     for emoji, emoji_id in CHAT_PREMIUM_EMOJIS.items():
         if emoji in text:
             text = text.replace(emoji, f'<tg-emoji emoji-id="{emoji_id}">{emoji}</tg-emoji>')
@@ -1618,12 +1555,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     elif user_gender == "female":
         gender_context = "\n[USER GENDER: Ladki hai. 'Didi', 'behen', 'bestu' jaise words use kar sakti ho jab natural lage (agar close-dost jaisa tone ho). Usse baat karte waqt 'chahti ho', 'kar rahi ho', 'gayi thi' jaisa feminine-grammar use karo — 'chahte ho' jaisa masculine-grammar mat use karo.]"
     else:
-        # ⭐ FIX: Gender abhi pata nahi hai — is case me DEFAULT-feminine
-        # grammar (jaise "rahi ho", "gayi thi") use karna galat hai kyunki
-        # user ladka bhi ho sakta hai. Jab tak gender confirm na ho, GENDER-
-        # NEUTRAL phrasing use karo — jaise "kar rahe ho", "gaye", "kaisa
-        # laga" (in dono gender ke liye chalte hain), 'karti/karta' jaisi
-        # gendered word-endings avoid karo.
         gender_context = "\n[USER GENDER: Abhi pata nahi hai. Jab tak clear na ho, GENDER-NEUTRAL phrasing use karo — jaise 'kar rahe ho', 'kaisa laga', 'gaye kya' — kabhi bhi feminine ('rahi ho', 'gayi thi', 'karti ho') ya masculine-specific ('boss', 'dude') words zabardasti mat use karo jab tak gender pata na ho.]"
     system_prompt += gender_context
 
@@ -1675,8 +1606,8 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                         temperature=0.7,
                         max_tokens=600,
                         top_p=0.9,
-                        reasoning_effort="medium", # ⭐ Keys/tokens bharpoor hain, isliye speed ki jagah depth priority — model ko poora prompt (personality, memory, boundaries) properly process karne ke liye zyada reasoning-budget diya, taaki confuse na ho aur genuinely rich reply de
-                        include_reasoning=False, # ⭐ Output me soch na aaye isliye
+                        reasoning_effort="medium",
+                        include_reasoning=False,
                         timeout=20.0
                     )
                     reply = response.choices[0].message.content
@@ -1690,11 +1621,10 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = remove_duplicated_reply_content(reply)
                     reply = cap_reply_sentences(reply, max_sentences=2)
 
-                    # ⭐ ANTI-LOOP FIX: Agar AI patience test ya riddle wale loop me fase ho, toh usko reject karo
                     loop_phrases = ["patience ka test", "patience test", "tune bataya tha na patience", "riddle try", "paheli main bina", "echo ko gunj"]
                     if any(phrase in reply.lower() for phrase in loop_phrases):
                         logger.warning(f"⚠️ AI Loop Detected: Rejecting reply containing past loop phrase.")
-                        continue # Reject and try next key
+                        continue
 
                     if reply_language_mismatch(user_message, reply):
                         lang_mismatch_count += 1
@@ -1728,7 +1658,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     if "429" in error_str or "rate_limit" in error_str:
                         handle_429_error(idx, error_str)
                     elif "400" in error_str or "parsing failed" in error_str or "output_parse_failed" in error_str:
-                        # ⭐ FIX: 400 error pe key ko 15 sec lock mat karo, warna 78 keys burn ho jayengi. Sirf next key try karo!
                         logger.warning(f"⚠️ Key {idx+1} Prompt/Parse Error (400). Skipping key without 15s lock.")
                     elif "timeout" in error_str:
                         set_key_cooldown(idx, seconds=30)
@@ -1753,14 +1682,11 @@ _background_tasks = set()
 _last_activity = {}
 _last_summarized_count = {}
 
-# ⭐ GROUP CONVERSATION AWARENESS
-# Har group ka rolling-buffer: chat_id -> list of {"name": str, "text": str, "time": float}
-# Bot ko mention na kiya gaya ho tab bhi, ye buffer silently sab track karta hai.
 _group_message_buffer = {}
-GROUP_BUFFER_MAX = 20          # per-group max messages yaad rakhte hain
-GROUP_BUFFER_WINDOW = 600      # 10 minute se purani entries automatically discard
-_group_last_intervention = {}  # chat_id -> timestamp jab Sneha ne last baar khud se bola
-GROUP_INTERVENTION_COOLDOWN = 900  # 15 minute — spam na ho isliye strict cooldown
+GROUP_BUFFER_MAX = 20
+GROUP_BUFFER_WINDOW = 600
+_group_last_intervention = {}
+GROUP_INTERVENTION_COOLDOWN = 900
 
 def add_to_group_buffer(chat_id: int, user_name: str, text: str):
     if not text or len(text.strip()) < 2:
@@ -1768,10 +1694,8 @@ def add_to_group_buffer(chat_id: int, user_name: str, text: str):
     buf = _group_message_buffer.setdefault(chat_id, [])
     now = time.time()
     buf.append({"name": user_name, "text": text.strip(), "time": now})
-    # Purani entries (window se bahar) hata do
     cutoff = now - GROUP_BUFFER_WINDOW
     buf[:] = [m for m in buf if m["time"] >= cutoff]
-    # Max-size bhi maintain karo
     if len(buf) > GROUP_BUFFER_MAX:
         del buf[:len(buf) - GROUP_BUFFER_MAX]
 
@@ -1822,14 +1746,6 @@ def update_history(user_id: int, user_message: str, bot_reply: str, telegram_nam
 
         _last_summarized_count[user_id] = count
 
-    # ⭐ GENDER-AWARE LANGUAGE FIX: Do-step approach —
-    # STEP 1 (instant, koi API-call nahi): Pehle hi message pe telegram_name
-    # ko common-naam-list se check karte hain (Rohit/Raj/Aryan → male,
-    # Soniya/Sonali/Priya → female). Agar match mil jaaye, turant set ho
-    # jaata hai — 2nd message ka wait nahi karna padta.
-    # STEP 2 (AI-fallback): Agar naam list me match nahi hua (generic naam
-    # jaise "Queen" ya "King"), purana AI-based content-analysis fallback
-    # chalta hai, jo message-content dekh kar guess karta hai.
     if count == 1 and get_user_gender(user_id) == "unknown":
         fast_guess = fast_guess_gender_from_name(telegram_name)
         if fast_guess:
@@ -1845,15 +1761,12 @@ def has_telegram_link(text: str) -> bool:
     if not text: return False
     return bool(re.search(r'(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:[a-zA-Z0-9_]+)', text)) or bool(re.search(r'@[a-zA-Z0-9_]{4,}', text))
 
-# ⭐ FIXED safe_reply_text: Ab HTML mode me bhi premium emojis perfectly render honge
 async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = True, **kwargs) -> None:
     try:
         if use_premium_emojis:
             if "parse_mode" in kwargs and kwargs["parse_mode"] == "HTML":
-                # ⭐ FIX: Agar HTML mode hai, toh string me hi tg-emoji tags daal do
                 text = apply_premium_emoji_html(text)
             elif "entities" not in kwargs and "parse_mode" not in kwargs:
-                # Agar HTML mode nahi hai, toh purana entities method use karo
                 entities = build_premium_emoji_entities(text, CHAT_PREMIUM_EMOJIS)
                 if entities:
                     kwargs["entities"] = entities
@@ -1862,7 +1775,6 @@ async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = 
         if "Document_invalid" in str(e) or "emoji" in str(e).lower() or "can't parse entities" in str(e).lower():
             try:
                 kwargs.pop("entities", None)
-                # Agar fail ho, toh tg-emoji tags hata kar plain text bhej do
                 if "parse_mode" in kwargs and kwargs["parse_mode"] == "HTML":
                     text = re.sub(r'<tg-emoji emoji-id="\d+">([^<]+)</tg-emoji>', r'\1', text)
                 await update.message.reply_text(text, **kwargs)
@@ -1903,10 +1815,6 @@ async def get_reply_with_live_typing(context: ContextTypes.DEFAULT_TYPE, chat_id
         raise
 
     elapsed = time.time() - start
-    # ⭐ FIX: Real insaan chhota reply bhi turant nahi bhejta — message padhna,
-    # samajhna, decide karna (kya bolna hai), phir type karna — sabme time
-    # lagta hai. THINKING_TIME ko thoda badhaya taaki chhote replies bhi
-    # "fatak se bot jaisa" na lagein, natural human-pause feel de.
     THINKING_TIME = random.uniform(1.5, 2.8)
     target_min = THINKING_TIME
     if isinstance(result, str) and result:
@@ -2011,9 +1919,6 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                     break
 
     if has_other_mentions and not is_bot_mentioned:
-        # ⭐ GROUP AWARENESS: bot ko mention nahi kiya gaya, lekin message ko
-        # silently buffer me daal dete hain taaki background-analyzer baad
-        # me is conversation ko "dekh" sake — chahe Sneha turant reply na de.
         if chat.type in ("group", "supergroup"):
             add_to_group_buffer(chat.id, user.first_name or "Someone", message_text)
         return
@@ -2108,7 +2013,6 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
     if is_standalone:
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
         if greeting:
-            # ⭐ BLUE MENTION FIX: HTML tag lagaya aur parse_mode add kiya
             if user.username:
                 user_mention = f"@{user.username}"
             else:
@@ -2116,7 +2020,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                 user_mention = f'<a href="tg://user?id={user.id}">{safe_name}</a>'
                 
             final_reply = f"{user_mention} {greeting}"
-            await safe_reply_text(update, final_reply, parse_mode="HTML") # ⭐ HTML ADDED
+            await safe_reply_text(update, final_reply, parse_mode="HTML")
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
@@ -2127,7 +2031,6 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
         
-        # ⭐ BLUE MENTION FIX: Yahan bhi same logic
         if user.username:
             user_mention = f"@{user.username}"
         else:
@@ -2135,13 +2038,13 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
             user_mention = f'<a href="tg://user?id={user.id}">{safe_name}</a>'
             
         final_reply = f"{user_mention} {reply}"
-        await safe_reply_text(update, final_reply, parse_mode="HTML") # ⭐ HTML ADDED
+        await safe_reply_text(update, final_reply, parse_mode="HTML")
         return
 
     if is_reply_to_bot:
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
-            await safe_reply_text(update, greeting, parse_mode="HTML") # ⭐ HTML ADDED
+            await safe_reply_text(update, greeting, parse_mode="HTML")
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
@@ -2151,13 +2054,13 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         if not reply: 
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-        await safe_reply_text(update, reply, parse_mode="HTML") # ⭐ HTML ADDED
+        await safe_reply_text(update, reply, parse_mode="HTML")
         return
 
     if is_bot_mentioned:
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
-            await safe_reply_text(update, greeting, parse_mode="HTML") # ⭐ HTML ADDED
+            await safe_reply_text(update, greeting, parse_mode="HTML")
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
@@ -2167,7 +2070,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         if not reply: 
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-        await safe_reply_text(update, reply, parse_mode="HTML") # ⭐ HTML ADDED
+        await safe_reply_text(update, reply, parse_mode="HTML")
         return
 
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -2314,7 +2217,7 @@ async def proactive_message_watcher(bot):
     while True:
         try:
             if not DATABASE_URL:
-                await asyncio.sleep(60)
+                await asyncio.sleep(3600)
                 continue
             
             now = time.time()
@@ -2331,7 +2234,7 @@ async def proactive_message_watcher(bot):
             users = c.fetchall()
             c.close(); conn.close()
             
-            sent_to_groups = set() # ⭐ Ek group me ek hi message jayega
+            sent_to_groups = set()
             
             for user_id, last_chat_id in users:
                 try:
@@ -2347,10 +2250,9 @@ async def proactive_message_watcher(bot):
                     continue
                 
                 if last_chat_id and last_chat_id < 0:
-                    # Group me message bhejna hai
                     if last_chat_id in sent_to_groups:
                         logger.info(f"⏭️ Skipping proactive for {user_id} in {last_chat_id}, already sent to this group this cycle.")
-                        continue # Ek group me ek hi message jayega
+                        continue
                         
                     try:
                         member = await bot.get_chat_member(last_chat_id, bot.id)
@@ -2358,21 +2260,17 @@ async def proactive_message_watcher(bot):
                             try:
                                 user_chat = await bot.get_chat(user_id)
                                 
-                                # ⭐ HAMESHA PROPER HTML MENTION BANAO (Blue Link)
                                 if user_chat.username:
                                     mention = f"@{user_chat.username}"
                                 else:
                                     safe_name = html.escape(user_chat.first_name or "buddy")
                                     mention = f'<a href="tg://user?id={user_id}">{safe_name}</a>'
                                 
-                                # AI ke message ko HTML escape karo taaki parse fail na ho
                                 safe_proactive_msg = html.escape(proactive_msg)
-                                
-                                # Hamesha mention ko aage lagao
                                 final_text = f"{mention} {safe_proactive_msg}"
                                 
                                 await bot.send_message(chat_id=last_chat_id, text=final_text, parse_mode="HTML")
-                                sent_to_groups.add(last_chat_id) # Group ko set me daal do
+                                sent_to_groups.add(last_chat_id)
                                 logger.info(f"💌 Proactive group message sent to {user_id} in {last_chat_id}")
                             except Exception as e:
                                 logger.warning(f"Proactive group send fail: {e}")
@@ -2382,7 +2280,6 @@ async def proactive_message_watcher(bot):
                         logger.warning(f"Skipping proactive msg for group {last_chat_id}, maybe not admin anymore.")
                         
                 elif last_chat_id and last_chat_id > 0:
-                    # Private DM me message bhejna hai (DM me mention ki zarurat nahi)
                     try:
                         await bot.send_message(chat_id=last_chat_id, text=proactive_msg)
                         logger.info(f"💌 Proactive DM sent to {user_id}")
@@ -2391,21 +2288,13 @@ async def proactive_message_watcher(bot):
                     except Exception as e:
                         logger.warning(f"Proactive DM send fail for {user_id}: {e}")
                         
-                await asyncio.sleep(10) # ⭐ Messages ek sath spam na ho isliye 10 sec gap
+                await asyncio.sleep(10)
         except Exception as e:
             logger.error(f"proactive_message_watcher error: {e}")
-        await asyncio.sleep(300) # 5 minute me check karo
+        # ⭐ BANDWIDTH FIX: 5 minute (300s) ki jagah ab 1 ghanta (3600s) — DB polling 12x kam ho gayi
+        await asyncio.sleep(3600)
 
 async def analyze_group_buffer_for_intervention(chat_id: int, messages: list) -> dict | None:
-    """
-    ⭐ GROUP CONVERSATION AWARENESS: Recent group-messages ko analyze karta
-    hai — agar koi genuinely interesting pattern mile (do logon ki ladai,
-    flirting, ek ladka kisi ladki ko impress karne ki koshish kar raha ho,
-    ya koi mazedaar topic chal raha ho), toh ek chhota, natural,
-    tagged-intervention-message generate karta hai. Agar kuch bhi
-    intervention-worthy nahi hai, None return karta hai — chup rehna hi
-    default hai, spam nahi.
-    """
     if len(messages) < 4:
         return None
 
@@ -2466,13 +2355,6 @@ STRICT: Sirf genuinely interesting hone par hi intervene:true do. Zyadatar norma
         return None
 
 async def group_conversation_watcher(bot):
-    """
-    ⭐ GROUP CONVERSATION AWARENESS: Har group ke recent-message-buffer ko
-    periodically check karta hai. Agar genuinely interesting ho raha ho
-    (ladai, flirting, dramatic-topic), Sneha proactively ek chhota,
-    tagged-message bhejti hai — strict per-group cooldown ke saath, taaki
-    spam kabhi na ho.
-    """
     while True:
         try:
             now = time.time()
@@ -2492,7 +2374,6 @@ async def group_conversation_watcher(bot):
                 if not message:
                     continue
 
-                # Sanitize: sirf 1 emoji, koi quotes/exclamation nahi
                 message = message.replace('!', '').replace('"', '').replace("'", '')
                 message = sanitize_reply_emojis(message)
 
@@ -2507,15 +2388,15 @@ async def group_conversation_watcher(bot):
                     if member.status in ("administrator", "creator"):
                         await bot.send_message(chat_id=chat_id, text=final_text)
                         _group_last_intervention[chat_id] = now
-                        _group_message_buffer[chat_id] = []  # buffer clear, fresh start
+                        _group_message_buffer[chat_id] = []
                         logger.info(f"💬 Group intervention sent to {chat_id}: {final_text}")
                 except Exception as e:
                     logger.warning(f"Group intervention send fail for {chat_id}: {e}")
 
-                await asyncio.sleep(5)  # groups ke beech thoda gap
+                await asyncio.sleep(5)
         except Exception as e:
             logger.error(f"group_conversation_watcher error: {e}", exc_info=e)
-        await asyncio.sleep(180)  # har 3 minute me check
+        await asyncio.sleep(180)
 
 async def main() -> None:
     init_db()
