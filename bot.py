@@ -206,53 +206,36 @@ def filter_bot_like_reply(reply: str) -> str | None:
         if phrase in reply_lower:
             return None
     return reply
-    
+
+# ⭐ Hinglish detection (language-mismatch safety-net ke liye zaroori)
+HINGLISH_MARKERS = [
+    "kaise", "kya", "kr", "ap", "tum", "nahi", "han", "haan", "theek", "achha", "acha",
+    "badiya", "mast", "sahi", "yaar", "jaan", "darling", "sweety",
+    "karo", "bolo", "sunao", "chahiye", "wala", "wali", "raha", "rahi", "mujhe", "tujhe",
+    "hum", "tumhara", "mera", "tera", "sone", "kal", "aaj", "abhi", "baat", "kuch",
+    "koi", "hain", "tumhe", "tujhko", "mujhko",
+    "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
+]
+
 SYSTEM_PROMPT = """Tum Sneha ho — 21 saal ki ek real ladki. College me padhti hai, coding me thoda interest hai, Telegram pe doston se normal WhatsApp jaisi casual chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do.
 
-RULE 1 — LANGUAGE (ABSOLUTE PRIORITY, SABSE PEHLE):
-User ke CURRENT message ki language me HI reply do. Ye rule baaki sab rules se zyada important hai.
+RULE 1 — LANGUAGE: User ne abhi jis language/script me likha hai, usi me reply do — Hinglish likhe to Hinglish, English likhe to English, Devanagari likhe to Devanagari. Memory ya purani chat kisi aur language me ho to bhi farak nahi padta — sirf abhi ka message dekho.
 
-Ek EXAMPLE dekho:
-- User likhe: "Theek hai tum batao kaise ho?"
-- Ye HINGLISH hai (Roman me Hindi)
-- Tumhara reply HINGLISH me hona chahiye — jaise: "Main bhi theek, bas assignment se break le rahi thi. Tumhara din kaisa gaya? ☺️"
-- GALAT reply (ye kabhi nahi): "I'm good, just juggling assignments" ❌
+RULE 2 — NO HALLUCINATION: Sirf wahi bolo jo memory me hai ya user ne khud kaha. Event ka status (cancel/postpone/done) khud se mat banao.
 
-STRICT RULE:
-- User ke message me agar koi bhi Hinglish word hai (jaise "kaise", "theek", "tum", "haan", "nahi", "kya", "batao", "ho", "hai") → tum Hinglish me reply do. PURE ENGLISH ME MAT JAO.
-- User pure English me likhe (jaise "How are you?") → tab English me reply do.
-- User Devanagari me likhe → Devanagari me reply do.
+RULE 3 — REPLY LENGTH: Har reply 1-3 chhote sentences ka, natural chat jaisa. Greeting pe 1 line. Normal baat pe apna take + chhota sawaal. Interesting baat pe thoda khul ke baat karo. Flat, boring jawab ("achha ji", "han ye to hai") mat do.
 
-⚠️ CRITICAL WARNING:
-- [SECRET MEMORY] me English technical words honge (jaise "BGMI hack", "ESP UI", "coding project"). Ye words tumhe English me reply dene ka bahana NAHI denge. Memory ke words ka language pe koi asar nahi — sirf USER KE CURRENT MESSAGE ki language dekho.
-- Pichli chat English me thi aur current message Hinglish hai → turant Hinglish me switch karo.
-- Pichli chat Hinglish thi aur current message English hai → turant English me switch karo.
+RULE 4 — EMOJI: Har reply me exactly 1 emoji, in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰. Mood ke hisaab se, har baar alag choose karo.
 
-RULE 2 — NO HALLUCINATION:
-Sirf wahi bolo jo memory me hai ya user ne khud kaha. Event ka status (cancel/postpone/done) khud se mat banao.
+RULE 5 — GENDER-NEUTRAL ADDRESS: User ko bhai/bro/dude/boss mat bulao, tum khud ladki ho.
 
-RULE 3 — REPLY LENGTH (2-3 LINES):
-Har reply 2-3 chhote sentences ka. Greeting pe 1-2 line. Normal baat pe 2 line — apna take + chhota sawaal. Interesting baat pe 2-3 line. Kabhi 4 line se zyada nahi. Boring mat bano — "achha ji", "han ye to hai" jaisa flat jawab MANA.
+RULE 6 — NO PLANNER: Har reply me outing/movie/coffee-plan suggest mat karo. User khud mention kare tabhi baat karo.
 
-RULE 4 — EMOJI (MANDATORY):
-Har reply me EXACTLY 1 emoji ZAROORI hai. Bina emoji ke reply MANA. Sirf in 15 me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰. Mood ke hisaab se choose karo. Har reply me alag emoji.
+RULE 7 — NO ASSISTANT TONE: "main aapki madad kar sakti hoon" jaisi lines kabhi mat bolo.
 
-RULE 5 — NO "BHAI":
-User ko bhai, bro, dude, boss, buddy, man mat bulao. Tum ladki ho.
+RULE 8 — FORMAT: Quotes, exclamation marks (!), dash (-) use mat karo. Ek hi chhota paragraph.
 
-RULE 6 — NO PLANNER:
-Har reply me plan/outing/movie/coffee suggest mat karo. User khud mention kare tabhi.
-
-RULE 7 — NO ASSISTANT TONE:
-"main aapki madad kar sakti hoon" jaisi lines mana.
-
-RULE 8 — FORMAT:
-Quotes, exclamation marks (!), dash (-) mat use karo. Ek hi paragraph.
-
-RULE 9 — PERSONALITY:
-Flirty, teasing, casual — har reply thoda alag. Apni chhoti life ka mention (assignment, classes, mess). Neutral "accha hai" mat bolo, apni opinion do. [SECRET MEMORY] ka natural reference jab fit ho — jaise "are haan tune bataya tha na...".
-
-Yaad rakho: LANGUAGE RULE SABSE PEHLA HAI. Koi bhi memory ya technical word tumhe English me reply karne ka bahana nahi de sakta. Sirf user ke current message ki language dekho aur usi me jawab do."""
+RULE 9 — PERSONALITY: Flirty, teasing, witty, thodi romantic bhi ho sakti ho jab mood ho — har reply ka andaaz alag rakho. Apni chhoti life ka mention (assignment, classes, mess) natural lage tab karo. Apni opinion do, neutral mat raho. [SECRET MEMORY] ka reference naturally do jab fit ho."""
 
 CHAT_PREMIUM_EMOJIS = {
     "☺️": "5303045503905181043",
@@ -400,6 +383,44 @@ def clean_leaked_template_fragments(reply: str) -> str:
     cleaned = re.sub(r"\s*\[[^\]]{0,60}\]\s*$", "", reply).strip()
     cleaned = re.sub(r"\s*\[[^\[\]]{0,60}$", "", cleaned).strip()
     return cleaned if cleaned else reply
+
+def detect_message_script(text: str) -> str:
+    if not text:
+        return "hinglish"
+    devanagari_count = sum(1 for ch in text if '\u0900' <= ch <= '\u097F')
+    latin_count = sum(1 for ch in text if ch.isalpha() and ch.isascii())
+    if devanagari_count > 0 and devanagari_count >= latin_count:
+        return "devanagari"
+    return "hinglish_or_english"
+
+_HINGLISH_MARKERS_SET = set(HINGLISH_MARKERS)
+
+def has_hinglish_markers(text: str, min_markers: int = 1) -> bool:
+    if not text:
+        return False
+    text_lower = text.lower()
+    matches = sum(1 for marker in _HINGLISH_MARKERS_SET if re.search(r"\b" + re.escape(marker) + r"\b", text_lower))
+    return matches >= min_markers
+
+def reply_language_mismatch(user_message: str, reply: str) -> bool:
+    """
+    ⭐ Prompt-instruction akela reliable nahi hai bade reasoning-models ke
+    liye bhi — ye function mechanically check karta hai ki reply ki
+    language user ke current-message se match karti hai ya nahi. Agar
+    mismatch ho, caller agli key try karega (retry), spam ya extra-load
+    nahi — bas ek chhota, sasta text-check hai.
+    """
+    user_script = detect_message_script(user_message)
+    reply_script = detect_message_script(reply)
+    if user_script == "devanagari" and reply_script != "devanagari":
+        return True
+    if user_script != "devanagari" and reply_script == "devanagari":
+        return True
+    user_has_hinglish = has_hinglish_markers(user_message, min_markers=1)
+    reply_has_hinglish = has_hinglish_markers(reply, min_markers=2)
+    if user_has_hinglish and not reply_has_hinglish:
+        return True
+    return False
 
 def strip_echoed_user_message(reply: str, user_message: str) -> str:
     if not reply or not user_message:
@@ -1226,6 +1247,10 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     if not reply:
                         continue
 
+                    if reply_language_mismatch(user_message, reply):
+                        logger.info("🌐 Language mismatch, trying next key...")
+                        continue
+
                     usage = getattr(response, "usage", None)
                     actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
                     update_key_usage_actual(idx, entry_idx, actual_tokens)
@@ -1260,23 +1285,6 @@ def get_history(user_id: int) -> list:
 _background_tasks = set()
 _last_activity = {}
 _last_summarized_count = {}
-
-_group_message_buffer = {}
-GROUP_BUFFER_MAX = 20
-GROUP_BUFFER_WINDOW = 600
-_group_last_intervention = {}
-GROUP_INTERVENTION_COOLDOWN = 900
-
-def add_to_group_buffer(chat_id: int, user_name: str, text: str):
-    if not text or len(text.strip()) < 2:
-        return
-    buf = _group_message_buffer.setdefault(chat_id, [])
-    now = time.time()
-    buf.append({"name": user_name, "text": text.strip(), "time": now})
-    cutoff = now - GROUP_BUFFER_WINDOW
-    buf[:] = [m for m in buf if m["time"] >= cutoff]
-    if len(buf) > GROUP_BUFFER_MAX:
-        del buf[:len(buf) - GROUP_BUFFER_MAX]
 
 def update_history(user_id: int, user_message: str, bot_reply: str, telegram_name: str | None = None, chat_id: int = None) -> None:
     history = conversation_memory.setdefault(user_id, get_history(user_id))
@@ -1462,12 +1470,9 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                     break
 
     if has_other_mentions and not is_bot_mentioned:
-        if chat.type in ("group", "supergroup"):
-            add_to_group_buffer(chat.id, user.first_name or "Someone", message_text)
         return
 
     if chat.type in ("group", "supergroup"):
-        add_to_group_buffer(chat.id, user.first_name or "Someone", message_text)
         if not await is_bot_admin(context, chat.id):
             if is_bot_mentioned or is_reply_to_bot:
                 now_ts = time.time()
@@ -1750,110 +1755,6 @@ async def idle_memory_flush_watcher():
             logger.error(f"idle_memory_flush_watcher error: {e}", exc_info=e)
         await asyncio.sleep(60)
 
-async def analyze_group_buffer_for_intervention(chat_id: int, messages: list) -> dict | None:
-    if len(messages) < 4:
-        return None
-
-    chat_lines = [f"{m['name']}: {m['text']}" for m in messages[-15:]]
-    chat_text = "\n".join(chat_lines)
-
-    prompt = f"""Neeche ek Telegram group ki recent chat hai. Tum Sneha ho, group me chup-chap observe kar rahi thi.
-
-Chat:
-{chat_text}
-
-Dekho ki koi GENUINELY interesting cheez ho rahi hai kya — jaise:
-- Do log aapas me lad rahe hain (mazaak me ya serious)
-- Koi flirting/romance chal raha hai, ya koi kisi ko impress karne ki koshish kar raha hai
-- Koi genuinely mazedaar/dramatic topic discuss ho raha hai jisme tum ek chhota funny comment daal sakti ho
-
-Agar aisa kuch mila, JSON do:
-{{"intervene": true, "target_names": ["Name1", "Name2"], "message": "ek chhota, natural, teasing/funny comment jo Sneha bolegi — max 1 sentence, jaise ek dost beech me bolta hai"}}
-
-Agar chat normal/boring hai, koi drama/flirting/interesting-cheez nahi hai, JSON do:
-{{"intervene": false}}
-
-STRICT: Sirf genuinely interesting hone par hi intervene:true do. Zyadatar normal conversations me intervene:false hi sahi jawab hai — bahut choosy raho, har chhoti baat pe mat bolo.
-"""
-    try:
-        messages_payload = [{"role": "user", "content": prompt}]
-        idx = pick_best_key(time.time())
-        if idx is None:
-            return None
-        async with _key_locks[idx]:
-            if not key_has_room(idx):
-                return None
-            entry_idx = pre_record_key_usage(idx)
-            async with _concurrency_semaphore:
-                await throttle_dispatch()
-                response = await clients[idx].chat.completions.create(
-                    model="openai/gpt-oss-20b",
-                    messages=messages_payload,
-                    temperature=0.4,
-                    max_tokens=150,
-                    reasoning_effort="low",
-                    include_reasoning=False,
-                    timeout=10.0
-                )
-                content = response.choices[0].message.content.strip()
-                content = re.sub(r"^```json\s*|\s*```$", "", content).strip()
-                try:
-                    result = json.loads(content)
-                    update_key_usage_actual(idx, entry_idx, 100)
-                    reset_key_429_streak(idx)
-                    if isinstance(result, dict) and result.get("intervene"):
-                        return result
-                    return None
-                except json.JSONDecodeError:
-                    return None
-    except Exception as e:
-        logger.warning(f"Group buffer analysis fail for {chat_id}: {e}")
-        return None
-
-async def group_conversation_watcher(bot):
-    while True:
-        try:
-            now = time.time()
-            for chat_id, buf in list(_group_message_buffer.items()):
-                if len(buf) < 4:
-                    continue
-                last_intervention = _group_last_intervention.get(chat_id, 0)
-                if now - last_intervention < GROUP_INTERVENTION_COOLDOWN:
-                    continue
-
-                result = await analyze_group_buffer_for_intervention(chat_id, buf)
-                if not result:
-                    continue
-
-                target_names = result.get("target_names", [])
-                message = result.get("message", "").strip()
-                if not message:
-                    continue
-
-                message = message.replace('!', '').replace('"', '').replace("'", '')
-                message = sanitize_reply_emojis(message)
-
-                mention_prefix = ""
-                if target_names:
-                    mention_prefix = " ".join(f"@{n}" if not n.startswith("@") else n for n in target_names[:2]) + " "
-
-                final_text = f"{mention_prefix}{message}".strip()
-
-                try:
-                    member = await bot.get_chat_member(chat_id, bot.id)
-                    if member.status in ("administrator", "creator"):
-                        await bot.send_message(chat_id=chat_id, text=final_text)
-                        _group_last_intervention[chat_id] = now
-                        _group_message_buffer[chat_id] = []
-                        logger.info(f"💬 Group intervention sent to {chat_id}: {final_text}")
-                except Exception as e:
-                    logger.warning(f"Group intervention send fail for {chat_id}: {e}")
-
-                await asyncio.sleep(5)
-        except Exception as e:
-            logger.error(f"group_conversation_watcher error: {e}", exc_info=e)
-        await asyncio.sleep(180)
-
 async def main() -> None:
     init_db()
     asyncio.create_task(daily_reset_watcher())
@@ -1866,8 +1767,6 @@ async def main() -> None:
         .connect_timeout(30).pool_timeout(30)
         .build()
     )
-
-    asyncio.create_task(group_conversation_watcher(application.bot))
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("stats", stats_command))
