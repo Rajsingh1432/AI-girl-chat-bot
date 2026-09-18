@@ -192,31 +192,6 @@ async def throttle_dispatch():
             await asyncio.sleep(wait + random.uniform(0, DISPATCH_JITTER))
         _last_dispatch_time = time.time()
 
-# ⭐ SIMPLE bot-like filter
-BOT_LIKE_PHRASES = [
-    "main aapki madad", "main aapki sahayata", "i am an ai", "i am a bot",
-    "as an ai", "as a language model"
-]
-
-def filter_bot_like_reply(reply: str) -> str | None:
-    if not reply:
-        return None
-    reply_lower = reply.lower()
-    for phrase in BOT_LIKE_PHRASES:
-        if phrase in reply_lower:
-            return None
-    return reply
-
-# ⭐ Hinglish detection (language-mismatch safety-net ke liye zaroori)
-HINGLISH_MARKERS = [
-    "kaise", "kya", "kr", "ap", "tum", "nahi", "han", "haan", "theek", "achha", "acha",
-    "badiya", "mast", "sahi", "yaar", "jaan", "darling", "sweety",
-    "karo", "bolo", "sunao", "chahiye", "wala", "wali", "raha", "rahi", "mujhe", "tujhe",
-    "hum", "tumhara", "mera", "tera", "sone", "kal", "aaj", "abhi", "baat", "kuch",
-    "koi", "hain", "tumhe", "tujhko", "mujhko",
-    "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
-]
-
 SYSTEM_PROMPT = """Tum Sneha ho — ek real ladki jo Telegram par doston se normal WhatsApp jaisi casual chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do.
 
 RULE 1 — LANGUAGE: User ne abhi jis language/script me likha hai, usi me reply do — Hinglish likhe to Hinglish, English likhe to English, Devanagari likhe to Devanagari. Poore reply me EK HI script use karo, beech me script mat badlo. Memory ya purani chat kisi aur language me ho to bhi farak nahi padta — sirf abhi ka message dekho.
@@ -317,10 +292,8 @@ def sanitize_reply_emojis(text: str, user_id: int | None = None) -> str:
 def strip_hallucinated_patterns(text: str) -> str:
     if not text:
         return text
-    # Parenthetical notes hatao
     text = re.sub(r"\s*\([^)]{3,120}\)\s*", " ", text).strip()
     text = re.sub(r"\s*\[[^\]]{3,120}\]\s*", " ", text).strip()
-    # Male-address words hatao
     male_words = r"\b(bhai|bhaiya|bro|bruh|dude|boss|buddy|man)\b"
     text = re.sub(rf"(?i)(hey|hi|hii|hello|oye|yo)[\s,]*{male_words}[\s,]*", r"\1 ", text)
     text = re.sub(rf"(?i)[\s,]*{male_words}[\s,]*$", "", text)
@@ -355,46 +328,6 @@ def remove_duplicated_reply_content(text: str) -> str:
         deduped.append(s_clean)
     return " ".join(deduped)
 
-def reply_repeats_recent_topic(reply: str, history: list | None, min_shared_words: int = 2) -> bool:
-    """
-    ⭐ FIX: Sneha kabhi-kabhi apni pichli 2-3 replies me bilkul wahi topic
-    (jaise "mess ka khana", "coding") baar-baar repeat kar rahi thi, chahe
-    user ne naya sawaal poocha ho. Ye function check karta hai ki naya-reply
-    ke "content words" (chhote filler-words chhod kar) pichle 2 assistant-
-    replies se kitne overlap karte hain — agar overlap bahut zyada ho, ye
-    signal hai ki reply stuck/repetitive hai, aur caller isse retry kar
-    sakta hai.
-    """
-    if not reply or not history:
-        return False
-    recent_assistant_msgs = [
-        m.get("content", "") for m in history[-6:] if m.get("role") == "assistant"
-    ]
-    if not recent_assistant_msgs:
-        return False
-
-    STOPWORDS = {
-        "hai", "ho", "hoon", "tha", "thi", "the", "aur", "ka", "ki", "ke", "ko",
-        "se", "me", "mein", "toh", "to", "bhi", "kya", "kaise", "tum", "tumhe",
-        "mera", "meri", "mere", "tumhara", "tumhari", "the", "a", "is", "and",
-        "the", "of", "for", "you", "your", "my", "i", "just", "abhi", "thoda",
-    }
-
-    def content_words(text):
-        words = re.findall(r"[a-zA-Z\u0900-\u097F]+", text.lower())
-        return set(w for w in words if len(w) > 2 and w not in STOPWORDS)
-
-    new_words = content_words(reply)
-    if len(new_words) < min_shared_words:
-        return False
-
-    for old_reply in recent_assistant_msgs:
-        old_words = content_words(old_reply)
-        shared = new_words & old_words
-        if len(shared) >= min_shared_words:
-            return True
-    return False
-
 def cap_reply_sentences(text: str, max_sentences: int = 3) -> str:
     if not text:
         return text
@@ -425,61 +358,6 @@ def clean_leaked_template_fragments(reply: str) -> str:
     cleaned = re.sub(r"\s*\[[^\]]{0,60}\]\s*$", "", reply).strip()
     cleaned = re.sub(r"\s*\[[^\[\]]{0,60}$", "", cleaned).strip()
     return cleaned if cleaned else reply
-
-def detect_message_script(text: str) -> str:
-    if not text:
-        return "hinglish"
-    devanagari_count = sum(1 for ch in text if '\u0900' <= ch <= '\u097F')
-    latin_count = sum(1 for ch in text if ch.isalpha() and ch.isascii())
-    if devanagari_count > 0 and devanagari_count >= latin_count:
-        return "devanagari"
-    return "hinglish_or_english"
-
-_HINGLISH_MARKERS_SET = set(HINGLISH_MARKERS)
-
-def has_hinglish_markers(text: str, min_markers: int = 1) -> bool:
-    if not text:
-        return False
-    text_lower = text.lower()
-    matches = sum(1 for marker in _HINGLISH_MARKERS_SET if re.search(r"\b" + re.escape(marker) + r"\b", text_lower))
-    return matches >= min_markers
-
-def reply_has_mixed_script(reply: str, min_chars: int = 8) -> bool:
-    """
-    ⭐ FIX: Kabhi-kabhi reply ka pehla-hissa Roman/Hinglish me hota hai aur
-    beech me achanak Devanagari me switch ho jaata hai (ya ulta) — poore
-    reply ka "majority script" calculate karne se ye pakड़ me nahi aata
-    (kyunki majority-characters ek script ke hote hain), isliye ye alag se
-    check karta hai: agar dono scripts significant-amount me present hon
-    (min_chars se zyada), reply ko "mixed" (invalid) maanta hai.
-    """
-    if not reply:
-        return False
-    devanagari_count = sum(1 for ch in reply if '\u0900' <= ch <= '\u097F')
-    latin_count = sum(1 for ch in reply if ch.isalpha() and ch.isascii())
-    return devanagari_count >= min_chars and latin_count >= min_chars
-
-def reply_language_mismatch(user_message: str, reply: str) -> bool:
-    """
-    ⭐ Prompt-instruction akela reliable nahi hai bade reasoning-models ke
-    liye bhi — ye function mechanically check karta hai ki reply ki
-    language user ke current-message se match karti hai ya nahi. Agar
-    mismatch ho, caller agli key try karega (retry), spam ya extra-load
-    nahi — bas ek chhota, sasta text-check hai.
-    """
-    if reply_has_mixed_script(reply):
-        return True
-    user_script = detect_message_script(user_message)
-    reply_script = detect_message_script(reply)
-    if user_script == "devanagari" and reply_script != "devanagari":
-        return True
-    if user_script != "devanagari" and reply_script == "devanagari":
-        return True
-    user_has_hinglish = has_hinglish_markers(user_message, min_markers=1)
-    reply_has_hinglish = has_hinglish_markers(reply, min_markers=2)
-    if user_has_hinglish and not reply_has_hinglish:
-        return True
-    return False
 
 def strip_echoed_user_message(reply: str, user_message: str) -> str:
     if not reply or not user_message:
@@ -1242,7 +1120,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     messages.append({"role": "user", "content": user_message})
 
     tried = set()
-    MAX_RETRIES = min(len(clients), 3)
 
     for _ in range(len(clients)):
         now = time.time()
@@ -1259,9 +1136,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
         if idx in tried:
             continue
-
-        if len(tried) >= MAX_RETRIES:
-            break
 
         tried.add(idx)
         lock = _key_locks[idx]
@@ -1297,21 +1171,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = remove_duplicated_reply_content(reply)
                     reply = cap_reply_sentences(reply, max_sentences=3)
 
-                    filtered_reply = filter_bot_like_reply(reply)
-                    if filtered_reply is None:
-                        logger.info("🤖 Bot-like reply filtered, trying next key...")
-                        continue
-                    reply = filtered_reply
-
                     if not reply:
-                        continue
-
-                    if reply_language_mismatch(user_message, reply):
-                        logger.info("🌐 Language mismatch detected, using reply anyway to avoid silent mode...")
-                        # 'continue' hata diya — ab retry nahi karega, seedha reply use hoga
-
-                    if reply_repeats_recent_topic(reply, history):
-                        logger.info("🔁 Reply repeats recent topic, trying next key...")
                         continue
 
                     usage = getattr(response, "usage", None)
