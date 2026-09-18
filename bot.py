@@ -207,14 +207,50 @@ def filter_bot_like_reply(reply: str) -> str | None:
             return None
     return reply
 
-# ⭐ Hinglish detection (language-mismatch safety-net ke liye zaroori)
+# ⭐ EXPANDED Hinglish markers (80+ words)
 HINGLISH_MARKERS = [
-    "kaise", "kya", "kr", "ap", "tum", "nahi", "han", "haan", "theek", "achha", "acha",
-    "badiya", "mast", "sahi", "yaar", "jaan", "darling", "sweety",
-    "karo", "bolo", "sunao", "chahiye", "wala", "wali", "raha", "rahi", "mujhe", "tujhe",
-    "hum", "tumhara", "mera", "tera", "sone", "kal", "aaj", "abhi", "baat", "kuch",
-    "koi", "hain", "tumhe", "tujhko", "mujhko",
-    "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
+    # Basic pronouns & verbs
+    "kaise", "kya", "kr", "ap", "tum", "nahi", "han", "haan", "theek", "thik",
+    "achha", "acha", "achhi", "acchi", "hmm", "arre", "are", "oye", "yaar",
+    "karo", "karlo", "kar", "karu", "karun", "bolo", "bola", "boli", "sunao",
+    "batao", "bata", "chahiye", "wala", "wali", "wale", "raha", "rahi", "rahe",
+    "mujhe", "tujhe", "tumhe", "humko", "tumko", "inko", "unko", "mujhko", "tujhko",
+    "hum", "tumhara", "tumhari", "mera", "meri", "mere", "tera", "teri", "tere",
+    "mein", "apka", "aapka", "apki", "hoon", "hu", "ho", "hain", "hai",
+    
+    # Common adverbs & qualifiers
+    "badiya", "badiyan", "mast", "mazedaar", "sahi", "galat", "jaan", "jaanu",
+    "darling", "sweety", "bhi", "toh", "to", "bhai", "behen", "dost", "buddy",
+    "thoda", "thodi", "bahut", "bohot", "zyada", "jyada",
+    
+    # Scene / vibe / status
+    "scene", "set", "busy", "free", "ready", "vibe", "mood", "feel", "lag", 
+    "laga", "lagta", "lagti", "lagi",
+    
+    # Question words
+    "kaun", "kab", "kahan", "kyun", "kyu", "kitna", "kitne", "kaisa", "kaisi",
+    
+    # Common nouns
+    "khana", "paani", "ghar", "kaam", "college", "school", "office", "din",
+    "raat", "subah", "shaam", "baat", "baatein", "kuch", "koi",
+    
+    # Common verb forms
+    "jaa", "ja", "aa", "gaya", "gayi", "gaye", "kha", "khaa", "pee", "pi",
+    "so", "soya", "soyi", "utha", "uthi", "karta", "karti", "karte", "hua",
+    "hui", "hue", "hoga", "hogi", "honge",
+    
+    # Connectors & particles
+    "aur", "lekin", "par", "phir", "fir", "warna", "jaise", "waise", "matlab",
+    "kisi", "kabhi", "hamesha", "sirf", "bas",
+    
+    # Expression words
+    "wah", "waah", "hay", "haaye", "oh", "uff", "ufff", "haha", "hehe", "hihi", "lol",
+    
+    # Time words
+    "aaj", "kal", "parso", "abhi", "ab", "baad", "pehle", "jaldi",
+    
+    # Feelings
+    "khush", "dukhi", "udaas", "pyaar", "pyar", "yaad", "bhool", "chalo", "chal",
 ]
 
 SYSTEM_PROMPT = """Tum Sneha ho — ek real ladki jo Telegram par doston se normal WhatsApp jaisi casual chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do.
@@ -317,10 +353,8 @@ def sanitize_reply_emojis(text: str, user_id: int | None = None) -> str:
 def strip_hallucinated_patterns(text: str) -> str:
     if not text:
         return text
-    # Parenthetical notes hatao
     text = re.sub(r"\s*\([^)]{3,120}\)\s*", " ", text).strip()
     text = re.sub(r"\s*\[[^\]]{3,120}\]\s*", " ", text).strip()
-    # Male-address words hatao
     male_words = r"\b(bhai|bhaiya|bro|bruh|dude|boss|buddy|man)\b"
     text = re.sub(rf"(?i)(hey|hi|hii|hello|oye|yo)[\s,]*{male_words}[\s,]*", r"\1 ", text)
     text = re.sub(rf"(?i)[\s,]*{male_words}[\s,]*$", "", text)
@@ -354,46 +388,6 @@ def remove_duplicated_reply_content(text: str) -> str:
             continue
         deduped.append(s_clean)
     return " ".join(deduped)
-
-def reply_repeats_recent_topic(reply: str, history: list | None, min_shared_words: int = 2) -> bool:
-    """
-    ⭐ FIX: Sneha kabhi-kabhi apni pichli 2-3 replies me bilkul wahi topic
-    (jaise "mess ka khana", "coding") baar-baar repeat kar rahi thi, chahe
-    user ne naya sawaal poocha ho. Ye function check karta hai ki naya-reply
-    ke "content words" (chhote filler-words chhod kar) pichle 2 assistant-
-    replies se kitne overlap karte hain — agar overlap bahut zyada ho, ye
-    signal hai ki reply stuck/repetitive hai, aur caller isse retry kar
-    sakta hai.
-    """
-    if not reply or not history:
-        return False
-    recent_assistant_msgs = [
-        m.get("content", "") for m in history[-6:] if m.get("role") == "assistant"
-    ]
-    if not recent_assistant_msgs:
-        return False
-
-    STOPWORDS = {
-        "hai", "ho", "hoon", "tha", "thi", "the", "aur", "ka", "ki", "ke", "ko",
-        "se", "me", "mein", "toh", "to", "bhi", "kya", "kaise", "tum", "tumhe",
-        "mera", "meri", "mere", "tumhara", "tumhari", "the", "a", "is", "and",
-        "the", "of", "for", "you", "your", "my", "i", "just", "abhi", "thoda",
-    }
-
-    def content_words(text):
-        words = re.findall(r"[a-zA-Z\u0900-\u097F]+", text.lower())
-        return set(w for w in words if len(w) > 2 and w not in STOPWORDS)
-
-    new_words = content_words(reply)
-    if len(new_words) < min_shared_words:
-        return False
-
-    for old_reply in recent_assistant_msgs:
-        old_words = content_words(old_reply)
-        shared = new_words & old_words
-        if len(shared) >= min_shared_words:
-            return True
-    return False
 
 def cap_reply_sentences(text: str, max_sentences: int = 3) -> str:
     if not text:
@@ -444,31 +438,13 @@ def has_hinglish_markers(text: str, min_markers: int = 1) -> bool:
     matches = sum(1 for marker in _HINGLISH_MARKERS_SET if re.search(r"\b" + re.escape(marker) + r"\b", text_lower))
     return matches >= min_markers
 
-def reply_has_mixed_script(reply: str, min_chars: int = 8) -> bool:
-    """
-    ⭐ FIX: Kabhi-kabhi reply ka pehla-hissa Roman/Hinglish me hota hai aur
-    beech me achanak Devanagari me switch ho jaata hai (ya ulta) — poore
-    reply ka "majority script" calculate karne se ye pakड़ me nahi aata
-    (kyunki majority-characters ek script ke hote hain), isliye ye alag se
-    check karta hai: agar dono scripts significant-amount me present hon
-    (min_chars se zyada), reply ko "mixed" (invalid) maanta hai.
-    """
-    if not reply:
-        return False
-    devanagari_count = sum(1 for ch in reply if '\u0900' <= ch <= '\u097F')
-    latin_count = sum(1 for ch in reply if ch.isalpha() and ch.isascii())
-    return devanagari_count >= min_chars and latin_count >= min_chars
-
 def reply_language_mismatch(user_message: str, reply: str) -> bool:
     """
-    ⭐ Prompt-instruction akela reliable nahi hai bade reasoning-models ke
-    liye bhi — ye function mechanically check karta hai ki reply ki
-    language user ke current-message se match karti hai ya nahi. Agar
-    mismatch ho, caller agli key try karega (retry), spam ya extra-load
-    nahi — bas ek chhota, sasta text-check hai.
+    Non-blocking helper — sirf logging/diagnostics ke liye. Reply ab kabhi
+    is function ke through reject nahi hoti.
     """
-    if reply_has_mixed_script(reply):
-        return True
+    if not user_message or not reply:
+        return False
     user_script = detect_message_script(user_message)
     reply_script = detect_message_script(reply)
     if user_script == "devanagari" and reply_script != "devanagari":
@@ -476,7 +452,7 @@ def reply_language_mismatch(user_message: str, reply: str) -> bool:
     if user_script != "devanagari" and reply_script == "devanagari":
         return True
     user_has_hinglish = has_hinglish_markers(user_message, min_markers=1)
-    reply_has_hinglish = has_hinglish_markers(reply, min_markers=2)
+    reply_has_hinglish = has_hinglish_markers(reply, min_markers=1)
     if user_has_hinglish and not reply_has_hinglish:
         return True
     return False
@@ -1304,14 +1280,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = filtered_reply
 
                     if not reply:
-                        continue
-
-                    if reply_language_mismatch(user_message, reply):
-                        logger.info("🌐 Language mismatch, trying next key...")
-                        continue
-
-                    if reply_repeats_recent_topic(reply, history):
-                        logger.info("🔁 Reply repeats recent topic, trying next key...")
                         continue
 
                     usage = getattr(response, "usage", None)
