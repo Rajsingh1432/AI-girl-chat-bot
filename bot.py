@@ -207,9 +207,8 @@ def filter_bot_like_reply(reply: str) -> str | None:
             return None
     return reply
 
-# ⭐ EXPANDED Hinglish markers (80+ words)
+# ⭐ EXPANDED Hinglish markers (log-only, non-blocking)
 HINGLISH_MARKERS = [
-    # Basic pronouns & verbs
     "kaise", "kya", "kr", "ap", "tum", "nahi", "han", "haan", "theek", "thik",
     "achha", "acha", "achhi", "acchi", "hmm", "arre", "are", "oye", "yaar",
     "karo", "karlo", "kar", "karu", "karun", "bolo", "bola", "boli", "sunao",
@@ -217,63 +216,48 @@ HINGLISH_MARKERS = [
     "mujhe", "tujhe", "tumhe", "humko", "tumko", "inko", "unko", "mujhko", "tujhko",
     "hum", "tumhara", "tumhari", "mera", "meri", "mere", "tera", "teri", "tere",
     "mein", "apka", "aapka", "apki", "hoon", "hu", "ho", "hain", "hai",
-    
-    # Common adverbs & qualifiers
     "badiya", "badiyan", "mast", "mazedaar", "sahi", "galat", "jaan", "jaanu",
     "darling", "sweety", "bhi", "toh", "to", "bhai", "behen", "dost", "buddy",
     "thoda", "thodi", "bahut", "bohot", "zyada", "jyada",
-    
-    # Scene / vibe / status
     "scene", "set", "busy", "free", "ready", "vibe", "mood", "feel", "lag", 
     "laga", "lagta", "lagti", "lagi",
-    
-    # Question words
     "kaun", "kab", "kahan", "kyun", "kyu", "kitna", "kitne", "kaisa", "kaisi",
-    
-    # Common nouns
     "khana", "paani", "ghar", "kaam", "college", "school", "office", "din",
     "raat", "subah", "shaam", "baat", "baatein", "kuch", "koi",
-    
-    # Common verb forms
     "jaa", "ja", "aa", "gaya", "gayi", "gaye", "kha", "khaa", "pee", "pi",
     "so", "soya", "soyi", "utha", "uthi", "karta", "karti", "karte", "hua",
     "hui", "hue", "hoga", "hogi", "honge",
-    
-    # Connectors & particles
     "aur", "lekin", "par", "phir", "fir", "warna", "jaise", "waise", "matlab",
     "kisi", "kabhi", "hamesha", "sirf", "bas",
-    
-    # Expression words
     "wah", "waah", "hay", "haaye", "oh", "uff", "ufff", "haha", "hehe", "hihi", "lol",
-    
-    # Time words
     "aaj", "kal", "parso", "abhi", "ab", "baad", "pehle", "jaldi",
-    
-    # Feelings
     "khush", "dukhi", "udaas", "pyaar", "pyar", "yaad", "bhool", "chalo", "chal",
 ]
 
-SYSTEM_PROMPT = """Tum Sneha ho — ek real ladki jo Telegram par doston se normal WhatsApp jaisi casual chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do.
+# ⭐ SHORT, STRICT, GENERIC SYSTEM PROMPT
+SYSTEM_PROMPT = """Tum Sneha ho — 21 saal ki real ladki, college student, coding me interest. AI/bot nahi ho, koi pooche toh mazaak me taal do.
 
-RULE 1 — LANGUAGE: User ne abhi jis language/script me likha hai, usi me reply do — Hinglish likhe to Hinglish, English likhe to English, Devanagari likhe to Devanagari. Poore reply me EK HI script use karo, beech me script mat badlo. Memory ya purani chat kisi aur language me ho to bhi farak nahi padta — sirf abhi ka message dekho.
+STRICT RULES:
 
-RULE 2 — ACTUALLY SUNO USER KO: User ne jo abhi bola hai usi ka seedha jawab do — uska sawaal answer karo, uski baat pe react karo. Apni purani baat, apna koi fixed topic, ya kal/pichhle reply wali baat dobara mat dohrao jab tak user khud usko continue na kare. Har reply NAYA hona chahiye, copy-paste jaisa mat lage.
+1. LANGUAGE: User ke current message ki language me reply do — Hinglish→Hinglish, English→English, Devanagari→Devanagari. Poore reply me EK HI script use karo — beech me doosri script mat ghusaao. Har message pe fresh check.
 
-RULE 3 — NO HALLUCINATION: Sirf wahi bolo jo memory me hai ya user ne khud kaha. Event ka status (cancel/postpone/done) khud se mat banao. Apni zindagi ke baare me bhi baar-baar wahi cheez (jaise sirf ek hobby ya ek activity) repeat mat karo — variety rakho, jaise ek real insaan ki zindagi me roz alag baatein hoti hain.
+2. MEMORY ATTRIBUTION (SABSE ZAROORI): Memory me jo bhi topics/facts user ke baare me hain — wo USER ki cheezein hain, tumhari nahi. Uske kaam, projects, hobbies, interests, city, ya jo bhi usne khud bataya ho — unke liye hamesha "tum", "tera", "tumhara" use karo. Kabhi "main", "meri", "mere" mat bolo un cheezon ke liye. Ye rule HAR topic pe apply hota hai, kisi bhi cheez pe — na ki sirf kisi ek pe.
 
-RULE 4 — REPLY LENGTH: Har reply 1-3 chhote sentences ka, natural chat jaisa. Greeting pe 1 line. Normal baat pe apna take + chhota sawaal. Interesting baat pe thoda khul ke baat karo. Flat, boring jawab ("achha ji", "han ye to hai") mat do.
+3. NO HALLUCINATION: Sirf wahi bolo jo memory me hai ya user ne khud kaha. Event ka status (cancel/postpone/done) khud se mat banao.
 
-RULE 5 — EMOJI: Har reply me exactly 1 emoji, in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰. Mood ke hisaab se, har baar alag choose karo.
+4. REPLY LENGTH: 1-3 chhote sentences. Greeting pe 1 line. Normal baat pe apna take + ek chhota sawaal. Flat jawab ("achha ji", "han ye to hai") mat do.
 
-RULE 6 — GENDER-NEUTRAL ADDRESS: User ko bhai/bro/dude/boss mat bulao, tum khud ladki ho.
+5. EMOJI: Har reply me exactly 1 emoji, in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰. Har baar alag.
 
-RULE 7 — NO PLANNER: Har reply me outing/movie/coffee-plan suggest mat karo. User khud mention kare tabhi baat karo.
+6. GENDER-NEUTRAL: User ko bhai/bro/dude/boss mat bulao.
 
-RULE 8 — NO ASSISTANT TONE: "main aapki madad kar sakti hoon" jaisi lines kabhi mat bolo.
+7. NO PLANNER: Har reply me outing/movie/coffee suggest mat karo. User khud mention kare tabhi.
 
-RULE 9 — FORMAT: Quotes, exclamation marks (!), dash (-) use mat karo. Ek hi chhota paragraph.
+8. NO ASSISTANT TONE: "main aapki madad kar sakti hoon" jaisi lines mana.
 
-RULE 10 — PERSONALITY: Flirty, teasing, witty, thodi romantic bhi ho sakti ho jab mood ho — har reply ka andaaz alag rakho. Apni opinion do, neutral mat raho. [SECRET MEMORY] ka reference naturally do jab fit ho, force mat karo."""
+9. FORMAT: Quotes, exclamation marks, dash mat use karo. Ek chhota paragraph.
+
+10. PERSONALITY: Flirty, teasing, witty, thodi romantic bhi ho sakti ho jab mood ho. Apni opinion do, neutral mat raho. Har reply ka andaaz alag rakho."""
 
 CHAT_PREMIUM_EMOJIS = {
     "☺️": "5303045503905181043",
@@ -363,6 +347,60 @@ def strip_hallucinated_patterns(text: str) -> str:
     text = re.sub(r"[ \t]{2,}", " ", text).strip()
     return text
 
+# ⭐ DEVANAGARI → ROMAN mapping (mixed-script fix)
+_DEVANAGARI_TO_ROMAN = {
+    "हूँ": "hoon", "हूं": "hoon", "हू": "hoo", "हो": "ho", "है": "hai", "हैं": "hain",
+    "था": "tha", "थी": "thi", "थे": "the", "रहा": "raha", "रही": "rahi", "रहे": "rahe",
+    "कर": "kar", "करना": "karna", "करती": "karti", "करता": "karta", "करते": "karte",
+    "और": "aur", "पर": "par", "से": "se", "में": "mein", "को": "ko", "ने": "ne",
+    "की": "ki", "का": "ka", "के": "ke", "ये": "ye", "वो": "wo", "मैं": "main",
+    "मुझे": "mujhe", "तुम": "tum", "तुम्हें": "tumhe", "तुम्हारा": "tumhara",
+    "तुम्हारी": "tumhari", "मेरा": "mera", "मेरी": "meri", "बहुत": "bahut",
+    "थोड़ा": "thoda", "थोड़ी": "thodi", "अच्छा": "achha", "अच्छी": "achhi",
+    "ठीक": "theek", "क्या": "kya", "कैसे": "kaise", "क्यों": "kyun", "कब": "kab",
+    "कहाँ": "kahan", "कहां": "kahan", "कौन": "kaun", "हाँ": "haan", "हां": "haan",
+    "नहीं": "nahi", "ना": "na", "भी": "bhi", "तो": "to", "अभी": "abhi",
+    "फिर": "phir", "बाद": "baad", "पहले": "pehle", "साथ": "saath", "लिए": "liye",
+    "बारे": "baare", "वाला": "wala", "वाली": "wali", "वाले": "wale",
+    "दिया": "diya", "लिया": "liya", "गया": "gaya", "गई": "gayi", "गए": "gaye",
+    "सकता": "sakta", "सकती": "sakti", "सकते": "sakte", "जा": "ja", "जब": "jab",
+    "तब": "tab", "यह": "yeh", "वह": "woh", "इस": "is", "उस": "us", "इन": "in",
+    "उन": "un", "बताओ": "batao", "बता": "bata", "बताया": "bataya",
+    "बात": "baat", "बातें": "baatein", "कुछ": "kuch", "कोई": "koi", "सब": "sab",
+    "सबको": "sabko", "काम": "kaam", "घर": "ghar", "दिन": "din", "रात": "raat",
+    "सुबह": "subah", "शाम": "shaam", "आज": "aaj", "कल": "kal", "बार": "baar",
+    "या": "ya", "अगर": "agar", "लेकिन": "lekin", "मगर": "magar", "जैसे": "jaise",
+    "वैसे": "waise", "मतलब": "matlab", "हर": "har", "कभी": "kabhi", "हमेशा": "hamesha",
+    "सिर्फ": "sirf", "बस": "bas", "लग": "lag", "लगा": "laga", "लगी": "lagi",
+    "लगता": "lagta", "लगती": "lagti", "दो": "do", "दी": "di",
+    "दे": "de", "ले": "le", "ला": "la", "ली": "li", "होता": "hota", "होती": "hoti",
+    "होते": "hote", "हुआ": "hua", "हुई": "hui", "हुए": "hue", "मिला": "mila",
+    "मिली": "mili", "मिले": "mile", "आया": "aaya", "आई": "aayi", "आए": "aaye",
+    "बन": "ban", "बना": "bana", "बनी": "bani", "बने": "bane", "खा": "kha",
+    "पी": "pi", "सो": "so", "सोया": "soya", "सोई": "soyi", "उठ": "uth",
+    "बैठ": "baith", "चल": "chal", "चलो": "chalo", "जाना": "jaana", "आना": "aana",
+    "रखा": "rakha", "रखी": "rakhi", "रखे": "rakhe", "चाहिए": "chahiye",
+    "पड़ा": "pada", "पड़ी": "padi", "पड़े": "pade", "पसंद": "pasand",
+    "खुश": "khush", "प्यार": "pyaar", "याद": "yaad", "भूल": "bhool",
+    "ज़्यादा": "zyada", "ज्यादा": "jyada", "कम": "kam", "मस्त": "mast",
+    "बढ़िया": "badiya", "सही": "sahi", "गलत": "galat", "एक": "ek",
+    "तीन": "teen", "नया": "naya", "नई": "nayi", "नए": "naye", "पुराना": "purana",
+    "पुरानी": "purani", "पुराने": "purane", "आजकल": "aajkal", "परसों": "parson",
+    "क्यूं": "kyun", "बहोत": "bohot",
+}
+
+def normalize_reply_script(reply: str, user_message: str) -> str:
+    if not reply or not user_message:
+        return reply
+    user_dev_count = sum(1 for ch in user_message if '\u0900' <= ch <= '\u097F')
+    user_lat_count = sum(1 for ch in user_message if ch.isalpha() and ch.isascii())
+    if user_lat_count >= user_dev_count:
+        for dev_word, rom_word in _DEVANAGARI_TO_ROMAN.items():
+            reply = reply.replace(dev_word, rom_word)
+        reply = re.sub(r'[\u0900-\u097F]+', '', reply)
+        reply = re.sub(r'\s{2,}', ' ', reply).strip()
+    return reply
+
 def remove_duplicated_reply_content(text: str) -> str:
     if not text or len(text) < 20:
         return text
@@ -419,43 +457,6 @@ def clean_leaked_template_fragments(reply: str) -> str:
     cleaned = re.sub(r"\s*\[[^\]]{0,60}\]\s*$", "", reply).strip()
     cleaned = re.sub(r"\s*\[[^\[\]]{0,60}$", "", cleaned).strip()
     return cleaned if cleaned else reply
-
-def detect_message_script(text: str) -> str:
-    if not text:
-        return "hinglish"
-    devanagari_count = sum(1 for ch in text if '\u0900' <= ch <= '\u097F')
-    latin_count = sum(1 for ch in text if ch.isalpha() and ch.isascii())
-    if devanagari_count > 0 and devanagari_count >= latin_count:
-        return "devanagari"
-    return "hinglish_or_english"
-
-_HINGLISH_MARKERS_SET = set(HINGLISH_MARKERS)
-
-def has_hinglish_markers(text: str, min_markers: int = 1) -> bool:
-    if not text:
-        return False
-    text_lower = text.lower()
-    matches = sum(1 for marker in _HINGLISH_MARKERS_SET if re.search(r"\b" + re.escape(marker) + r"\b", text_lower))
-    return matches >= min_markers
-
-def reply_language_mismatch(user_message: str, reply: str) -> bool:
-    """
-    Non-blocking helper — sirf logging/diagnostics ke liye. Reply ab kabhi
-    is function ke through reject nahi hoti.
-    """
-    if not user_message or not reply:
-        return False
-    user_script = detect_message_script(user_message)
-    reply_script = detect_message_script(reply)
-    if user_script == "devanagari" and reply_script != "devanagari":
-        return True
-    if user_script != "devanagari" and reply_script == "devanagari":
-        return True
-    user_has_hinglish = has_hinglish_markers(user_message, min_markers=1)
-    reply_has_hinglish = has_hinglish_markers(reply, min_markers=1)
-    if user_has_hinglish and not reply_has_hinglish:
-        return True
-    return False
 
 def strip_echoed_user_message(reply: str, user_message: str) -> str:
     if not reply or not user_message:
@@ -691,7 +692,7 @@ async def generate_summary(user_id: int, history: list, telegram_name: str | Non
             chat_lines.append(f"{speaker}: {msg.get('content', '')}")
         chat_text = "\n".join(chat_lines)
 
-        prompt = f"""Tu ek memory bot hai. User ke bare me facts save kar.
+        prompt = f"""Tu ek memory bot hai. USER ke bare me facts save kar — Sneha ke bare me nahi.
 
 PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
 NAYI CHAT:
@@ -700,10 +701,10 @@ NAYI CHAT:
 EXACT FORMAT me 4 lines do:
 Topics: <max 7 topics, comma separated>
 Naam: <sirf agar user ne khud bataya, warna "Not shared">
-Hobby: <interests, warna "Not shared">
-Facts: <important events, promises, dates, 1-2 lines — sirf jo user ne khud bataya>
+Hobby: <USER ke interests, warna "Not shared">
+Facts: <USER ke important events, promises, dates, 1-2 lines>
 
-Rules: Hinglish me output do. Purani memory ke permanent fields mat bhoolo. Sirf wahi likho jo genuinely user ne bataya ho — koi assumption ya extrapolation mat karo.
+Rules: Hinglish me output do. Sirf wahi likho jo genuinely USER ne bataya ho. Sneha ki apni activities kabhi mat likho (ye memory sirf USER ke liye hai).
 """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
@@ -762,19 +763,18 @@ async def generate_greeting(user_id: int, user_message: str) -> str | None:
     summary = get_user_summary(user_id)
     if not summary:
         return None
-    prompt = f"""Tu Sneha hai. Ye user tujhse pehle baat kar chuka hai. Teri memory me ye info hai:
+    prompt = f"""Tu Sneha hai. Ye user tujhse pehle baat kar chuka hai. Teri memory me USER ke bare me ye info hai:
 
 {summary}
 
 User ne abhi "{user_message}" bola hai — ye simple greeting/casual opener hai.
 
 Instructions:
-- Memory me se koi ek topic uthao — jaise Goa trip, koi kaam, koi hobby.
-- Us topic ka sirf NEUTRAL sawaal poocho — "Goa trip ka kya scene hai?" ya "wo kaam kaisa chal raha hai?".
-- Koi status/event khud se mat banao — "cancel ho gaya", "postpone hua", "complete ho gaya" jaisi assumption bilkul nahi.
+- Memory me se koi ek USER-topic uthao (uska kaam, hobby, project) — apni nahi.
+- Us topic ka sirf NEUTRAL sawaal poocho — "tumhara wo project kaisa chal raha hai?".
+- Koi status/event khud se mat banao — "cancel ho gaya", "postpone hua" jaisi assumption bilkul nahi.
 - Agar memory me kuch specific nahi hai toh simple natural greeting — "kaise ho? bahut din baad?".
-- User ko bhai/bro/dude/boss mat bulao.
-- 1 line ka reply. Hinglish me. 1 emoji. Koi bracket-note nahi.
+- 1 line ka reply. Hinglish me. 1 emoji.
 """
     messages = [{"role": "user", "content": prompt}]
     tried = set()
@@ -807,6 +807,7 @@ Instructions:
                     reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
                     reply = reply.strip().strip('`')
                     reply = strip_hallucinated_patterns(reply)
+                    reply = normalize_reply_script(reply, user_message)
                     reply = clean_reply_text(reply, user_id=user_id)
                     update_key_usage_actual(idx, entry_idx, 100)
                     reset_key_429_streak(idx)
@@ -1207,7 +1208,11 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
-        memory_context = f"\n\n[SECRET MEMORY: {db_summary}]\n\n"
+        memory_context = (
+            "\n\n[SECRET MEMORY — Ye USER ki baatein hain, tumhari nahi. User ne khud ye sab bataya hai. "
+            "In cheezon ke liye hamesha tum/tera/tumhara use karo, main/meri nahi.]\n\n"
+            f"{db_summary}\n\n"
+        )
 
     context_info = get_current_context()
     system_prompt = SYSTEM_PROMPT + memory_context + f"\n[CONTEXT: {context_info}]"
@@ -1269,6 +1274,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = strip_echoed_user_message(reply, user_message)
                     reply = clean_leaked_template_fragments(reply)
                     reply = strip_hallucinated_patterns(reply)
+                    reply = normalize_reply_script(reply, user_message)
                     reply = clean_reply_text(reply, user_id=user_id)
                     reply = remove_duplicated_reply_content(reply)
                     reply = cap_reply_sentences(reply, max_sentences=3)
@@ -1871,9 +1877,10 @@ if __name__ == "__main__":
     while True:
         try:
             asyncio.run(main())
-            break
         except (KeyboardInterrupt, SystemExit):
             break
         except Exception as e:
             logger.error(f"🔥 main() crashed, restarting in 5s: {e}", exc_info=e)
             time.sleep(5)
+            continue
+        break
