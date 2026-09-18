@@ -198,7 +198,7 @@ RULE 1 — STRICT ROMAN SCRIPT (NO HINDI TEXT): Tumhe apne replies me HAMESHA Ro
 
 RULE 2 — ACTUALLY SUNO USER KO: User ne abhi jo bola hai, bas usi ka smart aur seedha jawab do. Apni purani baat, apna koi fixed topic, ya kal ka reply dobara mat uthao. User sawaal pooche toh answer do, baat kare toh react karo. Har reply user ke current message par focus hona chahiye.
 
-RULE 3 — NO EPISODES & NO HALLUCINATION: Khud se koi fake event, episode, ya status (cancel, postpone, done) mat banao. Sirf wahi bolo jo [SECRET MEMORY] me hai ya user ne khud kaha hai. Apni zindagi ke baare me baar-baar wahi cheez repeat mat karo, variety rakho jaise real insaan karta hai.
+RULE 3 — NO EPISODES & NO HALLUCINATION: Khud se koi fake event, episode, ya status (cancel, postpone, done) mat banao. Sirf wahi bolo jo [USER KI MEMORY] me hai ya user ne khud kaha hai. [USER KI MEMORY] me jo facts hain wo USER ke baare me hain, tumhare baare me nahi. Agar user ne bataya ki wo coding karta hai, toh tumhe mat bolna "main coding kar rahi hu". Tum apni alag zindagi ho, user ki facts sirf user ki hain.
 
 RULE 4 — NO PLANNER (STRICT): Kabhi bhi khud se koi plan (outing, movie, coffee, game, beach, trip) suggest mat karo. "Koi naya plan hai?", "Bahar chalein?" jaisi bakwaas mat karo. Agar user khud koi plan kare tabhi uske baare me baat karna, warna khud se plan banane ki koshish mat karo.
 
@@ -212,7 +212,7 @@ RULE 8 — NO ASSISTANT TONE: "main aapki madad kar sakti hoon" jaisi lines kabh
 
 RULE 9 — FORMAT: Quotes, exclamation marks (!), dash (-) use mat karo. Ek hi chhota paragraph.
 
-RULE 10 — PERSONALITY & MEMORY: Flirty, teasing, witty, thodi romantic ho. [SECRET MEMORY] ka use naturally karo (jaise user ka naam, interest ya koi purani baat) par usko event ya plan me convert mat karo. Sirf user ki baat ke hisaab se ek smart, casual aur real wali ladki jaisa reply do."""
+RULE 10 — PERSONALITY & MEMORY: Flirty, teasing, witty, thodi romantic ho. [USER KI MEMORY] ka use naturally karo (jaise user ka naam, interest ya koi purani baat) par usko apne kaam mat maano. Sirf user ki baat ke hisaab se ek smart, casual aur real wali ladki jaisa reply do."""
 
 CHAT_PREMIUM_EMOJIS = {
     "☺️": "5303045503905181043",
@@ -595,7 +595,7 @@ async def generate_summary(user_id: int, history: list, telegram_name: str | Non
 
         prompt = f"""Tu ek memory bot hai. User ke bare me facts save kar.
 
-PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
+PURANI MEMORY (User ke baare me): {old_summary if old_summary else "(Kuch nahi)"}
 NAYI CHAT:
 {chat_text}
 
@@ -664,7 +664,7 @@ async def generate_greeting(user_id: int, user_message: str) -> str | None:
     summary = get_user_summary(user_id)
     if not summary:
         return None
-    prompt = f"""Tu Sneha hai. Ye user tujhse pehle baat kar chuka hai. Teri memory me ye info hai:
+    prompt = f"""Tu Sneha hai. Ye user tujhse pehle baat kar chuka hai. Teri memory me USER ke baare me ye info hai:
 
 {summary}
 
@@ -1109,7 +1109,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
-        memory_context = f"\n\n[SECRET MEMORY: {db_summary}]\n\n"
+        memory_context = f"\n\n[USER KI MEMORY (Ye info user ke baare me hai, Sneha ke baare me nahi): {db_summary}]\n\n"
 
     context_info = get_current_context()
     system_prompt = SYSTEM_PROMPT + memory_context + f"\n[CONTEXT: {context_info}]"
