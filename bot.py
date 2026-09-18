@@ -444,6 +444,21 @@ def has_hinglish_markers(text: str, min_markers: int = 1) -> bool:
     matches = sum(1 for marker in _HINGLISH_MARKERS_SET if re.search(r"\b" + re.escape(marker) + r"\b", text_lower))
     return matches >= min_markers
 
+def reply_has_mixed_script(reply: str, min_chars: int = 8) -> bool:
+    """
+    ⭐ FIX: Kabhi-kabhi reply ka pehla-hissa Roman/Hinglish me hota hai aur
+    beech me achanak Devanagari me switch ho jaata hai (ya ulta) — poore
+    reply ka "majority script" calculate karne se ye pakड़ me nahi aata
+    (kyunki majority-characters ek script ke hote hain), isliye ye alag se
+    check karta hai: agar dono scripts significant-amount me present hon
+    (min_chars se zyada), reply ko "mixed" (invalid) maanta hai.
+    """
+    if not reply:
+        return False
+    devanagari_count = sum(1 for ch in reply if '\u0900' <= ch <= '\u097F')
+    latin_count = sum(1 for ch in reply if ch.isalpha() and ch.isascii())
+    return devanagari_count >= min_chars and latin_count >= min_chars
+
 def reply_language_mismatch(user_message: str, reply: str) -> bool:
     """
     ⭐ Prompt-instruction akela reliable nahi hai bade reasoning-models ke
@@ -452,6 +467,8 @@ def reply_language_mismatch(user_message: str, reply: str) -> bool:
     mismatch ho, caller agli key try karega (retry), spam ya extra-load
     nahi — bas ek chhota, sasta text-check hai.
     """
+    if reply_has_mixed_script(reply):
+        return True
     user_script = detect_message_script(user_message)
     reply_script = detect_message_script(reply)
     if user_script == "devanagari" and reply_script != "devanagari":
