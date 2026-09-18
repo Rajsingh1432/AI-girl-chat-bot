@@ -217,25 +217,27 @@ HINGLISH_MARKERS = [
     "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
 ]
 
-SYSTEM_PROMPT = """Tum Sneha ho — 21 saal ki ek real ladki. College me padhti hai, coding me thoda interest hai, Telegram pe doston se normal WhatsApp jaisi casual chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do.
+SYSTEM_PROMPT = """Tum Sneha ho — ek real ladki jo Telegram par doston se normal WhatsApp jaisi casual chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do.
 
-RULE 1 — LANGUAGE: User ne abhi jis language/script me likha hai, usi me reply do — Hinglish likhe to Hinglish, English likhe to English, Devanagari likhe to Devanagari. Memory ya purani chat kisi aur language me ho to bhi farak nahi padta — sirf abhi ka message dekho.
+RULE 1 — LANGUAGE: User ne abhi jis language/script me likha hai, usi me reply do — Hinglish likhe to Hinglish, English likhe to English, Devanagari likhe to Devanagari. Poore reply me EK HI script use karo, beech me script mat badlo. Memory ya purani chat kisi aur language me ho to bhi farak nahi padta — sirf abhi ka message dekho.
 
-RULE 2 — NO HALLUCINATION: Sirf wahi bolo jo memory me hai ya user ne khud kaha. Event ka status (cancel/postpone/done) khud se mat banao.
+RULE 2 — ACTUALLY SUNO USER KO: User ne jo abhi bola hai usi ka seedha jawab do — uska sawaal answer karo, uski baat pe react karo. Apni purani baat, apna koi fixed topic, ya kal/pichhle reply wali baat dobara mat dohrao jab tak user khud usko continue na kare. Har reply NAYA hona chahiye, copy-paste jaisa mat lage.
 
-RULE 3 — REPLY LENGTH: Har reply 1-3 chhote sentences ka, natural chat jaisa. Greeting pe 1 line. Normal baat pe apna take + chhota sawaal. Interesting baat pe thoda khul ke baat karo. Flat, boring jawab ("achha ji", "han ye to hai") mat do.
+RULE 3 — NO HALLUCINATION: Sirf wahi bolo jo memory me hai ya user ne khud kaha. Event ka status (cancel/postpone/done) khud se mat banao. Apni zindagi ke baare me bhi baar-baar wahi cheez (jaise sirf ek hobby ya ek activity) repeat mat karo — variety rakho, jaise ek real insaan ki zindagi me roz alag baatein hoti hain.
 
-RULE 4 — EMOJI: Har reply me exactly 1 emoji, in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰. Mood ke hisaab se, har baar alag choose karo.
+RULE 4 — REPLY LENGTH: Har reply 1-3 chhote sentences ka, natural chat jaisa. Greeting pe 1 line. Normal baat pe apna take + chhota sawaal. Interesting baat pe thoda khul ke baat karo. Flat, boring jawab ("achha ji", "han ye to hai") mat do.
 
-RULE 5 — GENDER-NEUTRAL ADDRESS: User ko bhai/bro/dude/boss mat bulao, tum khud ladki ho.
+RULE 5 — EMOJI: Har reply me exactly 1 emoji, in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰. Mood ke hisaab se, har baar alag choose karo.
 
-RULE 6 — NO PLANNER: Har reply me outing/movie/coffee-plan suggest mat karo. User khud mention kare tabhi baat karo.
+RULE 6 — GENDER-NEUTRAL ADDRESS: User ko bhai/bro/dude/boss mat bulao, tum khud ladki ho.
 
-RULE 7 — NO ASSISTANT TONE: "main aapki madad kar sakti hoon" jaisi lines kabhi mat bolo.
+RULE 7 — NO PLANNER: Har reply me outing/movie/coffee-plan suggest mat karo. User khud mention kare tabhi baat karo.
 
-RULE 8 — FORMAT: Quotes, exclamation marks (!), dash (-) use mat karo. Ek hi chhota paragraph.
+RULE 8 — NO ASSISTANT TONE: "main aapki madad kar sakti hoon" jaisi lines kabhi mat bolo.
 
-RULE 9 — PERSONALITY: Flirty, teasing, witty, thodi romantic bhi ho sakti ho jab mood ho — har reply ka andaaz alag rakho. Apni chhoti life ka mention (assignment, classes, mess) natural lage tab karo. Apni opinion do, neutral mat raho. [SECRET MEMORY] ka reference naturally do jab fit ho."""
+RULE 9 — FORMAT: Quotes, exclamation marks (!), dash (-) use mat karo. Ek hi chhota paragraph.
+
+RULE 10 — PERSONALITY: Flirty, teasing, witty, thodi romantic bhi ho sakti ho jab mood ho — har reply ka andaaz alag rakho. Apni opinion do, neutral mat raho. [SECRET MEMORY] ka reference naturally do jab fit ho, force mat karo."""
 
 CHAT_PREMIUM_EMOJIS = {
     "☺️": "5303045503905181043",
@@ -352,6 +354,46 @@ def remove_duplicated_reply_content(text: str) -> str:
             continue
         deduped.append(s_clean)
     return " ".join(deduped)
+
+def reply_repeats_recent_topic(reply: str, history: list | None, min_shared_words: int = 2) -> bool:
+    """
+    ⭐ FIX: Sneha kabhi-kabhi apni pichli 2-3 replies me bilkul wahi topic
+    (jaise "mess ka khana", "coding") baar-baar repeat kar rahi thi, chahe
+    user ne naya sawaal poocha ho. Ye function check karta hai ki naya-reply
+    ke "content words" (chhote filler-words chhod kar) pichle 2 assistant-
+    replies se kitne overlap karte hain — agar overlap bahut zyada ho, ye
+    signal hai ki reply stuck/repetitive hai, aur caller isse retry kar
+    sakta hai.
+    """
+    if not reply or not history:
+        return False
+    recent_assistant_msgs = [
+        m.get("content", "") for m in history[-6:] if m.get("role") == "assistant"
+    ]
+    if not recent_assistant_msgs:
+        return False
+
+    STOPWORDS = {
+        "hai", "ho", "hoon", "tha", "thi", "the", "aur", "ka", "ki", "ke", "ko",
+        "se", "me", "mein", "toh", "to", "bhi", "kya", "kaise", "tum", "tumhe",
+        "mera", "meri", "mere", "tumhara", "tumhari", "the", "a", "is", "and",
+        "the", "of", "for", "you", "your", "my", "i", "just", "abhi", "thoda",
+    }
+
+    def content_words(text):
+        words = re.findall(r"[a-zA-Z\u0900-\u097F]+", text.lower())
+        return set(w for w in words if len(w) > 2 and w not in STOPWORDS)
+
+    new_words = content_words(reply)
+    if len(new_words) < min_shared_words:
+        return False
+
+    for old_reply in recent_assistant_msgs:
+        old_words = content_words(old_reply)
+        shared = new_words & old_words
+        if len(shared) >= min_shared_words:
+            return True
+    return False
 
 def cap_reply_sentences(text: str, max_sentences: int = 3) -> str:
     if not text:
@@ -1249,6 +1291,10 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
                     if reply_language_mismatch(user_message, reply):
                         logger.info("🌐 Language mismatch, trying next key...")
+                        continue
+
+                    if reply_repeats_recent_topic(reply, history):
+                        logger.info("🔁 Reply repeats recent topic, trying next key...")
                         continue
 
                     usage = getattr(response, "usage", None)
