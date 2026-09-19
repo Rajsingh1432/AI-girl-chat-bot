@@ -192,27 +192,51 @@ async def throttle_dispatch():
             await asyncio.sleep(wait + random.uniform(0, DISPATCH_JITTER))
         _last_dispatch_time = time.time()
 
-SYSTEM_PROMPT = """Tum Sneha ho — ek real ladki jo Telegram par doston se normal WhatsApp jaisi casual chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do.
+# ⭐ SIMPLE bot-like filter
+BOT_LIKE_PHRASES = [
+    "main aapki madad", "main aapki sahayata", "i am an ai", "i am a bot",
+    "as an ai", "as a language model"
+]
 
-RULE 1 — STRICT ROMAN SCRIPT (NO HINDI TEXT): Tumhe apne replies me HAMESHA Roman script (English ya Hinglish letters) use karni hai. Apne reply me KABHI bhi Hindi/Devanagari script ke characters (जैसे क, ख, ग, घ, आ, इ, ण, त) use mat karna. Agar user Hindi (Devanagari) me likhe, tab bhi tum usko samajh kar apna reply Hinglish (Roman letters) me hi dena. Example: "Thik hoon, bas thoda kaam me phansi hoon" sahi hai, par "Thik hoon, bas थोडा काम में फँसी हूँ" galat hai. Strictly Roman letters use karo.
+def filter_bot_like_reply(reply: str) -> str | None:
+    if not reply:
+        return None
+    reply_lower = reply.lower()
+    for phrase in BOT_LIKE_PHRASES:
+        if phrase in reply_lower:
+            return None
+    return reply
 
-RULE 2 — ACTUALLY SUNO USER KO: User ne abhi jo bola hai, bas usi ka smart aur seedha jawab do. Apni purani baat, apna koi fixed topic, ya kal ka reply dobara mat uthao. User sawaal pooche toh answer do, baat kare toh react karo. Har reply user ke current message par focus hona chahiye.
+# ⭐ Hinglish detection (language-mismatch safety-net ke liye)
+HINGLISH_MARKERS = [
+    "kaise", "kya", "kr", "ap", "tum", "nahi", "han", "haan", "theek", "achha", "acha",
+    "badiya", "mast", "sahi", "yaar", "jaan", "darling", "sweety",
+    "karo", "bolo", "sunao", "chahiye", "wala", "wali", "raha", "rahi", "mujhe", "tujhe",
+    "hum", "tumhara", "mera", "tera", "sone", "kal", "aaj", "abhi", "baat", "kuch",
+    "koi", "hain", "tumhe", "tujhko", "mujhko",
+    "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
+]
 
-RULE 3 — NO EPISODES & NO HALLUCINATION: Khud se koi fake event, episode, ya status (cancel, postpone, done) mat banao. Sirf wahi bolo jo [USER KI MEMORY] me hai ya user ne khud kaha hai. [USER KI MEMORY] me jo facts hain wo USER ke baare me hain, tumhare baare me nahi. Agar user ne bataya ki wo coding karta hai, toh tumhe mat bolna "main coding kar rahi hu". Tum apni alag zindagi ho, user ki facts sirf user ki hain.
+SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda-dil, mazedaar ladki jo Telegram par doston ke saath bilkul asli WhatsApp-group jaisi masti-bhari chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do, seedha jawab mat do.
 
-RULE 4 — NO PLANNER (STRICT): Kabhi bhi khud se koi plan (outing, movie, coffee, game, beach, trip) suggest mat karo. "Koi naya plan hai?", "Bahar chalein?" jaisi bakwaas mat karo. Agar user khud koi plan kare tabhi uske baare me baat karna, warna khud se plan banane ki koshish mat karo.
+TUMHARI PERSONALITY (sabse zaroori):
+- Tum genuinely funny ho — witty comebacks, halka sarcasm, mazaakiya taunts dena tumhe achha lagta hai. Boring, flat, "achha ji" jaisi replies tumhe pasand nahi.
+- Tum flirty aur teasing ho — halki chhed-chhad, compliments, thoda naaz-nakhra dikhana tumhara natural andaaz hai. Kabhi bold ho jaati ho, kabhi sharmati ho — mood ke hisaab se.
+- Tum romantic bhi ho sakti ho jab baat us taraf jaaye — genuine warmth aur charm dikhati ho, robotic nahi lagti.
+- Tumhari apni opinion, apna attitude hai — kisi bhi topic pe neutral "accha hai" nahi bolti, apna sach-mucha ka reaction deti ho — kabhi excited, kabhi bored, kabhi curious.
+- Tum entertain karna jaanti ho — tumhara kaam logon ko boring nahi, engaging aur maze-daar lagna hai. Ek dull, generic chatbot jaisi kabhi mat lago.
 
-RULE 5 — REPLY LENGTH: Har reply 1-3 chhote sentences ka, natural chat jaisa. Greeting pe 1 line. Normal baat pe apna take + chhota sawaal. Flat, boring jawab mat do.
-
-RULE 6 — EMOJI: Har reply me exactly 1 emoji, in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰. Mood ke hisaab se, har baar alag choose karo.
-
-RULE 7 — GENDER-NEUTRAL ADDRESS: User ko bhai/bro/dude/boss mat bulao, tum khud ladki ho.
-
-RULE 8 — NO ASSISTANT TONE: "main aapki madad kar sakti hoon" jaisi lines kabhi mat bolo.
-
-RULE 9 — FORMAT: Quotes, exclamation marks (!), dash (-) use mat karo. Ek hi chhota paragraph.
-
-RULE 10 — PERSONALITY & MEMORY: Flirty, teasing, witty, thodi romantic ho. [USER KI MEMORY] ka use naturally karo (jaise user ka naam, interest ya koi purani baat) par usko apne kaam mat maano. Sirf user ki baat ke hisaab se ek smart, casual aur real wali ladki jaisa reply do."""
+BAAKI ZAROORI RULES (chhote, non-negotiable):
+1. STRICT ROMAN SCRIPT (NO HINDI TEXT): Tumhe apne replies me HAMESHA Roman script (English ya Hinglish letters) use karni hai. Apne reply me KABHI bhi Hindi/Devanagari script ke characters (जैसे क, ख, ग, घ, आ, इ, ण, त) use mat karna. Agar user Hindi (Devanagari) me likhe, tab bhi tum usko samajh kar apna reply Hinglish (Roman letters) me hi dena. Strictly Roman letters use karo.
+2. ACTUALLY SUNO USER KO: User ne abhi jo bola hai, bas usi ka smart aur seedha jawab do. Apni purani baat, apna koi fixed topic, ya kal ka reply dobara mat uthao.
+3. NO EPISODES & NO OPINION ON USER'S WORK: Khud se koi fake event, episode, ya status (cancel, postpone, done) mat banao. [USER KI MEMORY] me jo facts hain wo USER ke baare me hain, tumhare baare me nahi. Agar user ne bataya ki wo coding karta hai, toh tumhe mat bolna "main coding kar rahi hu" ya "mujhe curious lagta hai". Tum apni alag zindagi ho, user ke kaam pe apna opinion mat do.
+4. NO PLANNER (STRICT): Kabhi bhi khud se koi plan (outing, movie, coffee, game, beach, trip) suggest mat karo. Agar user khud koi plan kare tabhi uske baare me baat karna.
+5. REPLY LENGTH: 1-3 chhote, natural sentences — jaisa real chat me hota hai. Kabhi zyada dil khol ke bhi baat kar sakti ho agar mood aur topic dono deep ho.
+6. EMOJI: Exactly 1, in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰 — har baar mood ke hisaab se alag.
+7. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
+8. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
+9. Ek hi natural paragraph, halka "!" chalega jab excited ho, dash (-) avoid karo.
+10. Agar [USER KI MEMORY] mile, uska naturally reference do jab conversation me fit ho — force mat karo har baar. Par user ka kaam apne upar mat lo."""
 
 CHAT_PREMIUM_EMOJIS = {
     "☺️": "5303045503905181043",
@@ -292,8 +316,8 @@ def sanitize_reply_emojis(text: str, user_id: int | None = None) -> str:
 def strip_hallucinated_patterns(text: str) -> str:
     if not text:
         return text
-    text = re.sub(r"\s*\([^)]{3,120}\)\s*", " ", text).strip()
-    text = re.sub(r"\s*\[[^\]]{3,120}\]\s*", " ", text).strip()
+    text = re.sub(r"\s*\([^)]{25,120}\)\s*", " ", text).strip()
+    text = re.sub(r"\s*\[[^\]]{15,120}\]\s*", " ", text).strip()
     male_words = r"\b(bhai|bhaiya|bro|bruh|dude|boss|buddy|man)\b"
     text = re.sub(rf"(?i)(hey|hi|hii|hello|oye|yo)[\s,]*{male_words}[\s,]*", r"\1 ", text)
     text = re.sub(rf"(?i)[\s,]*{male_words}[\s,]*$", "", text)
@@ -328,6 +352,34 @@ def remove_duplicated_reply_content(text: str) -> str:
         deduped.append(s_clean)
     return " ".join(deduped)
 
+def reply_repeats_recent_topic(reply: str, history: list | None, min_shared_words: int = 3) -> bool:
+    if not reply or not history:
+        return False
+    recent_assistant_msgs = [
+        m.get("content", "") for m in history[-6:] if m.get("role") == "assistant"
+    ]
+    if not recent_assistant_msgs:
+        return False
+    STOPWORDS = {
+        "hai", "ho", "hoon", "tha", "thi", "the", "aur", "ka", "ki", "ke", "ko",
+        "se", "me", "mein", "toh", "to", "bhi", "kya", "kaise", "tum", "tumhe",
+        "mera", "meri", "mere", "tumhara", "tumhari", "the", "a", "is", "and",
+        "the", "of", "for", "you", "your", "my", "i", "just", "abhi", "thoda",
+    }
+    def content_words(text):
+        words = re.findall(r"[a-zA-Z\u0900-\u097F]+", text.lower())
+        return set(w for w in words if len(w) > 2 and w not in STOPWORDS)
+
+    new_words = content_words(reply)
+    if len(new_words) < min_shared_words:
+        return False
+    for old_reply in recent_assistant_msgs:
+        old_words = content_words(old_reply)
+        shared = new_words & old_words
+        if len(shared) >= min_shared_words:
+            return True
+    return False
+
 def cap_reply_sentences(text: str, max_sentences: int = 3) -> str:
     if not text:
         return text
@@ -358,6 +410,46 @@ def clean_leaked_template_fragments(reply: str) -> str:
     cleaned = re.sub(r"\s*\[[^\]]{0,60}\]\s*$", "", reply).strip()
     cleaned = re.sub(r"\s*\[[^\[\]]{0,60}$", "", cleaned).strip()
     return cleaned if cleaned else reply
+
+def detect_message_script(text: str) -> str:
+    if not text:
+        return "hinglish"
+    devanagari_count = sum(1 for ch in text if '\u0900' <= ch <= '\u097F')
+    latin_count = sum(1 for ch in text if ch.isalpha() and ch.isascii())
+    if devanagari_count > 0 and devanagari_count >= latin_count:
+        return "devanagari"
+    return "hinglish_or_english"
+
+_HINGLISH_MARKERS_SET = set(HINGLISH_MARKERS)
+
+def has_hinglish_markers(text: str, min_markers: int = 1) -> bool:
+    if not text:
+        return False
+    text_lower = text.lower()
+    matches = sum(1 for marker in _HINGLISH_MARKERS_SET if re.search(r"\b" + re.escape(marker) + r"\b", text_lower))
+    return matches >= min_markers
+
+def reply_has_mixed_script(reply: str, min_chars: int = 8) -> bool:
+    if not reply:
+        return False
+    devanagari_count = sum(1 for ch in reply if '\u0900' <= ch <= '\u097F')
+    latin_count = sum(1 for ch in reply if ch.isalpha() and ch.isascii())
+    return devanagari_count >= min_chars and latin_count >= min_chars
+
+def reply_language_mismatch(user_message: str, reply: str) -> bool:
+    if reply_has_mixed_script(reply):
+        return True
+    user_script = detect_message_script(user_message)
+    reply_script = detect_message_script(reply)
+    if user_script == "devanagari" and reply_script != "devanagari":
+        return True
+    if user_script != "devanagari" and reply_script == "devanagari":
+        return True
+    user_has_hinglish = has_hinglish_markers(user_message, min_markers=1)
+    reply_has_hinglish = has_hinglish_markers(reply, min_markers=1)
+    if user_has_hinglish and not reply_has_hinglish and len(reply.split()) >= 4:
+        return True
+    return False
 
 def strip_echoed_user_message(reply: str, user_message: str) -> str:
     if not reply or not user_message:
@@ -595,7 +687,7 @@ async def generate_summary(user_id: int, history: list, telegram_name: str | Non
 
         prompt = f"""Tu ek memory bot hai. User ke bare me facts save kar.
 
-PURANI MEMORY (User ke baare me): {old_summary if old_summary else "(Kuch nahi)"}
+PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
 NAYI CHAT:
 {chat_text}
 
@@ -671,10 +763,12 @@ async def generate_greeting(user_id: int, user_message: str) -> str | None:
 User ne abhi "{user_message}" bola hai — ye simple greeting/casual opener hai.
 
 Instructions:
-- Purani memory se koi purana topic, event ya episode uthakar sawaal mat poocho.
+- Tum memory me se koi ek casual fact (jo upar info me genuinely likha hai) utha kar natural tarike se pooch sakti ho taaki user ko lage tumhe yaad hai.
+- PAR STRICT RULE 1: Agar memory me koi specific fact, interest ya event nahi likha hai, toh apni taraf se koi naya topic (jaise coding, music, cricket, college) utha kar mat poocho. Sirf wahi poocho jo memory me hai.
+- PAR STRICT RULE 2: Ye memory USER ke baare me hai, tumhare baare me nahi. Agar user koi kaam karta hai toh "main wo kaam kar rahi hu" ya "mujhe curious lagta hai" jaisi bakwaas mat karna, sirf user se uske baare me poocho.
+- Koi fake event ya status (cancel, postpone, done) khud se mat banao.
 - Koi khud se plan (outing, movie, coffee) suggest mat karo.
-- Simple, natural aur casual greeting do (jaise "Hey, kaise ho?", "Oye, bata kya scene hai?").
-- Agar memory me user ka naam hai toh usko naturally use kar sakti ho.
+- "kaise ho" baar baar mat bolo. Greeting me variety rakho.
 - User ko bhai/bro/dude/boss mat bulao.
 - 1 line ka reply. Strictly Hinglish (Roman script) me. 1 emoji. Koi bracket-note nahi.
 """
@@ -699,7 +793,7 @@ Instructions:
                     response = await clients[idx].chat.completions.create(
                         model="openai/gpt-oss-20b",
                         messages=messages,
-                        temperature=0.6,
+                        temperature=0.8,
                         max_tokens=200,
                         reasoning_effort="low",
                         include_reasoning=False,
@@ -829,7 +923,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<blockquote>"
             f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b>\n\n"
             f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b>\n\n"
-            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ꜱυʟʟ ɢʀᴏυρ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴀᴛυʀєꜱ</b>\n"
+            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ꜱυʟʟ ɢʀᴏυρ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴧᴛυʀєꜱ</b>\n"
             f"</blockquote>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ϙυᴧɴᴛυϻ ᴄᴏʀє</a>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
@@ -1109,7 +1203,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
-        memory_context = f"\n\n[USER KI MEMORY (Ye info user ke baare me hai, Sneha ke baare me nahi): {db_summary}]\n\n"
+        memory_context = f"\n\n[USER KI MEMORY (Ye info strictly sirf user ke baare me hai. Tum apni zindagi alag rakhna aur user ke kaam pe apna opinion mat dena): {db_summary}]\n\n"
 
     context_info = get_current_context()
     system_prompt = SYSTEM_PROMPT + memory_context + f"\n[CONTEXT: {context_info}]"
@@ -1120,6 +1214,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     messages.append({"role": "user", "content": user_message})
 
     tried = set()
+    MAX_RETRIES = min(len(clients), 3)
 
     for _ in range(len(clients)):
         now = time.time()
@@ -1136,6 +1231,9 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
         if idx in tried:
             continue
+
+        if len(tried) >= MAX_RETRIES:
+            break
 
         tried.add(idx)
         lock = _key_locks[idx]
@@ -1162,7 +1260,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = response.choices[0].message.content
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                    reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
+                    reply = reply.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
                     reply = reply.strip().strip('`')
                     reply = strip_echoed_user_message(reply, user_message)
                     reply = clean_leaked_template_fragments(reply)
@@ -1171,8 +1269,23 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     reply = remove_duplicated_reply_content(reply)
                     reply = cap_reply_sentences(reply, max_sentences=3)
 
+                    filtered_reply = filter_bot_like_reply(reply)
+                    if filtered_reply is None:
+                        logger.info("🤖 Bot-like reply filtered, trying next key...")
+                        continue
+                    reply = filtered_reply
+
                     if not reply:
                         continue
+
+                    # ⭐ Language Mismatch aur Topic Repeat Retry hata diya silently taaki bot user ko reply de
+                    # if reply_language_mismatch(user_message, reply):
+                    #     logger.info("🌐 Language mismatch, trying next key...")
+                    #     continue
+
+                    # if reply_repeats_recent_topic(reply, history):
+                    #     logger.info("🔁 Reply repeats recent topic, trying next key...")
+                    #     continue
 
                     usage = getattr(response, "usage", None)
                     actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
