@@ -8,7 +8,7 @@ import asyncio
 import html
 from datetime import datetime, timezone, timedelta
 import psycopg2
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity, ReactionTypeEmoji
 from telegram.ext import Application, CommandHandler, MessageHandler, ChatMemberHandler, filters, ContextTypes, CallbackQueryHandler
 from telegram.error import RetryAfter, TimedOut, Forbidden
 from groq import AsyncGroq
@@ -1205,7 +1205,7 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
-        memory_context = f"\n\n[YE BAATEIN USER NE TUMHE BATAYI HAIN (Strict Warning: Ye user ki zindagi hai, tumhari nahi. Tum apni alag zindagi ho. Isme likhe hue kaam (jaise coding) tumhare kaam nahi hain, isliye apne upar mat lena): {db_summary}]\n\n"
+        memory_context = f"\n\n[YE BAATEIN USER NE TUMHE BATAYI HAIN (Strict Warning: Ye user ki zindagi hai, tumhari nahi. Tum apni alag zindagi ho. Isme likhe uttered kaam (jaise coding) tumhare kaam nahi hain, isliye apne upar mat lena): {db_summary}]\n\n"
 
     context_info = get_current_context()
     system_prompt = SYSTEM_PROMPT + memory_context + f"\n[CONTEXT: {context_info}]"
@@ -1596,7 +1596,34 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                 return greeting
         return None
 
+    # ⭐ Real Girl Vibe: Sirf usi msg pe reaction jo trigger tha
+    async def send_sneha_reaction():
+        if not update.message or not update.message.text:
+            return
+        try:
+            text_lower = update.message.text.lower()
+            reaction = None
+            # Specific keywords pe 100% reaction (Telegram inko auto animate karta hai)
+            if any(w in text_lower for w in ["love", "pyaar", "❤️", "ilysm", "babu", "jaan", "❤", "love you"]):
+                reaction = "❤️"
+            elif any(w in text_lower for w in ["lol", "lmao", "haha", "hahaha", "😂", "🤣", "funny", "mazaak", "joke"]):
+                reaction = "😂"
+            elif any(w in text_lower for w in ["wow", "nice", "good", "mast", "badiya", "cool", "🔥", "great"]):
+                reaction = "🔥"
+            elif any(w in text_lower for w in ["sad", "cry", "dukhi", "😭", "rip", "miss"]):
+                reaction = "😭"
+            else:
+                # 30% chance random reaction dena (natural vibe ke liye)
+                if random.random() < 0.30:
+                    reaction = random.choice(["👍", "❤️", "🔥", "🥰", "👏", "🙃", "👀", "🙈"])
+            
+            if reaction:
+                await update.message.set_reaction(reaction=[ReactionTypeEmoji(emoji=reaction)])
+        except Exception:
+            pass # Agar group me reactions off hon to bina error ke ignore karo
+
     if is_standalone:
+        await send_sneha_reaction() # 👈 Reaction yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
         if greeting:
             if user.username:
@@ -1628,6 +1655,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         return
 
     if is_reply_to_bot:
+        await send_sneha_reaction() # 👈 Reaction yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML")
@@ -1644,6 +1672,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         return
 
     if is_bot_mentioned:
+        await send_sneha_reaction() # 👈 Reaction yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML")
