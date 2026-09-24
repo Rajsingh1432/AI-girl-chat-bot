@@ -1304,15 +1304,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     if not reply:
                         continue
 
-                    # ⭐ Language Mismatch aur Topic Repeat Retry hata diya silently taaki bot user ko reply de
-                    # if reply_language_mismatch(user_message, reply):
-                    #     logger.info("🌐 Language mismatch, trying next key...")
-                    #     continue
-
-                    # if reply_repeats_recent_topic(reply, history):
-                    #     logger.info("🔁 Reply repeats recent topic, trying next key...")
-                    #     continue
-
                     usage = getattr(response, "usage", None)
                     actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
                     update_key_usage_actual(idx, entry_idx, actual_tokens)
@@ -1375,6 +1366,7 @@ def has_telegram_link(text: str) -> bool:
     return bool(re.search(r'(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:[a-zA-Z0-9_]+)', text)) or bool(re.search(r'@[a-zA-Z0-9_]{4,}', text))
 
 async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = True, **kwargs) -> None:
+    sent_msg = None
     try:
         if use_premium_emojis:
             if "parse_mode" in kwargs and kwargs["parse_mode"] == "HTML":
@@ -1383,18 +1375,26 @@ async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = 
                 entities = build_premium_emoji_entities(text, CHAT_PREMIUM_EMOJIS)
                 if entities:
                     kwargs["entities"] = entities
-        await update.message.reply_text(text, **kwargs)
+        sent_msg = await update.message.reply_text(text, **kwargs)
     except Exception as e:
         if "Document_invalid" in str(e) or "emoji" in str(e).lower() or "can't parse entities" in str(e).lower():
             try:
                 kwargs.pop("entities", None)
                 if "parse_mode" in kwargs and kwargs["parse_mode"] == "HTML":
                     text = re.sub(r'<tg-emoji emoji-id="\d+">([^<]+)</tg-emoji>', r'\1', text)
-                await update.message.reply_text(text, **kwargs)
+                sent_msg = await update.message.reply_text(text, **kwargs)
             except Exception as e2:
                 logger.warning(f"reply_text fallback fail: {e2}")
         else:
             logger.warning(f"reply_text fail: {e}")
+    
+    # ⭐ Real Girl Vibe: Sneha reacting to her OWN message (80% chance)
+    if sent_msg and "<b>" not in text and len(text) > 15 and random.random() < 0.80:
+        try:
+            react_emoji = random.choice(["❤️", "🔥", "🥰", "😂", "👍", "👏", "🎉", "🤔", "😱"])
+            await sent_msg.set_reaction(reaction=[ReactionTypeEmoji(emoji=react_emoji)])
+        except Exception:
+            pass # Ignore if reactions are off in group
 
 async def _keep_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     try:
@@ -1620,64 +1620,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                 return greeting
         return None
 
-    # ⭐ Real Girl Vibe: Premium Animated Reactions (70% Probability)
-    async def send_sneha_reaction():
-        if not update.message or not update.message.text:
-            return
-        try:
-            text_lower = update.message.text.lower()
-            custom_emoji_id = None
-            
-            # Specific keywords pe 100% premium reaction
-            if any(w in text_lower for w in ["love", "pyaar", "❤️", "ilysm", "babu", "jaan", "❤", "love you", "ily"]):
-                custom_emoji_id = CHAT_PREMIUM_EMOJIS["❤️"]
-            elif any(w in text_lower for w in ["lol", "lmao", "haha", "hahaha", "😂", "🤣", "funny", "mazaak", "joke", "comedy"]):
-                custom_emoji_id = CHAT_PREMIUM_EMOJIS["🤥"]
-            elif any(w in text_lower for w in ["wow", "nice", "good", "mast", "badiya", "cool", "🔥", "great", "awesome"]):
-                custom_emoji_id = CHAT_PREMIUM_EMOJIS["🔥"]
-            elif any(w in text_lower for w in ["sad", "cry", "dukhi", "😭", "rip", "miss", "akela"]):
-                custom_emoji_id = CHAT_PREMIUM_EMOJIS["😪"]
-            elif any(w in text_lower for w in ["thank", "shukriya", "thx", "ty"]):
-                custom_emoji_id = CHAT_PREMIUM_EMOJIS["🙏"]
-            elif any(w in text_lower for w in ["hi", "hello", "hey", "namaste", "namaskar", "yo", "hola"]):
-                custom_emoji_id = CHAT_PREMIUM_EMOJIS["😊"]
-            elif any(w in text_lower for w in ["shy", "sharma", "blush", "🥹", "cute"]):
-                custom_emoji_id = CHAT_PREMIUM_EMOJIS["🥰"]
-            else:
-                # 70% chance random premium reaction dena (taaki messages bypass na hon)
-                if random.random() < 0.70:
-                    custom_emoji_id = random.choice(list(CHAT_PREMIUM_EMOJIS.values()))
-            
-            if custom_emoji_id:
-                try:
-                    # 1. Premium Custom Animated Reaction bhejne ki koshish
-                    await context.bot.set_message_reaction(
-                        chat_id=update.message.chat_id,
-                        message_id=update.message.message_id,
-                        reaction=[ReactionTypeCustomEmoji(custom_emoji_id=custom_emoji_id)]
-                    )
-                except Exception:
-                    # 2. Agar group/chat premium support na kare, toh normal emoji fallback
-                    fallback_map = {
-                        CHAT_PREMIUM_EMOJIS["❤️"]: "❤️", 
-                        CHAT_PREMIUM_EMOJIS["🤥"]: "😏", 
-                        CHAT_PREMIUM_EMOJIS["🔥"]: "🔥", 
-                        CHAT_PREMIUM_EMOJIS["😪"]: "😢", 
-                        CHAT_PREMIUM_EMOJIS["🙏"]: "🙏", 
-                        CHAT_PREMIUM_EMOJIS["😊"]: "👍", 
-                        CHAT_PREMIUM_EMOJIS["🥰"]: "🥰"
-                    }
-                    fallback_emoji = fallback_map.get(custom_emoji_id, "👍")
-                    await context.bot.set_message_reaction(
-                        chat_id=update.message.chat_id,
-                        message_id=update.message.message_id,
-                        reaction=[ReactionTypeEmoji(emoji=fallback_emoji)]
-                    )
-        except Exception:
-            pass # Agar completely reactions off hon to bina error ke ignore
-
     if is_standalone:
-        await send_sneha_reaction() # 👈 Reaction yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
         if greeting:
             if user.username:
@@ -1709,7 +1652,6 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         return
 
     if is_reply_to_bot:
-        await send_sneha_reaction() # 👈 Reaction yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML")
@@ -1726,7 +1668,6 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         return
 
     if is_bot_mentioned:
-        await send_sneha_reaction() # 👈 Reaction yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML")
@@ -1942,7 +1883,7 @@ async def main() -> None:
         await application.start()
         await application.bot.set_webhook(
             url=f"{webhook_url}/webhook",
-            allowed_updates=Update.ALL_TYPES
+            allowed_updates=["message", "edited_message", "chat_member", "my_chat_member"]
         )
         await uvicorn.Server(
             uvicorn.Config(app=app, host="0.0.0.0", port=port, log_level="info")
@@ -1953,7 +1894,7 @@ async def main() -> None:
         await application.start()
         await application.updater.start_polling(
             drop_pending_updates=True,
-            allowed_updates=Update.ALL_TYPES
+            allowed_updates=["message", "edited_message", "chat_member", "my_chat_member"]
         )
         await asyncio.Event().wait()
 
