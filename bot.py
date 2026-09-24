@@ -234,40 +234,64 @@ BAAKI ZAROORI RULES (chhote, non-negotiable):
 4. STRICT IDENTITY SEPARATION (SABSE ZAROORI): [USER KI MEMORY] me jo bhi facts hain (jaise coding, gaming, ESP UI, college), wo 100% USER ki zindagi hai, TUMHARI NAHI. Tum apni alag zindagi ho. Tumhe KABHI bhi user ke kaam ko apne upar mat lena. Agar user ne bataya ki wo coding karta hai, toh tumhe mat bolna "main coding kar rahi hu" ya "ESP UI finalize karungi". Tum apne kaam (jaise music sunna, friends ke saath ghoomna) alag rakho. User ke kaam pe apna opinion mat do, khud ko user jaisa professional mat banao.
 5. NO PLANNER (STRICT): Kabhi bhi khud se koi plan (outing, movie, coffee, game, beach, trip) suggest mat karo. Agar user khud koi plan kare tabhi uske baare me baat karna.
 6. REPLY LENGTH: 1-3 chhote, natural sentences — jaisa real chat me hota hai. Kabhi zyada dil khol ke bhi baat kar sakti ho agar mood aur topic dono deep ho.
-7. EMOJI: Exactly 1, in me se: ☺️ 😒 🥹 🙃 ❤️ 😡 😭 🙏 😅 🤫 💋 😙 😍 😩 🥰 — har baar mood ke hisaab se alag.
+7. EMOJI: Exactly 1, in me se: 👑 ✔️ 🙏 🍼 😪 🔥 😦 ✅ 🤥 😴 ❤️ ♾️ 🥰 🤗 🏷 🛒 🤩 😊 ➿ 📊 😽 🔹 🎮 🍲 ⭕️ 🔤 🔊 🏅 🌫 📤 💰 🔑 💃 🔔 🕳 ⚠️ ⚡️ 💬 ⭐ 🟢 — har baar mood ke hisaab se alag.
 8. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
 9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
 10. Ek hi natural paragraph, halka "!" chalega jab excited ho, dash (-) avoid karo.
 11. Agar [USER KI MEMORY] mile, uska naturally reference do jab conversation me fit ho — par yaad rakhna, wo user ki life hai tumhari nahi."""
 
 CHAT_PREMIUM_EMOJIS = {
-    "☺️": "5303045503905181043",
-    "😒": "5420240850581989986",
-    "🥹": "5276318145760473664",
-    "🙃": "6271778482779328233",
-    "❤️": "6217289430990851552",
-    "😡": "6266970009193418570",
-    "😭": "5427289252691980093",
-    "😅": "5354964228220397164",
-    "🙏": "6215369279961829493",
-    "🤫": "6271546481530899630",
-    "💋": "6271456128303894121",
-    "🥰": "6269355313770532361",
-    "😩": "6271302325525023944",
-    "😍": "5393276813969467300",
-    "😙": "5402190434476763989",
+    "👑": "5805337324967432449",
+    "✔️": "6109561412005140126",
+    "🙏": "5382319231410904354",
+    "🍼": "5422724007399009915",
+    "😪": "5978943923161140896",
+    "🔥": "4956706225988305806",
+    "😦": "5965244592394604035",
+    "✅": "6298747815086524010",
+    "🤥": "5963287916963695877",
+    "😴": "5422718797603682271",
+    "❤️": "5321484189348944839",
+    "♾️": "5373315485309870642",
+    "🥰": "5364343169779504660",
+    "🤗": "5836850719788897983",
+    "🏷": "6143448849999468958",
+    "🛒": "5775925350269719113",
+    "🤩": "5215405987560716168",
+    "😊": "6215173330668884439",
+    "➿": "6253251338189151710",
+    "📊": "5233289810474452645",
+    "😽": "6204033525532858608",
+    "🔹": "5458365265223888145",
+    "🎮": "5350803719170564382",
+    "🍲": "6226471882091136884",
+    "⭕️": "5949775417274536507",
+    "🔤": "6151933897195130910",
+    "🔊": "5233547018885941243",
+    "🏅": "6300846572330555668",
+    "🌫": "5945225646748733525",
+    "📤": "5776366177123045379",
+    "💰": "6197188618973352650",
+    "🔑": "5832192235050902111",
+    "💃": "6328049610988193312",
+    "🔔": "5836828557757649410",
+    "🕳": "6285252482381647151",
+    "⚠️": "6179124703785914673",
+    "⚡️": "6104977608158485467",
+    "💬": "5805567170142277810",
+    "⭐": "6203864325296232471",
+    "🟢": "6181629511533073687"
 }
 
 _EMOJI_FALLBACK_MAP = {
-    "😊": "☺️", "🙂": "☺️", "😀": "☺️", "😁": "☺️", "😄": "☺️", "😃": "☺️",
-    "🥰": "❤️", "😍": "❤️", "💕": "❤️", "💖": "❤️", "💗": "❤️", "😘": "❤️",
-    "😢": "😭", "😪": "😭", "😔": "😭", "😞": "😭",
-    "😤": "😡", "🙄": "😒", "😑": "😒", "😐": "😒",
-    "😆": "😅", "🤣": "😅", "😂": "😅",
-    "🥺": "🥹", "😳": "🥹",
-    "😏": "🙃", "😜": "🙃", "😉": "🙃",
-    "🤐": "🤫", "🤭": "🤫",
-    "🙌": "🙏", "🤲": "🙏",
+    "😀": "😊", "😃": "😊", "😄": "😊", "😁": "😊", "🙂": "😊",
+    "😍": "🥰", "😘": "🥰", "💕": "❤️", "💖": "❤️", "💗": "❤️",
+    "😢": "😪", "😭": "😪",
+    "😏": "🤥", "😜": "🤥", "😉": "🤥",
+    "🤔": "🤥",
+    "👏": "✔️", "🙌": "🙏", "🤲": "🙏",
+    "😴": "😴", "💤": "😴",
+    "❌": "⚠️", "⛔️": "⚠️"
 }
 
 _ALL_EMOJI_PATTERN = re.compile(
