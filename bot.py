@@ -8,7 +8,7 @@ import asyncio
 import html
 from datetime import datetime, timezone, timedelta
 import psycopg2
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity, ReactionTypeEmoji
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity, ReactionTypeEmoji, ReactionTypeCustomEmoji
 from telegram.ext import Application, CommandHandler, MessageHandler, ChatMemberHandler, filters, ContextTypes, CallbackQueryHandler
 from telegram.error import RetryAfter, TimedOut, Forbidden
 from groq import AsyncGroq
@@ -1620,31 +1620,61 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                 return greeting
         return None
 
-    # ⭐ Real Girl Vibe: Sirf usi msg pe reaction jo trigger tha
+    # ⭐ Real Girl Vibe: Premium Animated Reactions (70% Probability)
     async def send_sneha_reaction():
         if not update.message or not update.message.text:
             return
         try:
             text_lower = update.message.text.lower()
-            reaction = None
-            # Specific keywords pe 100% reaction (Telegram inko auto animate karta hai)
-            if any(w in text_lower for w in ["love", "pyaar", "❤️", "ilysm", "babu", "jaan", "❤", "love you"]):
-                reaction = "❤️"
-            elif any(w in text_lower for w in ["lol", "lmao", "haha", "hahaha", "😂", "🤣", "funny", "mazaak", "joke"]):
-                reaction = "😂"
-            elif any(w in text_lower for w in ["wow", "nice", "good", "mast", "badiya", "cool", "🔥", "great"]):
-                reaction = "🔥"
-            elif any(w in text_lower for w in ["sad", "cry", "dukhi", "😭", "rip", "miss"]):
-                reaction = "😭"
-            else:
-                # 30% chance random reaction dena (natural vibe ke liye)
-                if random.random() < 0.30:
-                    reaction = random.choice(["👍", "❤️", "🔥", "🥰", "👏", "🙃", "👀", "🙈"])
+            custom_emoji_id = None
             
-            if reaction:
-                await update.message.set_reaction(reaction=[ReactionTypeEmoji(emoji=reaction)])
+            # Specific keywords pe 100% premium reaction
+            if any(w in text_lower for w in ["love", "pyaar", "❤️", "ilysm", "babu", "jaan", "❤", "love you", "ily"]):
+                custom_emoji_id = CHAT_PREMIUM_EMOJIS["❤️"]
+            elif any(w in text_lower for w in ["lol", "lmao", "haha", "hahaha", "😂", "🤣", "funny", "mazaak", "joke", "comedy"]):
+                custom_emoji_id = CHAT_PREMIUM_EMOJIS["🤥"]
+            elif any(w in text_lower for w in ["wow", "nice", "good", "mast", "badiya", "cool", "🔥", "great", "awesome"]):
+                custom_emoji_id = CHAT_PREMIUM_EMOJIS["🔥"]
+            elif any(w in text_lower for w in ["sad", "cry", "dukhi", "😭", "rip", "miss", "akela"]):
+                custom_emoji_id = CHAT_PREMIUM_EMOJIS["😪"]
+            elif any(w in text_lower for w in ["thank", "shukriya", "thx", "ty"]):
+                custom_emoji_id = CHAT_PREMIUM_EMOJIS["🙏"]
+            elif any(w in text_lower for w in ["hi", "hello", "hey", "namaste", "namaskar", "yo", "hola"]):
+                custom_emoji_id = CHAT_PREMIUM_EMOJIS["😊"]
+            elif any(w in text_lower for w in ["shy", "sharma", "blush", "🥹", "cute"]):
+                custom_emoji_id = CHAT_PREMIUM_EMOJIS["🥰"]
+            else:
+                # 70% chance random premium reaction dena (taaki messages bypass na hon)
+                if random.random() < 0.70:
+                    custom_emoji_id = random.choice(list(CHAT_PREMIUM_EMOJIS.values()))
+            
+            if custom_emoji_id:
+                try:
+                    # 1. Premium Custom Animated Reaction bhejne ki koshish
+                    await context.bot.set_message_reaction(
+                        chat_id=update.message.chat_id,
+                        message_id=update.message.message_id,
+                        reaction=[ReactionTypeCustomEmoji(custom_emoji_id=custom_emoji_id)]
+                    )
+                except Exception:
+                    # 2. Agar group/chat premium support na kare, toh normal emoji fallback
+                    fallback_map = {
+                        CHAT_PREMIUM_EMOJIS["❤️"]: "❤️", 
+                        CHAT_PREMIUM_EMOJIS["🤥"]: "😏", 
+                        CHAT_PREMIUM_EMOJIS["🔥"]: "🔥", 
+                        CHAT_PREMIUM_EMOJIS["😪"]: "😢", 
+                        CHAT_PREMIUM_EMOJIS["🙏"]: "🙏", 
+                        CHAT_PREMIUM_EMOJIS["😊"]: "👍", 
+                        CHAT_PREMIUM_EMOJIS["🥰"]: "🥰"
+                    }
+                    fallback_emoji = fallback_map.get(custom_emoji_id, "👍")
+                    await context.bot.set_message_reaction(
+                        chat_id=update.message.chat_id,
+                        message_id=update.message.message_id,
+                        reaction=[ReactionTypeEmoji(emoji=fallback_emoji)]
+                    )
         except Exception:
-            pass # Agar group me reactions off hon to bina error ke ignore karo
+            pass # Agar completely reactions off hon to bina error ke ignore
 
     if is_standalone:
         await send_sneha_reaction() # 👈 Reaction yahan fire hoga
