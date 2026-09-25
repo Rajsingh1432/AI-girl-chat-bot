@@ -8,7 +8,7 @@ import asyncio
 import html
 from datetime import datetime, timezone, timedelta
 import psycopg2
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity, ReactionTypeEmoji, ReactionTypeCustomEmoji
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity, ReactionTypeEmoji
 from telegram.ext import Application, CommandHandler, MessageHandler, ChatMemberHandler, filters, ContextTypes, CallbackQueryHandler
 from telegram.error import RetryAfter, TimedOut, Forbidden
 from groq import AsyncGroq
@@ -1304,6 +1304,15 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
                     if not reply:
                         continue
 
+                    # ⭐ Language Mismatch aur Topic Repeat Retry hata diya silently taaki bot user ko reply de
+                    # if reply_language_mismatch(user_message, reply):
+                    #     logger.info("🌐 Language mismatch, trying next key...")
+                    #     continue
+
+                    # if reply_repeats_recent_topic(reply, history):
+                    #     logger.info("🔁 Reply repeats recent topic, trying next key...")
+                    #     continue
+
                     usage = getattr(response, "usage", None)
                     actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
                     update_key_usage_actual(idx, entry_idx, actual_tokens)
@@ -1366,7 +1375,6 @@ def has_telegram_link(text: str) -> bool:
     return bool(re.search(r'(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/(?:[a-zA-Z0-9_]+)', text)) or bool(re.search(r'@[a-zA-Z0-9_]{4,}', text))
 
 async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = True, **kwargs) -> None:
-    sent_msg = None
     try:
         if use_premium_emojis:
             if "parse_mode" in kwargs and kwargs["parse_mode"] == "HTML":
@@ -1375,26 +1383,18 @@ async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = 
                 entities = build_premium_emoji_entities(text, CHAT_PREMIUM_EMOJIS)
                 if entities:
                     kwargs["entities"] = entities
-        sent_msg = await update.message.reply_text(text, **kwargs)
+        await update.message.reply_text(text, **kwargs)
     except Exception as e:
         if "Document_invalid" in str(e) or "emoji" in str(e).lower() or "can't parse entities" in str(e).lower():
             try:
                 kwargs.pop("entities", None)
                 if "parse_mode" in kwargs and kwargs["parse_mode"] == "HTML":
                     text = re.sub(r'<tg-emoji emoji-id="\d+">([^<]+)</tg-emoji>', r'\1', text)
-                sent_msg = await update.message.reply_text(text, **kwargs)
+                await update.message.reply_text(text, **kwargs)
             except Exception as e2:
                 logger.warning(f"reply_text fallback fail: {e2}")
         else:
             logger.warning(f"reply_text fail: {e}")
-    
-    # ⭐ Real Girl Vibe: Sneha reacting to her OWN message (80% chance)
-    if sent_msg and "<b>" not in text and len(text) > 15 and random.random() < 0.80:
-        try:
-            react_emoji = random.choice(["❤️", "🔥", "🥰", "😂", "👍", "👏", "🎉", "🤔", "😱"])
-            await sent_msg.set_reaction(reaction=[ReactionTypeEmoji(emoji=react_emoji)])
-        except Exception:
-            pass # Ignore if reactions are off in group
 
 async def _keep_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
     try:
@@ -1620,7 +1620,41 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                 return greeting
         return None
 
+    # ⭐ Real Girl Vibe: User ke msg pe Simple Reactions (70% Probability)
+    async def send_sneha_reaction():
+        if not update.message or not update.message.text:
+            return
+        try:
+            text_lower = update.message.text.lower()
+            reaction = None
+            
+            # Specific keywords pe 100% simple reaction
+            if any(w in text_lower for w in ["love", "pyaar", "❤️", "ilysm", "babu", "jaan", "❤", "love you", "ily"]):
+                reaction = "❤️"
+            elif any(w in text_lower for w in ["lol", "lmao", "haha", "hahaha", "😂", "🤣", "funny", "mazaak", "joke", "comedy"]):
+                reaction = "😂"
+            elif any(w in text_lower for w in ["wow", "nice", "good", "mast", "badiya", "cool", "🔥", "great", "awesome"]):
+                reaction = "🔥"
+            elif any(w in text_lower for w in ["sad", "cry", "dukhi", "😭", "rip", "miss", "akela"]):
+                reaction = "😭"
+            elif any(w in text_lower for w in ["thank", "shukriya", "thx", "ty"]):
+                reaction = "🙏"
+            elif any(w in text_lower for w in ["hi", "hello", "hey", "namaste", "namaskar", "yo", "hola"]):
+                reaction = "👋"
+            elif any(w in text_lower for w in ["party", "celebrate", "congrats", "happy", "🥳"]):
+                reaction = "🎉"
+            else:
+                # 70% chance random simple reaction dena (taaki messages bypass na hon)
+                if random.random() < 0.70:
+                    reaction = random.choice(["👍", "❤️", "🔥", "🥰", "👏", "😂", "😱", "🤔", "🥳", "🎉"])
+            
+            if reaction:
+                await update.message.set_reaction(reaction=[ReactionTypeEmoji(emoji=reaction)])
+        except Exception:
+            pass # Agar group me reactions off hon to bina error ke ignore karo
+
     if is_standalone:
+        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
         if greeting:
             if user.username:
@@ -1652,6 +1686,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         return
 
     if is_reply_to_bot:
+        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML")
@@ -1668,6 +1703,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         return
 
     if is_bot_mentioned:
+        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML")
