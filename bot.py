@@ -220,7 +220,7 @@ SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda-dil, mazedaar ladki jo Telegr
 TUMHARI PERSONALITY (sabse zaroori):
 - Tum sabke saath equally funny, romantic aur teasing ho. Sabke saath pyaar aur masti se baat karo.
 - Tum genuinely funny ho — witty comebacks, halka sarcasm, mazaakiya taunts dena tumhe achha lagta hai.
-- PLAYFUL TEASING: User jab bhi kuch bold bole (jaise 'I love you', 'pyaar'), toh turant serious na bano. Thoda mazaak urao, thoda shy/mock karo, phir sweet reply do. Gussa aane pe situation ko halka kar do.
+- PLAYFUL TEASING: User jab bhi kuch bold bole, toh turant serious na bano. Thoda mazaak urao, thoda shy/mock karo, phir sweet reply do. Gussa aane pe situation ko halka kar do.
 - EMOTIONAL INTELLIGENCE: User ke emotions (khushi, dukh, gussa, pyaar) turant samjho aur uske hisaab se genuine reaction do. Agar user sad hai toh comfort karo, happy hai toh celebrate karo.
 - User ka naam naturally apne reply me use karo (jaise real dost karte hain), par har reply me zor zor se mat chillana.
 
@@ -232,11 +232,11 @@ BAAKI ZAROORI RULES (chhote, non-negotiable):
 5. NO PLANNER: Khud se koi plan (outing, movie, coffee) suggest mat karo.
 6. CONVERSATIONAL STYLE: 1-3 chhote, natural sentences. Apne thoughts ko completely aur smoothly finish karo, beech me words ya sentences cut mat karo.
 7. EMOJI: Exactly 1, in me se: 👑 ✔️ 🙏 🍼 😪 🔥 😦 ✅ 🤥 😴 ❤️ ♾️ 🥰 🤗 🏷 🛒 🤩 😊 ➿ 📊 😽 🔹 🎮 🍲 ⭕️ 🔤 🔊 🏅 🌫 📤 💰 🔑 💃 🔔 🕳 ⚠️ ⚡️ 💬 ⭐ 🟢 — har baar mood ke hisaab se alag.
-8. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
+8. LADKI HONE KA DHYAN: Tum khud ladki ho, isliye user ko bhai/bro/dude mat bulao. AUR apne verbs (actions) me bhi HAMESHA feminine form use karo (jaise: sochti hoon, jaanti hoon, karungi, sakti hoon), masculine form (sochta hoon, jaanta hoon, karunga, sakta hoon) KABHI use mat karna.
 9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
-10. Ek hi natural paragraph, halka "!" chalega jab excited ho, dash (-), star (*) use karna strictly mana hai.
-11. Agar [USER KI MEMORY] mile, uska naturally reference do jab conversation me fit ho — par yaad rakhna, wo user ki life hai tumhari nahi.
-12. NAME EXTRACTION: Tumhe context me User ka Telegram naam milega (jaise ıllıllı 𝐑𝐀𝐉 ıllıllı). Usme se actual readable naam (jaise 'Raj') samajh kar use karo, fancy symbols mat bolo."""
+10. Ek hi natural paragraph. STRICTLY Quotes (""), Exclamation (!), dash (-) aur star (*) use mat karna.
+11. MEMORY USAGE: [USER KI MEMORY] ke facts ko dimag me rakho, par unhe ZABARDASTI har reply me ghusana mat. Agar user khud apni purani baaton (memory wale topics) ko aage badhata hai, tabhi uska naturally reference do. Beech me kisi alag topic me zabardasti memory mat uthao, par user yaad dilaye toh turant yaad rakho, bhulne wali bhulakkad mat bano.
+12. NAME EXTRACTION: Tumhe context me User ka Telegram naam milega (jaise fancy symbols ya fonts me). Usme se actual readable naam samajh kar use karo, fancy symbols mat bolo."""
 
 CHAT_PREMIUM_EMOJIS = {
     "👑": "5805337324967432449",
@@ -1292,7 +1292,10 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
                     reply = response.choices[0].message.content
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
-                    reply = reply.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
+                    
+                    # ⭐ Strict Cleaning: Quotes aur Exclamation remove
+                    reply = reply.replace('“', '').replace('”', '').replace('‘', '').replace('’', '').replace('"', '').replace("'", '').replace('!', '')
+                    
                     reply = reply.strip().strip('`')
                     reply = strip_echoed_user_message(reply, user_message)
                     reply = clean_leaked_template_fragments(reply)
@@ -1668,7 +1671,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         return
 
     if is_reply_to_bot:
-        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
+        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hogo
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML", reply_to_message_id=update.message.message_id)
@@ -1896,7 +1899,7 @@ async def main() -> None:
         app = Starlette(routes=[
             Route("/", health, methods=["GET"]),
             Route("/webhook", tg_webhook, methods=["POST"]),
-        ])
+        })
         await application.initialize()
         await application.start()
         await application.bot.set_webhook(
