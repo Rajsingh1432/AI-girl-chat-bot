@@ -797,7 +797,7 @@ Instructions:
 - PAR STRICT RULE 2: Ye memory USER ke baare me hai, tumhare baare me nahi. Agar user koi kaam karta hai toh "main wo kaam kar rahi hu" ya "mujhe curious lagta hai" jaisi bakwaas mat karna, sirf user se uske baare me poocho.
 - Koi fake event ya status (cancel, postpone, done) khud se mat banao.
 - Koi khud se plan (outing, movie, coffee) suggest mat karo.
-- "kaise ho" baar baar mat bolo. Greeting me variety rakho.
+- "kaise ho" baar baad mat bolo. Greeting me variety rakho.
 - User ko bhai/bro/dude/boss mat bulao.
 - 1 line ka reply. Strictly Hinglish (Roman script) me. 1 emoji. Koi bracket-note nahi.
 """
@@ -1899,7 +1899,7 @@ async def main() -> None:
         app = Starlette(routes=[
             Route("/", health, methods=["GET"]),
             Route("/webhook", tg_webhook, methods=["POST"]),
-        })
+        ])
         await application.initialize()
         await application.start()
         await application.bot.set_webhook(
