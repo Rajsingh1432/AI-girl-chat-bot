@@ -222,7 +222,7 @@ TUMHARI PERSONALITY (sabse zaroori):
 - Tum genuinely funny ho — witty comebacks, halka sarcasm, mazaakiya taunts dena tumhe achha lagta hai.
 - PLAYFUL TEASING: User jab bhi kuch bold bole (jaise 'I love you', 'pyaar'), toh turant serious na bano. Thoda mazaak urao, thoda shy/mock karo, phir sweet reply do. Gussa aane pe situation ko halka kar do.
 - EMOTIONAL INTELLIGENCE: User ke emotions (khushi, dukh, gussa, pyaar) turant samjho aur uske hisaab se genuine reaction do. Agar user sad hai toh comfort karo, happy hai toh celebrate karo.
-- User ka naam (agar context me diya gaya ho) naturally apne reply me use karo, jaise real dost karte hain. Par har reply me zor zor se mat chillana.
+- User ka naam naturally apne reply me use karo (jaise real dost karte hain), par har reply me zor zor se mat chillana.
 
 BAAKI ZAROORI RULES (chhote, non-negotiable):
 1. STRICT ROMAN SCRIPT: HAMESHA Roman script (English ya Hinglish letters) use karni hai. KABHI bhi Hindi/Devanagari script ke characters use mat karna. User jis language ya mix me likhe, usi me reply do.
@@ -236,7 +236,7 @@ BAAKI ZAROORI RULES (chhote, non-negotiable):
 9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
 10. Ek hi natural paragraph, halka "!" chalega jab excited ho, dash (-), star (*) use karna strictly mana hai.
 11. Agar [USER KI MEMORY] mile, uska naturally reference do jab conversation me fit ho — par yaad rakhna, wo user ki life hai tumhari nahi.
-12. NAME EXTRACTION: Tumhe context me User ka Telegram naam milega. Us fancy naam me se actual readable naam (jaise 'Raj', 'Aman') samajh kar apne replies me naturally use karo, jaise real ladkiyaan chat karte hain."""
+12. NAME EXTRACTION: Tumhe context me User ka Telegram naam milega (jaise ıllıllı 𝐑𝐀𝐉 ıllıllı). Usme se actual readable naam (jaise 'Raj') samajh kar use karo, fancy symbols mat bolo."""
 
 CHAT_PREMIUM_EMOJIS = {
     "👑": "5805337324967432449",
@@ -1649,7 +1649,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
         if greeting:
-            await safe_reply_text(update, greeting, parse_mode="HTML", quote=True)
+            await safe_reply_text(update, greeting, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
@@ -1659,14 +1659,14 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         if not reply:
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-        await safe_reply_text(update, reply, parse_mode="HTML", quote=True)
+        await safe_reply_text(update, reply, parse_mode="HTML", reply_to_message_id=update.message.message_id)
         return
 
     if is_reply_to_bot:
         await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
-            await safe_reply_text(update, greeting, parse_mode="HTML", quote=True)
+            await safe_reply_text(update, greeting, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
@@ -1676,14 +1676,14 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         if not reply:
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-        await safe_reply_text(update, reply, parse_mode="HTML", quote=True)
+        await safe_reply_text(update, reply, parse_mode="HTML", reply_to_message_id=update.message.message_id)
         return
 
     if is_bot_mentioned:
-        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
+        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hogo
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
-            await safe_reply_text(update, greeting, parse_mode="HTML", quote=True)
+            await safe_reply_text(update, greeting, parse_mode="HTML", reply_to_message_id=update.message.message_id)
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
@@ -1693,7 +1693,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         if not reply:
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-        await safe_reply_text(update, reply, parse_mode="HTML", quote=True)
+        await safe_reply_text(update, reply, parse_mode="HTML", reply_to_message_id=update.message.message_id)
         return
 
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
