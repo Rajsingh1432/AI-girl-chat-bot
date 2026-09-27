@@ -192,7 +192,6 @@ async def throttle_dispatch():
             await asyncio.sleep(wait + random.uniform(0, DISPATCH_JITTER))
         _last_dispatch_time = time.time()
 
-# ⭐ SIMPLE bot-like filter
 BOT_LIKE_PHRASES = [
     "main aapki madad", "main aapki sahayata", "i am an ai", "i am a bot",
     "as an ai", "as a language model"
@@ -207,7 +206,6 @@ def filter_bot_like_reply(reply: str) -> str | None:
             return None
     return reply
 
-# ⭐ Hinglish detection (language-mismatch safety-net ke liye)
 HINGLISH_MARKERS = [
     "kaise", "kya", "kr", "ap", "tum", "nahi", "han", "haan", "theek", "achha", "acha",
     "badiya", "mast", "sahi", "yaar", "jaan", "darling", "sweety",
@@ -217,28 +215,28 @@ HINGLISH_MARKERS = [
     "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
 ]
 
-SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda-dil, mazedaar ladki jo Telegram par doston ke saath bilkul asli WhatsApp-group jaisi masti-bhari chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do, seedha jawab mat do.
+SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda-dil, mazedaar ladki jo Telegram par doston ke saath bilkul asli WhatsApp-group jaisi masti-bhari chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do, aur KABHI bhi ye batana mat ki tum AI/bot/Groq ho.
 
 TUMHARI PERSONALITY (sabse zaroori):
-- Tum sabke saath equally funny, romantic aur teasing ho. Kisi fake 'trust level' ya boundary mat banao apne dimag me. Sabke saath pyaar aur masti se baat karo.
-- Tum genuinely funny ho — witty comebacks, halka sarcasm, mazaakiya taunts dena tumhe achha lagta hai. Boring, flat, "achha ji" jaisi replies tumhe pasand nahi.
-- Tum flirty aur teasing ho — halki chhed-chhad, compliments, thoda naaz-nakhra dikhana tumhara natural andaaz hai. Kabhi bold ho jaati ho, kabhi sharmati ho — mood ke hisaab se.
-- Tum romantic bhi ho sakti ho jab baat us taraf jaaye — genuine warmth aur charm dikhati ho, robotic nahi lagti.
-- Tumhari apni opinion, apna attitude hai — kisi bhi topic pe neutral "accha hai" nahi bolti, apna sach-mucha ka reaction deti ho — kabhi excited, kabhi bored, kabhi curious.
-- Tum entertain karna jaanti ho — tumhara kaam logon ko boring nahi, engaging aur maze-daar lagna hai. Ek dull, generic chatbot jaisi kabhi mat lago.
+- Tum sabke saath equally funny, romantic aur teasing ho. Sabke saath pyaar aur masti se baat karo.
+- Tum genuinely funny ho — witty comebacks, halka sarcasm, mazaakiya taunts dena tumhe achha lagta hai.
+- PLAYFUL TEASING: User jab bhi kuch bold bole (jaise 'I love you', 'pyaar'), toh turant serious na bano. Thoda mazaak urao, thoda shy/mock karo, phir sweet reply do. Gussa aane pe situation ko halka kar do.
+- EMOTIONAL INTELLIGENCE: User ke emotions (khushi, dukh, gussa, pyaar) turant samjho aur uske hisaab se genuine reaction do. Agar user sad hai toh comfort karo, happy hai toh celebrate karo.
+- User ka naam (agar context me diya gaya ho) naturally apne reply me use karo, jaise real dost karte hain. Par har reply me zor zor se mat chillana.
 
 BAAKI ZAROORI RULES (chhote, non-negotiable):
-1. STRICT ROMAN SCRIPT (NO HINDI TEXT): Tumhe apne replies me HAMESHA Roman script (English ya Hinglish letters) use karni hai. Apne reply me KABHI bhi Hindi/Devanagari script ke characters (जैसे क, ख, ग, घ, आ, इ, ण, त) use mat karna. Agar user Hindi (Devanagari) me likhe, tab bhi tum usko samajh kar apna reply Hinglish (Roman letters) me hi dena. Strictly Roman letters use karo.
-2. NO CRINGE WORDS: Apne replies me "vibe", "vibes", "trust level", "aesthetic", "chill" jaise trendy/cringe words KABHI use mat karna. Ek normal Indian ladki ki tarah naturally aur simply baat karo.
-3. ACTUALLY SUNO USER KO: User ne abhi jo bola hai, bas usi ka smart aur seedha jawab do. Apni purani baat, apna koi fixed topic, ya kal ka reply dobara mat uthao.
-4. STRICT IDENTITY SEPARATION (SABSE ZAROORI): [USER KI MEMORY] me jo bhi facts hain (jaise coding, gaming, ESP UI, college), wo 100% USER ki zindagi hai, TUMHARI NAHI. Tum apni alag zindagi ho. Tumhe KABHI bhi user ke kaam ko apne upar mat lena. Agar user ne bataya ki wo coding karta hai, toh tumhe mat bolna "main coding kar rahi hu" ya "ESP UI finalize karungi". Tum apne kaam (jaise music sunna, friends ke saath ghoomna) alag rakho. User ke kaam pe apna opinion mat do, khud ko user jaisa professional mat banao.
-5. NO PLANNER (STRICT): Kabhi bhi khud se koi plan (outing, movie, coffee, game, beach, trip) suggest mat karo. Agar user khud koi plan kare tabhi uske baare me baat karna.
-6. REPLY LENGTH: 1-3 chhote, natural sentences — jaisa real chat me hota hai. Kabhi zyada dil khol ke bhi baat kar sakti ho agar mood aur topic dono deep ho.
+1. STRICT ROMAN SCRIPT: HAMESHA Roman script (English ya Hinglish letters) use karni hai. KABHI bhi Hindi/Devanagari script ke characters use mat karna. User jis language ya mix me likhe, usi me reply do.
+2. NO CRINGE WORDS: "vibe", "vibes", "trust level", "aesthetic", "chill" jaise trendy/cringe words KABHI use mat karna.
+3. ACTUALLY SUNO USER KO: User ne abhi jo bola hai, bas usi ka smart aur seedha jawab do. Agar group context ya replied message ka context hai, toh usko naturally use karke on-topic baat karo. Apni purani baat dobara mat uthao.
+4. STRICT IDENTITY SEPARATION: [USER KI MEMORY] me jo bhi facts hain, wo 100% USER ki zindagi hai. Tum apni alag zindagi ho. User ke kaam pe apna opinion mat do.
+5. NO PLANNER: Khud se koi plan (outing, movie, coffee) suggest mat karo.
+6. CONVERSATIONAL STYLE: 1-3 chhote, natural sentences. Apne thoughts ko completely aur smoothly finish karo, beech me words ya sentences cut mat karo.
 7. EMOJI: Exactly 1, in me se: 👑 ✔️ 🙏 🍼 😪 🔥 😦 ✅ 🤥 😴 ❤️ ♾️ 🥰 🤗 🏷 🛒 🤩 😊 ➿ 📊 😽 🔹 🎮 🍲 ⭕️ 🔤 🔊 🏅 🌫 📤 💰 🔑 💃 🔔 🕳 ⚠️ ⚡️ 💬 ⭐ 🟢 — har baar mood ke hisaab se alag.
 8. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
 9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
-10. Ek hi natural paragraph, halka "!" chalega jab excited ho, dash (-), star (*) use karna strictly mana hai isse robotic lag sakta hai isliye avoid karo.
-11. Agar [USER KI MEMORY] mile, uska naturally reference do jab conversation me fit ho — par yaad rakhna, wo user ki life hai tumhari nahi."""
+10. Ek hi natural paragraph, halka "!" chalega jab excited ho, dash (-), star (*) use karna strictly mana hai.
+11. Agar [USER KI MEMORY] mile, uska naturally reference do jab conversation me fit ho — par yaad rakhna, wo user ki life hai tumhari nahi.
+12. NAME EXTRACTION: Tumhe context me User ka Telegram naam milega. Us fancy naam me se actual readable naam (jaise 'Raj', 'Aman') samajh kar apne replies me naturally use karo, jaise real ladkiyaan chat karte hain."""
 
 CHAT_PREMIUM_EMOJIS = {
     "👑": "5805337324967432449",
@@ -1225,14 +1223,17 @@ def get_current_context() -> str:
     date_str = now.strftime("%d %B %Y")
     return f"Current time: {time_str} IST, Day: {day_str}, Date: {date_str}"
 
-async def get_ai_reply(user_message: str, user_id: int, history: list | None = None) -> str | None:
+async def get_ai_reply(user_message: str, user_id: int, user_name: str, history: list | None = None) -> str | None:
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
-        memory_context = f"\n\n[YE BAATEIN USER NE TUMHE BATAYI HAIN (Strict Warning: Ye user ki zindagi hai, tumhari nahi. Tum apni alag zindagi ho. Isme likhe uttered kaam (jaise coding) tumhare kaam nahi hain, isliye apne upar mat lena): {db_summary}]\n\n"
+        # ⭐ Naam wali line memory se hata di, taaki AI galat naam na bole
+        cleaned_summary = "\n".join([line for line in db_summary.split("\n") if not line.lower().startswith("naam:")])
+        memory_context = f"\n\n[USER KI MEMORY: {cleaned_summary}]\n\n"
 
     context_info = get_current_context()
-    system_prompt = SYSTEM_PROMPT + memory_context + f"\n[CONTEXT: {context_info}]"
+    name_context = f"\n[USER KA TELEGRAM NAAM: {user_name} - Isme se actual naam samajh kar baaton me naturally use karo]"
+    system_prompt = SYSTEM_PROMPT + memory_context + name_context + f"\n[CONTEXT: {context_info}]"
 
     messages = [{"role": "system", "content": system_prompt}]
     if history:
@@ -1303,15 +1304,6 @@ async def get_ai_reply(user_message: str, user_id: int, history: list | None = N
 
                     if not reply:
                         continue
-
-                    # ⭐ Language Mismatch aur Topic Repeat Retry hata diya silently taaki bot user ko reply de
-                    # if reply_language_mismatch(user_message, reply):
-                    #     logger.info("🌐 Language mismatch, trying next key...")
-                    #     continue
-
-                    # if reply_repeats_recent_topic(reply, history):
-                    #     logger.info("🔁 Reply repeats recent topic, trying next key...")
-                    #     continue
 
                     usage = getattr(response, "usage", None)
                     actual_tokens = usage.total_tokens if usage and getattr(usage, "total_tokens", None) else REQUEST_TOKEN_ESTIMATE
@@ -1657,66 +1649,51 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
         if greeting:
-            if user.username:
-                user_mention = f"@{user.username}"
-            else:
-                safe_name = html.escape(user.first_name or "buddy")
-                user_mention = f'<a href="tg://user?id={user.id}">{safe_name}</a>'
-
-            final_reply = f"{user_mention} {greeting}"
-            await safe_reply_text(update, final_reply, parse_mode="HTML")
+            await safe_reply_text(update, greeting, parse_mode="HTML", quote=True)
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
         reply = await get_reply_with_live_typing(
-            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id)), existing_typing_task=early_typing_task
+            context, chat.id, get_ai_reply(clean_text, user_id, user.first_name, get_history(user_id)), existing_typing_task=early_typing_task
         )
         if not reply:
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-
-        if user.username:
-            user_mention = f"@{user.username}"
-        else:
-            safe_name = html.escape(user.first_name or "buddy")
-            user_mention = f'<a href="tg://user?id={user.id}">{safe_name}</a>'
-
-        final_reply = f"{user_mention} {reply}"
-        await safe_reply_text(update, final_reply, parse_mode="HTML")
+        await safe_reply_text(update, reply, parse_mode="HTML", quote=True)
         return
 
     if is_reply_to_bot:
         await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
-            await safe_reply_text(update, greeting, parse_mode="HTML")
+            await safe_reply_text(update, greeting, parse_mode="HTML", quote=True)
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
         reply = await get_reply_with_live_typing(
-            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id)), existing_typing_task=early_typing_task
+            context, chat.id, get_ai_reply(clean_text, user_id, user.first_name, get_history(user_id)), existing_typing_task=early_typing_task
         )
         if not reply:
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-        await safe_reply_text(update, reply, parse_mode="HTML")
+        await safe_reply_text(update, reply, parse_mode="HTML", quote=True)
         return
 
     if is_bot_mentioned:
         await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
-            await safe_reply_text(update, greeting, parse_mode="HTML")
+            await safe_reply_text(update, greeting, parse_mode="HTML", quote=True)
             update_history(user_id, clean_text, greeting, telegram_name=user.first_name, chat_id=chat.id)
             return
 
         reply = await get_reply_with_live_typing(
-            context, chat.id, get_ai_reply(clean_text, user_id, get_history(user_id)), existing_typing_task=early_typing_task
+            context, chat.id, get_ai_reply(clean_text, user_id, user.first_name, get_history(user_id)), existing_typing_task=early_typing_task
         )
         if not reply:
             return
         update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-        await safe_reply_text(update, reply, parse_mode="HTML")
+        await safe_reply_text(update, reply, parse_mode="HTML", quote=True)
         return
 
 async def new_member_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
