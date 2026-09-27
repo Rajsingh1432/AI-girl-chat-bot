@@ -422,9 +422,14 @@ def clean_reply_text(text: str, user_id: int | None = None) -> str:
     text = re.sub(r"Need reply.*", "", text, flags=re.IGNORECASE).strip()
     text = re.sub(r"Language:.*", "", text, flags=re.IGNORECASE).strip()
     text = re.sub(r"Context:.*", "", text, flags=re.IGNORECASE).strip()
+    
+    # ⭐ STRICT DASH FILTER: Saare chhote/bade dash ko hata kar simple space se replace karo
+    text = re.sub(r'\s*[—–-]\s*', ' ', text)
+    # Extra spaces clean up
+    text = re.sub(r' {2,}', ' ', text).strip()
+    
     text = re.sub(r'^[-—\s]+', '', text).strip()
     text = re.sub(r'[-—\s]+$', '', text).strip()
-    text = re.sub(r'\s[-—]\s', ' ', text)
     text = sanitize_reply_emojis(text, user_id=user_id)
     return text
 
