@@ -513,6 +513,27 @@ def init_db():
                      (chat_id BIGINT PRIMARY KEY, title TEXT, added_at REAL)''')
         c.execute('''CREATE TABLE IF NOT EXISTS conversation_history
                      (user_id BIGINT PRIMARY KEY, history_json TEXT, updated_at REAL)''')
+        
+        # ⭐ Stickers ke liye nayi table
+        c.execute('''CREATE TABLE IF NOT EXISTS saved_stickers
+                     (file_unique_id TEXT PRIMARY KEY, file_id TEXT, emoji TEXT, set_name TEXT)''')
+        
+        # ⭐ Auto-Migration: Purani JSON file se stickers DB me dalo
+        if os.path.exists("stickers.json"):
+            try:
+                with open("stickers.json", "r", encoding="utf-8") as f:
+                    old_stickers = json.load(f)
+                if old_stickers:
+                    for st in old_stickers:
+                        c.execute("INSERT INTO saved_stickers (file_unique_id, file_id, emoji, set_name) VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                                  (st.get("file_unique_id"), st.get("file_id"), st.get("emoji"), st.get("set_name")))
+                    conn.commit()
+                    logger.info(f"✅ Migrated {len(old_stickers)} stickers to PostgreSQL!")
+                # Purani file ka naam badal do taaki dubara migrate na ho
+                os.rename("stickers.json", "stickers.json.bak")
+            except Exception as e:
+                logger.error(f"Sticker migration error: {e}")
+
         conn.commit()
         c.close()
         conn.close()
