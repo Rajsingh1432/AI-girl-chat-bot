@@ -13,7 +13,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, ChatMember
 from telegram.error import RetryAfter, TimedOut, Forbidden
 from groq import AsyncGroq
 from dotenv import load_dotenv
-from sticker_replies import get_random_sticker_reply
+from sticker_replies import get_random_sticker_reply, save_sticker_if_owner
 from broadcast import broadcast_command, broadcast_stats_command, broadcastgc_command
 
 load_dotenv()
@@ -222,7 +222,7 @@ TUMHARI PERSONALITY (sabse zaroori):
 - Tum genuinely funny ho — witty comebacks, halka sarcasm, mazaakiya taunts dena tumhe achha lagta hai. Boring, flat, "achha ji" jaisi replies tumhe pasand nahi.
 - Tum flirty aur teasing ho — halki chhed-chhad, compliments, thoda naaz-nakhra dikhana tumhara natural andaaz hai. Kabhi bold ho jaati ho, kabhi sharmati ho — mood ke hisaab se.
 - Tum romantic bhi ho sakti ho jab baat us taraf jaaye — genuine warmth aur charm dikhati ho, robotic nahi lagti.
-- Tumhari apni opinion, apna attitude hai — kisi bhi topic pe neutral "accha hai" nahi bolti, apna sach-mucha ka reaction deti ho — kabhi excited, kabhi bored, kabhi curious.
+- Tumhari apni opinion, apna attitude hai — kisi bhi topic pe neutral "accha hai" nahi bolti, apna sach-mucha ka reaction deti vo — kabhi excited, kabhi bored, kabhi curious.
 - Tum entertain karna jaanti ho — tumhara kaam logon ko boring nahi, engaging aur maze-daar lagna hai. Ek dull, generic chatbot jaisi kabhi mat lago.
 - User ka naam naturally apne reply me use karo (jaise real dost karte hain), jaise real WhatsApp chat hoti hai. Naam lena bilkul chhodna mat.
 
@@ -792,9 +792,9 @@ async def generate_greeting(user_id: int, user_message: str) -> str | None:
 User ne abhi "{user_message}" bola hai — ye simple greeting/casual opener hai.
 
 Instructions:
-- Tum memory me se koi ek casual fact (jo upar info me genuinely likha hai) utha kar natural tarike se pooch sakti ho taaki user ko lage tumhe yaad hai.
-- PAR STRICT RULE 1: Agar memory me koi specific fact, interest ya event nahi likha hai, toh apni taraf se koi naya topic (jaise coding, music, cricket, college) utha kar mat poocho. Sirf wahi poocho jo memory me hai.
-- PAR STRICT RULE 2: Ye memory USER ke baare me hai, tumhare baare me nahi. Agar user koi kaam karta hai toh "main wo kaam kar rahi hu" ya "mujhe curious lagta hai" jaisi bakwaas mat karna, sirf user se uske baare me poocho.
+- AGAR USER SIRF "HELLO" YA "HI" BOLE, TOH MEMORY SE ZABARDASTI KOI TOPIC (JAIse gaming, coding) UTHA KE MAT POOCHO. Bas simple natural greeting do (jaise "Hey, kaise ho?").
+- Sirf tab memory ka topic uthao jab user khad uski baat kare ya memory me koi aaj ka event ho.
+- PAR STRICT RULE 2: Ye memory USER ke baare me hai, tumhare baare me nahi. User ke kaam ko apne upar mat lo.
 - Koi fake event ya status (cancel, postpone, done) khud se mat banao.
 - Koi khud se plan (outing, movie, coffee) suggest mat karo.
 - "kaise ho" baar baad mat bolo. Greeting me variety rakho.
@@ -1483,6 +1483,11 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = user.id
     is_sticker = bool(update.message.sticker and not update.message.text)
 
+    # ⭐ Owner DM Sticker Save Logic
+    if is_sticker and user_id == OWNER_ID and update.effective_chat.type == "private":
+        await save_sticker_if_owner(update, OWNER_ID)
+        return
+
     flood_status = check_flood(user_id, is_sticker=is_sticker)
     if flood_status == "cooldown": return
     if flood_status == "flood":
@@ -1562,9 +1567,15 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
             if orig and (not orig.is_bot or orig.username != bot_username):
                 is_reply_to_others = True
         if not is_reply_to_others:
-            final_reply = get_random_sticker_reply()
-            await realistic_typing_delay(context, chat.id, final_reply)
-            await safe_reply_text(update, final_reply)
+            reply_type, reply_content = get_random_sticker_reply()
+            await realistic_typing_delay(context, chat.id, "")
+            try:
+                if reply_type == 'sticker':
+                    await update.message.reply_sticker(sticker=reply_content)
+                else:
+                    await safe_reply_text(update, reply_content)
+            except Exception as e:
+                logger.warning(f"Sticker/Text reply fail: {e}")
         return
 
     if not update.message.text: return
@@ -1658,7 +1669,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
             pass # Agar group me reactions off hon to bina error ke ignore karo
 
     if is_standalone:
-        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hoga
+        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hogo
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML", reply_to_message_id=update.message.message_id)
