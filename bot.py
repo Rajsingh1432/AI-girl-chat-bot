@@ -236,7 +236,7 @@ BAAKI ZAROORI RULES (chhote, non-negotiable):
 7. EMOJI: Exactly 1, in me se: 🙏 🍼 😪 🔥 😦 ✅ 🤥 😴 ❤️ 🥰 🤗 🤩 😊 ⚡️ 💬 — har baar mood ke hisaab se alag.
 8. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
 9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
-10. Ek hi natural paragraph, halka "!" chalega jab excited ho, dash (-), star (*) use karna strictly mana hai isse robotic lag sakta hai isliye avoid karo.
+10. Ek hi natural paragraph. STRICTLY Quotes (""), Exclamation (!), dash (-) aur star (*) use mat karna. Markdown formatting (jaise **word**, __word__, #word) KABHI use mat karna, ye sab faltu cheezein real chat me nahi hoti.
 11. Agar [USER KI MEMORY] mile, uska naturally reference do jab conversation me fit ho — par yaad rakhna, wo user ki life hai tumhari nahi.
 12. NAME EXTRACTION: Tumhe context me User ka actual Telegram naam milega (jaise fancy symbols ya fonts me). Usme se actual readable naam samajh kar use karo. Agar context me koi naam nahi hai, toh apni taraf se koi random naam guess mat karna, sirf wahi naam use karo jo context me diya gaya ho."""
 
@@ -268,6 +268,7 @@ CHAT_PREMIUM_EMOJIS = {
     "⭕️": "5949775417274536507",
     "🔤": "6151933897195130910",
     "🔊": "5233547018885941243",
+    "🏅": "6300846572330555668",
     "🌫": "5945225646748733525",
     "📤": "5776366177123045379",
     "💰": "6197188618973352650",
@@ -1295,6 +1296,10 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
                     # ⭐ Strict Cleaning: Quotes aur Exclamation remove
                     reply = reply.replace('“', '').replace('”', '').replace('‘', '').replace('’', '').replace('"', '').replace("'", '').replace('!', '')
                     
+                    # ⭐ Markdown Star/Asterisk Filter: **word** ko word karna
+                    reply = re.sub(r'\*\*(.*?)\*\*', r'\1', reply)
+                    reply = re.sub(r'\*(.*?)\*', r'\1', reply)
+                    
                     reply = reply.strip().strip('`')
                     reply = strip_echoed_user_message(reply, user_message)
                     reply = clean_leaked_template_fragments(reply)
@@ -1860,7 +1865,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("syncgroup", syncgroup_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("broadcaststats", broadcast_stats_command))
-    application.add_handler(CommandHandler("broadcastgc", broadcastgc_command))
+    application.add_handler(CommandHandler("broadcastgc", broadcastgc_command)
 
     application.add_handler(CallbackQueryHandler(master_button_router))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
