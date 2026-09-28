@@ -1,10 +1,44 @@
 import random
+import json
+import os
 
-# Sticker par reply karne ke liye 150+ real human messages
-# Tum is list me aur messages add karke isko 1000+ kar sakte ho
-# ⭐ FIX: Emojis ab sirf un 10 premium-mapped emojis me se hain jo bot.py ke
-# CHAT_PREMIUM_EMOJIS dictionary me hain (☺️😒🥹🙃❤️😡😭🙏😅🤫) — isse
-# safe_reply_text() inhe automatically premium/custom emoji me render karta hai.
+STICKERS_FILE = "stickers.json"
+
+def load_all_stickers():
+    if os.path.exists(STICKERS_FILE):
+        try:
+            with open(STICKERS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+async def save_sticker_if_owner(update, OWNER_ID):
+    # Agar owner apne DM me sticker bhej raha hai toh usko save karo
+    if update.effective_user.id == OWNER_ID and update.message.sticker and update.effective_chat.type == "private":
+        sticker = update.message.sticker
+        stickers = load_all_stickers()
+        
+        # Duplicate check
+        for item in stickers:
+            if item.get("file_unique_id") == sticker.file_unique_id:
+                await update.message.reply_text("⚠️ Ye sticker pehle se save hai!")
+                return
+                
+        data = {
+            "file_id": sticker.file_id,
+            "file_unique_id": sticker.file_unique_id,
+            "emoji": sticker.emoji,
+            "set_name": sticker.set_name
+        }
+        stickers.append(data)
+        
+        with open(STICKERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(stickers, f, indent=4, ensure_ascii=False)
+            
+        await update.message.reply_text(f"✅ Sticker save ho gaya! Total stickers: {len(stickers)}")
+
+# Sticker par reply karne ke liye real human messages (Fallback)
 STICKER_REPLIES = [
     # Hasi (Funny)
     "Hahaha ekdum hasi aa gayi 😅", "Ye kya bheja tumne? 😅", "Pagal ho kya tum? 🙃",
@@ -49,16 +83,20 @@ STICKER_REPLIES = [
     "Hmm thik hai 🙏", "Sahi hai 🙏", "Mast ☺️", "Cute 🥹", "Funny 😅",
     "Bakwas 😒", "Achha ji 🤫", "Hahaha 😅", "Pagal 🙃", "Abe yaar 😅",
     "Ohho 🙃", "Hmm baby ❤️", "Acha baby ☺️", "Nahi baby 🙃", "Haan ji 😅"
-    # Tum yahan 1000 messages add kar sakte ho...
 ]
 
 _sticker_pool = []  # For unique randomization (No quick repeat)
 
 def get_random_sticker_reply():
-    """Ensures replies don't repeat until the whole list is exhausted."""
+    """Returns a tuple: ('sticker', file_id) or ('text', message_string)"""
+    # 1. Pehle check karo agar koi saved sticker hai
+    stickers = load_all_stickers()
+    if stickers:
+        return ('sticker', random.choice(stickers).get("file_id"))
+    
+    # 2. Agar koi sticker save nahi hai, toh purani text list se reply do
     global _sticker_pool
     if not _sticker_pool or len(_sticker_pool) == 0:
         _sticker_pool = STICKER_REPLIES.copy()
         random.shuffle(_sticker_pool)
-    return _sticker_pool.pop()
-    
+    return ('text', _sticker_pool.pop())
