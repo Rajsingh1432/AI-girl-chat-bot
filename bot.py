@@ -15,11 +15,15 @@ from groq import AsyncGroq
 from dotenv import load_dotenv
 from sticker_replies import get_random_sticker_reply, save_sticker_if_owner
 from broadcast import broadcast_command, broadcast_stats_command, broadcastgc_command
+from wordseek_engine import WordSeekEngine
 
 load_dotenv()
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
 logging.getLogger("httpx").setLevel(logging.WARNING)
+
+# ⭐ WordSeek Game Engine Initialize
+engine = WordSeekEngine()
 
 try:
     from config import PREMIUM_EMOJIS, ButtonStyle
@@ -818,7 +822,7 @@ Instructions:
 - PAR STRICT RULE 2: Ye memory USER ke baare me hai, tumhare baare me nahi. User ke kaam ko apne upar mat lo.
 - Koi fake event ya status (cancel, postpone, done) khud se mat banao.
 - Koi khud se plan (outing, movie, coffee) suggest mat karo.
-- "kaise ho" baar baad mat bolo. Greeting me variety rakho.
+- "kaise ho" baar baar mat bolo. Greeting me variety rakho.
 - User ko bhai/bro/dude/boss mat bulao.
 - 1 line ka reply. Strictly Hinglish (Roman script) me. 1 emoji. Koi bracket-note nahi.
 """
@@ -1213,6 +1217,51 @@ async def syncgroup_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     except Exception:
         await msg.edit_text(summary_text)
 
+# ==========================================
+# 🎮 WORDSEEK GAME COMMAND HANDLERS
+# ==========================================
+
+async def wordseek_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(engine.get_help())
+
+async def wordseek_new(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    length = 5
+    if context.args and context.args[0].isdigit() and int(context.args[0]) in (4, 5, 6):
+        length = int(context.args[0])
+    _, reply = engine.start_game(update.effective_chat.id, update.effective_user.id, length)
+    await update.message.reply_text(reply)
+
+async def wordseek_new4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _, reply = engine.start_game(update.effective_chat.id, update.effective_user.id, 4)
+    await update.message.reply_text(reply)
+
+async def wordseek_new5(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _, reply = engine.start_game(update.effective_chat.id, update.effective_user.id, 5)
+    await update.message.reply_text(reply)
+
+async def wordseek_new6(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    _, reply = engine.start_game(update.effective_chat.id, update.effective_user.id, 6)
+    await update.message.reply_text(reply)
+
+async def wordseek_end(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    is_admin = False
+    if update.effective_chat.type in ('group', 'supergroup'):
+        try:
+            member = await context.bot.get_chat_member(update.effective_chat.id, update.effective_user.id)
+            is_admin = member.status in ('administrator', 'creator')
+        except Exception:
+            pass
+    _, reply = engine.end_game(update.effective_chat.id, update.effective_user.id, is_admin)
+    await update.message.reply_text(reply)
+
+async def wordseek_lb(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    title = update.effective_chat.title or "Leaderboard"
+    await update.message.reply_text(engine.get_leaderboard(update.effective_chat.id, title))
+
+# ==========================================
+# CORE AI AND UTIL FUNCTIONS
+# ==========================================
+
 def build_premium_emoji_entities(text: str, emoji_map: dict) -> list:
     if not text or not emoji_map:
         return []
@@ -1601,6 +1650,32 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
 
     if not update.message.text: return
 
+    # ⭐ WordSeek Game Guess Interception
+    if update.message.text and not update.message.text.startswith('/'):
+        is_reply_to_board = False
+        if update.message.reply_to_message and update.message.reply_to_message.text:
+            r_text = update.message.reply_to_message.text
+            if any(m in r_text for m in ('-letter mode', 'Daily WordSeek', 'Game started! Guess the', 'Hard mode:')):
+                is_reply_to_board = True
+
+        user_name = user.first_name or "Player"
+        handled, reply_text, reply_to_user = engine.handle_guess(
+            chat_id=chat.id,
+            user_id=user_id,
+            user_name=user_name,
+            text=update.message.text,
+            is_reply_to_board=is_reply_to_board
+        )
+
+        if handled:
+            if reply_text:
+                reply_to_id = update.message.message_id if reply_to_user else None
+                try:
+                    await update.message.reply_text(reply_text, reply_to_message_id=reply_to_id)
+                except Exception:
+                    await update.message.reply_text(reply_text)
+            return # Game handled, cancel AI processing
+
     if user_id not in bio_checked_users:
         bio_checked_users.add(user_id)
         try:
@@ -1898,6 +1973,17 @@ async def main() -> None:
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("broadcaststats", broadcast_stats_command))
     application.add_handler(CommandHandler("broadcastgc", broadcastgc_command))
+
+    # WordSeek Game Commands
+    application.add_handler(CommandHandler("wordseek", wordseek_help))
+    application.add_handler(CommandHandler("new", wordseek_new))
+    application.add_handler(CommandHandler("new4", wordseek_new4))
+    application.add_handler(CommandHandler("new5", wordseek_new5))
+    application.add_handler(CommandHandler("new6", wordseek_new6))
+    application.add_handler(CommandHandler("end", wordseek_end))
+    application.add_handler(CommandHandler("leaderboard", wordseek_lb))
+    application.add_handler(CommandHandler("lb", wordseek_lb))
+    application.add_handler(CommandHandler("top", wordseek_lb))
 
     application.add_handler(CallbackQueryHandler(master_button_router))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
