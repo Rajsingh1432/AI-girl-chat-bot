@@ -1865,7 +1865,7 @@ async def main() -> None:
     application.add_handler(CommandHandler("syncgroup", syncgroup_command))
     application.add_handler(CommandHandler("broadcast", broadcast_command))
     application.add_handler(CommandHandler("broadcaststats", broadcast_stats_command))
-    application.add_handler(CommandHandler("broadcastgc", broadcastgc_command)
+    application.add_handler(CommandHandler("broadcastgc", broadcastgc_command))
 
     application.add_handler(CallbackQueryHandler(master_button_router))
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
