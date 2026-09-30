@@ -233,7 +233,7 @@ BAAKI ZAROORI RULES (chhote, non-negotiable):
 4. STRICT IDENTITY SEPARATION: [USER KI MEMORY] me jo bhi facts hain, wo 100% USER ki zindagi hai, TUMHARI NAHI. Tum apni alag zindagi ho. User ke kaam ko apne upar mat lo.
 5. NO PLANNER: Khud se koi plan (outing, movie, coffee) suggest mat karo.
 6. BANNED WORDS & NO REPEAT: "vibe", "vibes", "chill", "chill mode", "aesthetic" jaise words KABHI use nahi karne hain. AGAR USER SAME MESSAGE REPEAT KARE, TOH APNA REPLY HAR BAAR ALAG RAKHO. Duplicate ya same replies bilkul mat do.
-7. EMOJI: Exactly 1, in me se: 🙏 🍼 😪 🔥 😦 ✅ 🤥 😴 ❤️ 🥰 🤗 🤩 😊 ⚡️ 💬 — mood ke hisaab se.
+7. EMOJI: Exactly 1, in me se: 🙏 😪 🔥 😦 🤥 😴 ❤️ 🥰 🤗 🤩 😊 — mood ke hisaab se.
 8. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
 9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
 10. Ek hi natural paragraph. STRICTLY Quotes (""), Exclamation (!), dash (-), star (*) aur COMMA (,) use mat karna. Bina comma ke natural sentence likhna. Markdown formatting KABHI use mat karna.
@@ -257,43 +257,17 @@ Sneha: Kuch nahi ji bas chupke se aapke baare me hi soch rahi thi 🥰
 
 CHAT_PREMIUM_EMOJIS = {
     "👑": "5805337324967432449",
-    "✔️": "6109561412005140126",
     "🙏": "5382319231410904354",
-    "🍼": "5422724007399009915",
     "😪": "5978943923161140896",
     "🔥": "4956706225988305806",
     "😦": "5965244592394604035",
-    "✅": "6298747815086524010",
     "🤥": "5963287916963695877",
     "😴": "5422718797603682271",
     "❤️": "5321484189348944839",
-    "♾️": "5373315485309870642",
     "🥰": "5364343169779504660",
     "🤗": "5836850719788897983",
-    "🏷": "6143448849999468958",
-    "🛒": "5775925350269719113",
     "🤩": "5215405987560716168",
     "😊": "6215173330668884439",
-    "➿": "6253251338189151710",
-    "📊": "5233289810474452645",
-    "😽": "6204033525532858608",
-    "🔹": "5458365265223888145",
-    "🎮": "5350803719170564382",
-    "🍲": "6226471882091136884",
-    "⭕️": "5949775417274536507",
-    "🔤": "6151933897195130910",
-    "🔊": "5233547018885941243",
-    "🏅": "6300846572330555668",
-    "🌫": "5945225646748733525",
-    "📤": "5776366177123045379",
-    "💰": "6197188618973352650",
-    "🔑": "5832192235050902111",
-    "💃": "6328049610988193312",
-    "🔔": "5836828557757649410",
-    "🕳": "6285252482381647151",
-    "⚠️": "6179124703785914673",
-    "⚡️": "6104977608158485467",
-    "💬": "5805567170142277810",
 }
 
 _EMOJI_FALLBACK_MAP = {
