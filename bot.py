@@ -964,7 +964,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<blockquote>"
             f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b>\n\n"
             f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b>\n\n"
-            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ꜱυʟʟ ɢʀᴏυρ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴀᴛυʀєꜱ</b>\n"
+            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ғυʟʟ ɢʀᴏυρ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴀᴛυʀєꜱ</b>\n"
             f"</blockquote>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ϙυᴧɴᴛυϻ ᴄᴏʀє</a>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
@@ -1744,7 +1744,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                 reaction = "🎉"
             else:
                 # 70% chance random simple reaction dena (taaki messages bypass na hon)
-                if random.random() < 0.70:
+                if random.random() < 0.30:
                     reaction = random.choice(["👍", "❤️", "🔥", "🥰", "👏", "😂", "😱", "🤔", "🥳", "🎉"])
             
             if reaction:
