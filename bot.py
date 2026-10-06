@@ -2004,7 +2004,7 @@ async def main() -> None:
         logger.info("POLLING mode")
         await application.initialize()
         # ⭐ Purani Webhook delete karke Conflict error fix karna
-        await application.bot.delete_webhook(drop_update_updates=True)
+        await application.bot.delete_webhook(drop_pending_updates=True)
         await application.start()
         await application.updater.start_polling(
             drop_pending_updates=True,
