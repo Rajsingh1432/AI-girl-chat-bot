@@ -2005,10 +2005,17 @@ async def main() -> None:
     else:
         logger.info("POLLING mode")
         
-        # ⭐ Render ko manane ke liye Dummy Port Open karna
+        # ⭐ Render ko manane ke liye Dummy Port Open karna (501 Error Fix)
         port = int(os.environ.get("PORT", 8000))
+        class OKHandler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.end_headers()
+            def log_message(self, format, *args):
+                pass # Faltu logs suppress karne ke liye
+                
         def run_dummy_server(p):
-            server = HTTPServer(('0.0.0.0', p), BaseHTTPRequestHandler)
+            server = HTTPServer(('0.0.0.0', p), OKHandler)
             server.serve_forever()
         threading.Thread(target=run_dummy_server, args=(port,), daemon=True).start()
         logger.info(f"✅ Dummy port {port} open ho gaya Render ke liye!")
