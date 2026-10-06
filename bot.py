@@ -2000,10 +2000,18 @@ async def main() -> None:
         await uvicorn.Server(
             uvicorn.Config(app=app, host="0.0.0.0", port=port, log_level="warning")
         ).serve()
-    else:
+        else:
         logger.info("POLLING mode")
+        
+        # ⭐ Render ko manane ke liye Dummy Port Open karna
+        port = int(os.environ.get("PORT", 8000))
+        def run_dummy_server(p):
+            server = HTTPServer(('0.0.0.0', p), BaseHTTPRequestHandler)
+            server.serve_forever()
+        threading.Thread(target=run_dummy_server, args=(port,), daemon=True).start()
+        logger.info(f"✅ Dummy port {port} open ho gaya Render ke liye!")
+
         await application.initialize()
-        # ⭐ Purani Webhook delete karke Conflict error fix karna
         await application.bot.delete_webhook(drop_pending_updates=True)
         await application.start()
         await application.updater.start_polling(
