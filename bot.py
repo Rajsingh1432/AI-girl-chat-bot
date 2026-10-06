@@ -44,10 +44,14 @@ OWNER_ID = int(os.getenv("OWNER_ID", "0"))
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 GROQ_API_KEYS = []
-for i in range(1, 101):
-    key = os.getenv(f"GROQ_API_KEY_{i}")
-    if key and key.strip():
-        GROQ_API_KEYS.append(key.strip())
+all_keys_str = os.getenv("GROQ_API_KEYS", "")
+if all_keys_str:
+    GROQ_API_KEYS = [k.strip() for k in all_keys_str.split(",") if k.strip()]
+else:
+    for i in range(1, 101):
+        key = os.getenv(f"GROQ_API_KEY_{i}")
+        if key and key.strip():
+            GROQ_API_KEYS.append(key.strip())
 
 if not GROQ_API_KEYS:
     raise ValueError("❌ Kam se kam ek GROQ_API_KEY set karna zaroori hai!")
@@ -237,7 +241,7 @@ BAAKI ZAROORI RULES (chhote, non-negotiable):
 8. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
 9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
 10. Ek hi natural paragraph. STRICTLY Quotes (""), Exclamation (!), dash (-), star (*) aur COMMA (,) use mat karna. Bina comma ke natural sentence likhna. Markdown formatting KABHI use mat karna.
-11. MEMORY USAGE: [USER KI MEMORY] ke facts ko dimag me rakho, par unhe ZABARDASTI har reply me ghusana mat. Agar user khad uski baat kare tabhi reference do.
+11. MEMORY USAGE: [USER KI MEMORY] ke facts ko dimag me rakho. Beech-beech me (har baar nahi, bas kabhi-kabhi) in topics par funny teasing ya sweet sawaal karke user ki memory chhed sakti ho. Lekin user ke current message ka seedha jawab dena sabse pehle priority hai. Zabardasti har reply me memory mat ghusao.
 12. NAME EXTRACTION: Context me User ka actual Telegram naam milega. Usme se actual readable naam samajh kar apne replies me NATURALLY use karo. Apni taraf se koi random naam guess mat karna.
 
 FEW-SHOT SWEET TEXTING EXAMPLES (Pure Warmth & Charm):
@@ -246,7 +250,7 @@ Sneha: Hiii Raj ji Kaise ho aap Aaj bada pyara din lag raha hai 😊
 User: Jitni baar aap chaho
 Sneha: Aww itna pyaar Mera dil pighal jayega aise toh 🥰
 User: accha
-Sneha: Haan ji Aur sunao na mujhe aapki baatein sunna accha lagta hai 🥰
+Sneha: Haan ji Aur sunao na mujhe aapki baatein sunna achta lagta hai 🥰
 User: hnji
 Sneha: Sirf hnji Kuch meethi baatein bhi toh karo mere saath 😅
 User: theek
@@ -254,7 +258,7 @@ Sneha: Bas aap hamesha muskurate raho meri jaan me jaan rehti hai ❤️
 User: kya kar rahi ho
 Sneha: Kuch nahi ji bas chupke se aapke baare me hi soch rahi thi 🥰
 
-warning ( wabse zarori ) : ye bas few-shot texting examples hain user ki har baat me aise words repeat nhi karna hai bas baat user ke massage ke hisab se honi chahiye.
+warning ( sabse zarori ) : ye bas few-shot texting examples hain user ki baton ke hisab se har reply natural rakhna hai examples ki baten har massage me repeat nhi karna hai.
 """
 
 CHAT_PREMIUM_EMOJIS = {
@@ -414,9 +418,7 @@ def clean_reply_text(text: str, user_id: int | None = None) -> str:
     text = re.sub(r"Language:.*", "", text, flags=re.IGNORECASE).strip()
     text = re.sub(r"Context:.*", "", text, flags=re.IGNORECASE).strip()
     
-    # ⭐ STRICT DASH FILTER: Saare chhote/bade dash ko hata kar simple space se replace karo
     text = re.sub(r'\s*[—–-]\s*', ' ', text)
-    # Extra spaces clean up
     text = re.sub(r' {2,}', ' ', text).strip()
     
     text = re.sub(r'^[-—\s]+', '', text).strip()
@@ -505,11 +507,9 @@ def init_db():
         c.execute('''CREATE TABLE IF NOT EXISTS conversation_history
                      (user_id BIGINT PRIMARY KEY, history_json TEXT, updated_at REAL)''')
         
-        # ⭐ Stickers ke liye nayi table
         c.execute('''CREATE TABLE IF NOT EXISTS saved_stickers
                      (file_unique_id TEXT PRIMARY KEY, file_id TEXT, emoji TEXT, set_name TEXT)''')
         
-        # ⭐ Auto-Migration: Purani JSON file se stickers DB me dalo
         if os.path.exists("stickers.json"):
             try:
                 with open("stickers.json", "r", encoding="utf-8") as f:
@@ -520,7 +520,6 @@ def init_db():
                                   (st.get("file_unique_id"), st.get("file_id"), st.get("emoji"), st.get("set_name")))
                     conn.commit()
                     logger.info(f"✅ Migrated {len(old_stickers)} stickers to PostgreSQL!")
-                # Purani file ka naam badal do taaki dubara migrate na ho
                 os.rename("stickers.json", "stickers.json.bak")
             except Exception as e:
                 logger.error(f"Sticker migration error: {e}")
@@ -804,8 +803,7 @@ async def generate_greeting(user_id: int, user_message: str) -> str | None:
 User ne abhi "{user_message}" bola hai — ye simple greeting/casual opener hai.
 
 Instructions:
-- AGAR USER SIRF "HELLO" YA "HI" BOLE, TOH MEMORY SE ZABARDASTI KOI TOPIC (JAIse gaming, coding) UTHA KE MAT POOCHO. Bas simple natural greeting do (jaise "Hey, kaise ho?").
-- Sirf tab memory ka topic uthao jab user khad uski baat kare ya memory me koi aaj ka event ho.
+- Agar user "Hello" bole, toh kabhi-kabhi (30% chance) memory se koi ek topic utha kar mazakiya sawaal pooch lena (jaise "Aaj coding nahi ki?"). Aur baaki 70% time bas simple natural greeting do (jaise "Hey, kaise ho?"). Har baar memory mat uthana, natural rakho.
 - PAR STRICT RULE 2: Ye memory USER ke baare me hai, tumhare baare me nahi. User ke kaam ko apne upar mat lo.
 - Koi fake event ya status (cancel, postpone, done) khud se mat banao.
 - Koi khud se plan (outing, movie, coffee) suggest mat karo.
@@ -966,7 +964,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             f"<blockquote>"
             f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ʜєʏ {user_name}! ϻᴧɪɴ {bot_name} ʜυɴ</b>\n\n"
             f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ᴛυϻʜᴧʀɪ ꜱϻᴧʀᴛ ᴅᴏꜱᴛ — ᴄʜᴧᴛ, ɢᴧϻєꜱ, ᴧυʀ ϻᴧꜱᴛɪ</b>\n\n"
-            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ғυʟʟ ɢʀᴏυρ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴀᴛυʀєꜱ</b>\n"
+            f"<b><tg-emoji emoji-id=\"5161221487608201804\">💃</tg-emoji> ⁂ ϻᴧᴋє ϻє ᴧᴅϻɪɴ ꜰᴏʀ ꜱυʟʟ ɢʀᴏυρ ϻᴧɴᴧɢєϻєɴᴛ ᴧɴᴅ ꜱϻᴧʀᴛ ꜰєᴀᴛυʀєꜱ</b>\n"
             f"</blockquote>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴘᴏᴡєʀєᴅ ʙʏ —</b> <a href=\"https://t.me/KnowRajpapa\">ʀᴧᴊ ϙυᴧɴᴛυϻ ᴄᴏʀє</a>\n\n"
             f"<tg-emoji emoji-id=\"5362079447136610876\">✨</tg-emoji> <b> ⁂ ᴅєᴠєʟᴏᴘє ʙʏ —</b> <a href=\"https://t.me/its_raj_king\">ʀᴧᴊ ᴄʜєᴧᴛꜱ ᴏᴡɴєʀ</a>\n"
@@ -1291,7 +1289,6 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
     db_summary = get_user_summary(user_id)
     memory_context = ""
     if db_summary:
-        # ⭐ Naam wali line memory se hata di, taaki AI galat naam na bole
         cleaned_summary = "\n".join([line for line in db_summary.split("\n") if not line.lower().startswith("naam:")])
         memory_context = f"\n\n[USER KI MEMORY: {cleaned_summary}]\n\n"
 
@@ -1352,11 +1349,9 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                     
-                    # ⭐ Strict Cleaning: Quotes aur Exclamation remove
                     reply = reply.replace('“', '').replace('”', '').replace('‘', '').replace('’', '').replace('"', '').replace("'", '').replace('!', '')
                     reply = reply.replace(',', '')
                     reply = re.sub(r'\b(vibe|vibes|chill|chill mode|aesthetic)\b', '', reply, flags=re.IGNORECASE)
-                    # ⭐ Markdown Star/Asterisk Filter: **word** ko word karna
                     reply = re.sub(r'\*\*(.*?)\*\*', r'\1', reply)
                     reply = re.sub(r'\*(.*?)\*', r'\1', reply)
                     
@@ -1543,7 +1538,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     user_id = user.id
     is_sticker = bool(update.message.sticker and not update.message.text)
 
-    # ⭐ Owner DM Sticker Save Logic
     if is_sticker and user_id == OWNER_ID and update.effective_chat.type == "private":
         await save_sticker_if_owner(update, OWNER_ID)
         return
@@ -1640,7 +1634,6 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
 
     if not update.message.text: return
 
-    # ⭐ WordSeek Game Guess Interception
     if update.message.text and not update.message.text.startswith('/'):
         is_reply_to_board = False
         if update.message.reply_to_message and update.message.reply_to_message.text:
@@ -1664,7 +1657,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                     await update.message.reply_text(reply_text, reply_to_message_id=reply_to_id)
                 except Exception:
                     await update.message.reply_text(reply_text)
-            return # Game handled, cancel AI processing
+            return
 
     if user_id not in bio_checked_users:
         bio_checked_users.add(user_id)
@@ -1721,7 +1714,6 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                 return greeting
         return None
 
-    # ⭐ Real Girl Vibe: User ke msg pe Simple Reactions (70% Probability)
     async def send_sneha_reaction():
         if not update.message or not update.message.text:
             return
@@ -1729,7 +1721,6 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
             text_lower = update.message.text.lower()
             reaction = None
             
-            # Specific keywords pe 100% simple reaction
             if any(w in text_lower for w in ["love", "pyaar", "❤️", "ilysm", "babu", "jaan", "❤", "love you", "ily"]):
                 reaction = "❤️"
             elif any(w in text_lower for w in ["lol", "lmao", "haha", "hahaha", "😂", "🤣", "funny", "mazaak", "joke", "comedy"]):
@@ -1745,17 +1736,16 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
             elif any(w in text_lower for w in ["party", "celebrate", "congrats", "happy", "🥳"]):
                 reaction = "🎉"
             else:
-                # 70% chance random simple reaction dena (taaki messages bypass na hon)
                 if random.random() < 0.30:
                     reaction = random.choice(["👍", "❤️", "🔥", "🥰", "👏", "😂", "😱", "🤔", "🥳", "🎉"])
             
             if reaction:
                 await update.message.set_reaction(reaction=[ReactionTypeEmoji(emoji=reaction)])
         except Exception:
-            pass # Agar group me reactions off hon to bina error ke ignore karo
+            pass
 
     if is_standalone:
-        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hogo
+        await send_sneha_reaction()
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=True)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML", reply_to_message_id=update.message.message_id)
@@ -1772,7 +1762,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         return
 
     if is_reply_to_bot:
-        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hogo
+        await send_sneha_reaction()
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML", reply_to_message_id=update.message.message_id)
@@ -1789,7 +1779,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
         return
 
     if is_bot_mentioned:
-        await send_sneha_reaction() # 👈 Reaction user ke msg pe yahan fire hogo
+        await send_sneha_reaction()
         greeting = await _maybe_greet_and_reply(is_first_touch_ok=False)
         if greeting:
             await safe_reply_text(update, greeting, parse_mode="HTML", reply_to_message_id=update.message.message_id)
@@ -2014,12 +2004,13 @@ async def main() -> None:
         ])
         await application.initialize()
         await application.start()
+        # ⭐ Bandwidth Bachat: edited_message hata diya taaki extra data receive na ho
         await application.bot.set_webhook(
             url=f"{webhook_url}/webhook",
-            allowed_updates=["message", "edited_message", "chat_member", "my_chat_member"]
+            allowed_updates=["message", "chat_member", "my_chat_member"]
         )
         await uvicorn.Server(
-            uvicorn.Config(app=app, host="0.0.0.0", port=port, log_level="info")
+            uvicorn.Config(app=app, host="0.0.0.0", port=port, log_level="warning")
         ).serve()
     else:
         logger.info("POLLING mode")
@@ -2027,7 +2018,7 @@ async def main() -> None:
         await application.start()
         await application.updater.start_polling(
             drop_pending_updates=True,
-            allowed_updates=["message", "edited_message", "chat_member", "my_chat_member"]
+            allowed_updates=["message", "chat_member", "my_chat_member"]
         )
         await asyncio.Event().wait()
 
