@@ -2000,7 +2000,7 @@ async def main() -> None:
         await uvicorn.Server(
             uvicorn.Config(app=app, host="0.0.0.0", port=port, log_level="warning")
         ).serve()
-        else:
+    else:
         logger.info("POLLING mode")
         
         # ⭐ Render ko manane ke liye Dummy Port Open karna
