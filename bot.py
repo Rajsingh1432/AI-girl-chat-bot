@@ -1961,7 +1961,7 @@ async def main() -> None:
     application.add_error_handler(error_handler)
 
     port = int(os.environ.get("PORT", 8000))
-    webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
+    webhook_url = None # ⭐ Force Polling Mode to save bandwidth
 
     if webhook_url:
         logger.info(f"WEBHOOK mode -> {webhook_url}/webhook")
