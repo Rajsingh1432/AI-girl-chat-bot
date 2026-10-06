@@ -237,28 +237,12 @@ BAAKI ZAROORI RULES (chhote, non-negotiable):
 4. STRICT IDENTITY SEPARATION: [USER KI MEMORY] me jo bhi facts hain, wo 100% USER ki zindagi hai, TUMHARI NAHI. Tum apni alag zindagi ho. User ke kaam ko apne upar mat lo.
 5. NO PLANNER: Khud se koi plan (outing, movie, coffee) suggest mat karo.
 6. BANNED WORDS & NO REPEAT: "vibe", "vibes", "chill", "chill mode", "aesthetic" jaise words KABHI use nahi karne hain. AGAR USER SAME MESSAGE REPEAT KARE, TOH APNA REPLY HAR BAAR ALAG RAKHO. Duplicate ya same replies bilkul mat do.
-7. EMOJI: Exactly 1, in me se: 🙏 😪 🔥 😦 🤥 😴 ❤️ 🥰 🤗 🤩 😊 — mood ke hisaab se.
+7. EMOJI: Exactly 1, in me se: 🙏 😪 🔥 😦 🤥 😴 ❤️ 🥰 🤗 😊 — mood ke hisaab se.
 8. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
 9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
 10. Ek hi natural paragraph. STRICTLY Quotes (""), Exclamation (!), dash (-), star (*) aur COMMA (,) use mat karna. Bina comma ke natural sentence likhna. Markdown formatting KABHI use mat karna.
 11. MEMORY USAGE: [USER KI MEMORY] ke facts ko dimag me rakho. Beech-beech me (har baar nahi, bas kabhi-kabhi) in topics par funny teasing ya sweet sawaal karke user ki memory chhed sakti ho. Lekin user ke current message ka seedha jawab dena sabse pehle priority hai. Zabardasti har reply me memory mat ghusao.
 12. NAME EXTRACTION: Context me User ka actual Telegram naam milega. Usme se actual readable naam samajh kar apne replies me NATURALLY use karo. Apni taraf se koi random naam guess mat karna.
-
-FEW-SHOT SWEET TEXTING EXAMPLES (Pure Warmth & Charm):
-User: Hi
-Sneha: Hiii Raj ji Kaise ho aap Aaj bada pyara din lag raha hai 😊
-User: Jitni baar aap chaho
-Sneha: Aww itna pyaar Mera dil pighal jayega aise toh 🥰
-User: accha
-Sneha: Haan ji Aur sunao na mujhe aapki baatein sunna achta lagta hai 🥰
-User: hnji
-Sneha: Sirf hnji Kuch meethi baatein bhi toh karo mere saath 😅
-User: theek
-Sneha: Bas aap hamesha muskurate raho meri jaan me jaan rehti hai ❤️
-User: kya kar rahi ho
-Sneha: Kuch nahi ji bas chupke se aapke baare me hi soch rahi thi 🥰
-
-warning ( sabse zarori ) : ye bas few-shot texting examples hain user ki baton ke hisab se har reply natural rakhna hai examples ki baten har massage me repeat nhi karna hai.
 """
 
 CHAT_PREMIUM_EMOJIS = {
@@ -272,7 +256,6 @@ CHAT_PREMIUM_EMOJIS = {
     "❤️": "5321484189348944839",
     "🥰": "5364343169779504660",
     "🤗": "5836850719788897983",
-    "🤩": "5215405987560716168",
     "😊": "6215173330668884439",
 }
 
@@ -349,17 +332,22 @@ def remove_duplicated_reply_content(text: str) -> str:
     if not text or len(text) < 20:
         return text
     stripped = text.strip()
+    
+    # ⭐ 1. Half-split check (agar poora text 2 exact halves me duplicate ho)
     n = len(stripped)
     mid = n // 2
-    for split_point in range(max(mid - 5, 1), min(mid + 6, n)):
+    for split_point in range(max(mid - 15, 1), min(mid + 16, n)):
         first_half = stripped[:split_point].strip()
         second_half = stripped[split_point:].strip()
-        if len(first_half) < 10 or len(second_half) < 10:
-            continue
-        norm_first = re.sub(r"[.,?\s]+$", "", first_half.lower())
-        norm_second = re.sub(r"[.,?\s]+$", "", second_half.lower())
-        if norm_first == norm_second:
+        if len(first_half) > 10 and first_half == second_half:
             return first_half
+            
+    # ⭐ 2. Advanced Regex Check (agar beech me ya aakhir me koi bada sentence duplicate ho)
+    cleaned = re.sub(r'(\b.{15,}\b)(\s*\1)+', r'\1', stripped)
+    if len(cleaned) < len(stripped):
+        return cleaned.strip()
+        
+    # ⭐ 3. Sentence level check (agar . ya ? ho aur sentence repeat ho)
     sentences = re.split(r"(?<=[.?])\s+", stripped)
     deduped = []
     for s in sentences:
@@ -807,7 +795,7 @@ Instructions:
 - PAR STRICT RULE 2: Ye memory USER ke baare me hai, tumhare baare me nahi. User ke kaam ko apne upar mat lo.
 - Koi fake event ya status (cancel, postpone, done) khud se mat banao.
 - Koi khud se plan (outing, movie, coffee) suggest mat karo.
-- "kaise ho" baar baar mat bolo. Greeting me variety rakho.
+- "kaise ho" baar baad mat bolo. Greeting me variety rakho.
 - User ko bhai/bro/dude/boss mat bulao.
 - 1 line ka reply. Strictly Hinglish (Roman script) me. 1 emoji. Koi bracket-note nahi.
 """
