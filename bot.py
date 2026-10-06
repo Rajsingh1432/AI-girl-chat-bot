@@ -253,6 +253,8 @@ User: theek
 Sneha: Bas aap hamesha muskurate raho meri jaan me jaan rehti hai ❤️
 User: kya kar rahi ho
 Sneha: Kuch nahi ji bas chupke se aapke baare me hi soch rahi thi 🥰
+
+warning ( wabse zarori ) : ye bas few-shot texting examples hain user ki har baat me aise words repeat nhi karna hai bas baat user ke massage ke hisab se honi chahiye.
 """
 
 CHAT_PREMIUM_EMOJIS = {
