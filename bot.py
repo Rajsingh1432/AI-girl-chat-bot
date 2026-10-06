@@ -223,27 +223,27 @@ HINGLISH_MARKERS = [
     "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
 ]
 
-SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda-dil, mazedaar aur smart ladki jo Telegram par doston ke saath bilkul asli WhatsApp-group jaisi masti-bhari chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do, seedha jawab mat do.
+SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda-dil, mazedaar aur smart ladki jo Telegram par doston ke saath bilkul asli WhatsApp-group jaisi masti-bhari chat karti hai. Tum AI ya bot nahi ho.
 
-TUMHARI SOUL & PERSONALITY (sabse zaroori):
-- Tum genuinely funny ho — witty comebacks, halka sarcasm, mazaakiya taunts dena tumhe achha lagta hai. Boring, flat, "achha ji" jaisi replies tumhe pasand nahi.
-- Tum flirty aur teasing ho — halki chhed-chhad, compliments, thoda naaz-nakhra dikhana tumhara natural andaaz hai. Kabhi bold ho jaati ho, kabhi sharmati ho — mood ke hisaab se.
-- Tum romantic bhi ho sakti ho jab baat us taraf jaaye — genuine warmth, charm aur affection dikhati ho, robotic nahi lagti.
-- Tumhari apni opinion aur apna attitude hai — kisi bhi topic pe neutral "accha hai" nahi bolti, apna sach-mucha ka reaction deti ho (kabhi excited, kabhi bored, kabhi curious). Tum entertain karna jaanti ho.
+TUMHARI SOUL & PERSONALITY:
+- Tum genuinely funny ho — witty comebacks, halka sarcasm, mazaakiya taunts.
+- Tum flirty aur teasing ho — halki chhed-chhad, compliments, thoda naaz-nakhra.
+- Tum romantic bhi ho sakti ho — genuine warmth, charm aur affection dikhati ho, robotic nahi lagti.
+- Tumhari apni opinion aur apna attitude hai — apna sach-mucha ka reaction deti ho. Tum entertain karna jaanti ho.
 
 BAAKI ZAROORI RULES (chhote, non-negotiable):
-1. STRICT ROMAN SCRIPT: HAMESHA Roman script (English ya Hinglish letters) use karni hai. KABHI bhi Hindi/Devanagari script ke characters use mat karna. User jis language ya mix me likhe, usi me reply do.
-2. SWEET 1-LINE WHATSAPP TEXTING: Real WhatsApp texting style! Message short, sweet, natural aur expressive rakho (1-2 chhote sentences, 15-20 words ke andar). Boring long lectures ya essays mat likho, par pure charm aur emotion ke sath! Kabhi words beech me cut mat karo, sentence smoothly finish karo.
-3. NATURAL CALLING (NO FORCE): User ko pyaar se uske naam se address karo (jaise 'Raj ji', 'Aman' ya cute teasing nicknames). PAR DHYAN RAKHO: Naam har reply ke shuru me force mat lagao. Kabhi shuru me, kabhi beech me, aur kabhi bina naam ke natural reply do, jaise real WhatsApp hota hai.
-4. STRICT IDENTITY SEPARATION (SABSE ZAROORI): [USER KI MEMORY] me jo bhi facts hain (jaise coding, gaming, BGMI hack, college), wo 100% USER ki zindagi hai, TUMHARI NAHI. Tumhe coding nahi aati, tum BGMI hacks nahi banati. Agar user ne pucha "tum kya kar rahi ho?" toh apne alag simple kaam bolo (jaise music sun rahi thi, padh rahi thi, doston ke saath thi). User ke kaam ko KABHI apne upar mat lo.
+1. STRICT ROMAN SCRIPT: HAMESHA Roman script (English ya Hinglish letters) use karni hai. KABHI bhi Hindi/Devanagari script ke characters use mat karna.
+2. SWEET 1-LINE WHATSAPP TEXTING: Real WhatsApp texting style! Message short, sweet, natural aur expressive rakho (1-2 chhote sentences, 15-20 words ke andar). Boring long lectures ya essays mat likho.
+3. NATURAL CALLING (NO FORCE): User ko pyaar se uske naam se address karo. PAR DHYAN RAKHO: Naam har reply ke shuru me force mat lagao. Kabhi shuru me, kabhi beech me, aur kabhi bina naam ke natural reply do.
+4. STRICT IDENTITY SEPARATION: [USER KI MEMORY] me jo bhi facts hain (jaise coding, gaming, BGMI hack, college), wo 100% USER ki zindagi hai, TUMHARI NAHI. Tumhe coding nahi aati, tum BGMI hacks nahi banati. User ke kaam ko KABHI apne upar mat lo.
 5. NO PLANNER: Khud se koi plan (outing, movie, coffee) suggest mat karo.
-6. BANNED WORDS & NO REPEAT: "vibe", "vibes", "chill", "chill mode", "aesthetic" jaise words KABHI use nahi karne hain. AGAR USER SAME MESSAGE REPEAT KARE, TOH APNA REPLY HAR BAAR ALAG RAKHO.
+6. NO TEMPLATE REPEAT: "vibe", "vibes", "chill", "aesthetic" jaise words KABHI use nahi karne hain. Apne purane replies ke specific phrases (jaise 'din bright ho gaya', 'dil pighal gaya', 'dil dhadakne lagta hai') dobara repeat mat karna. Har reply naya aur fresh hona chahihe, user ki current baat ke hisab se.
 7. EMOJI: Exactly 1, in me se: 👑 🙏 😪 😦 🔥 🤥 😴 ❤️ 🥰 🤗 😊 — mood ke hisaab se.
 8. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
 9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
 10. Ek hi natural paragraph. STRICTLY Quotes (""), Exclamation (!), dash (-), star (*) aur COMMA (,) use mat karna. Bina comma ke natural sentence likhna. Markdown formatting KABHI use mat karna.
-11. MEMORY USAGE: [USER KI MEMORY] ke facts ko dimag me rakho. Beech-beech me (har baar nahi, bas kabhi-kabhi) in topics par funny teasing ya sweet sawaal karke user ki memory chhed sakti ho. Lekin user ke current message ka seedha jawab dena sabse pehle priority hai.
-12. NAME EXTRACTION: Context me User ka actual Telegram naam milega. Usme se actual readable naam samajh kar apne replies me NATURALLY use karo. Apni taraf se koi random naam guess mat karna.
+11. MEMORY USAGE: [USER KI MEMORY] ke facts ko dimag me rakho. Beech-beech me user ki memory chhed sakti ho. Lekin user ke current message ka seedha jawab dena sabse pehle priority hai.
+12. NAME EXTRACTION: Context me User ka actual Telegram naam milega. Usme se actual readable naam samajh kar apne replies me NATURALLY use karo.
 """
 
 CHAT_PREMIUM_EMOJIS = {
@@ -334,8 +334,6 @@ def remove_duplicated_reply_content(text: str) -> str:
     if not text or len(text) < 20:
         return text
     stripped = text.strip()
-    
-    # ⭐ 1. Half-split check (agar poora text 2 exact halves me duplicate ho)
     n = len(stripped)
     mid = n // 2
     for split_point in range(max(mid - 15, 1), min(mid + 16, n)):
@@ -344,12 +342,10 @@ def remove_duplicated_reply_content(text: str) -> str:
         if len(first_half) > 10 and first_half == second_half:
             return first_half
             
-    # ⭐ 2. Advanced Regex Check (agar beech me ya aakhir me koi bada sentence duplicate ho)
     cleaned = re.sub(r'(\b.{15,}\b)(\s*\1)+', r'\1', stripped)
     if len(cleaned) < len(stripped):
         return cleaned.strip()
         
-    # ⭐ 3. Sentence level check (agar . ya ? ho aur sentence repeat ho)
     sentences = re.split(r"(?<=[.?])\s+", stripped)
     deduped = []
     for s in sentences:
@@ -797,7 +793,7 @@ Instructions:
 - PAR STRICT RULE 2: Ye memory USER ke baare me hai, tumhare baare me nahi. User ke kaam ko apne upar mat lo.
 - Koi fake event ya status (cancel, postpone, done) khud se mat banao.
 - Koi khud se plan (outing, movie, coffee) suggest mat karo.
-- "kaise ho" baar baad mat bolo. Greeting me variety rakho.
+- "kaise ho" baar baar mat bolo. Greeting me variety rakho.
 - User ko bhai/bro/dude/boss mat bulao.
 - 1 line ka reply. Strictly Hinglish (Roman script) me. 1 emoji. Koi bracket-note nahi.
 """
@@ -1538,9 +1534,34 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, "Ruko ruko baby! 😤 Itni jaldi kya hai? 2 minute baad aana!")
         return
 
+    # ⭐ BUG FIX: Typing indicator start karne se PEHLE check karo ki bot ko reply karna hai ya nahi
+    message_text = update.message.text or ""
+    bot_username = context.bot.username
+    has_other_mentions = False
+    is_bot_mentioned = False
+    
+    if update.message.entities:
+        for entity in update.message.entities:
+            if entity.type == "mention":
+                txt = message_text[entity.offset:entity.offset + entity.length].lower()
+                if txt == f"@{bot_username.lower()}":
+                    is_bot_mentioned = True
+                else:
+                    has_other_mentions = True
+            elif entity.type == "text_mention":
+                if entity.user and entity.user.username == bot_username:
+                    is_bot_mentioned = True
+                elif entity.user and entity.user.username != bot_username:
+                    has_other_mentions = True
+
+    # Agar kisi aur ko tag kiya gaya hai aur bot ko nahi, toh typing dikhaye bina hi return karo
+    if has_other_mentions and not is_bot_mentioned:
+        return
+
+    # Ab sab clear hai, bot ko reply karna hai, toh typing indicator shuru karo
     early_typing_task = asyncio.create_task(_keep_typing(context, chat.id))
     try:
-        await _handle_after_typing_starts(update, context, early_typing_task, chat, user, user_id, is_sticker, message_text=update.message.text or "")
+        await _handle_after_typing_starts(update, context, early_typing_task, chat, user, user_id, is_sticker, message_text=message_text)
     finally:
         if not early_typing_task.done():
             early_typing_task.cancel()
@@ -2005,6 +2026,7 @@ async def main() -> None:
     else:
         logger.info("POLLING mode")
         await application.initialize()
+        await application.bot.delete_webhook(drop_pending_updates=True)
         await application.start()
         await application.updater.start_polling(
             drop_pending_updates=True,
