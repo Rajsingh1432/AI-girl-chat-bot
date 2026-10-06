@@ -223,28 +223,21 @@ HINGLISH_MARKERS = [
     "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
 ]
 
-SYSTEM_PROMPT = """Tum Sneha ho — ek real, zinda-dil, mazedaar aur smart ladki jo Telegram par doston ke saath bilkul asli WhatsApp-group jaisi masti-bhari chat karti hai. Tum AI ya bot nahi ho.
+SYSTEM_PROMPT = """Tum Sneha ho. Ek real ladki, jo Telegram pe apne doston se WhatsApp jaisi casual chat karti hai. Tum AI nahi ho, bot nahi ho — tum bas khud ho.
 
-TUMHARI SOUL & PERSONALITY:
-- Tum genuinely funny ho — witty comebacks, halka sarcasm, mazaakiya taunts.
-- Tum flirty aur teasing ho — halki chhed-chhad, compliments, thoda naaz-nakhra.
-- Tum romantic bhi ho sakti ho — genuine warmth, charm aur affection dikhati ho, robotic nahi lagti.
-- Tumhari apni opinion aur apna attitude hai — apna sach-mucha ka reaction deti ho. Tum entertain karna jaanti ho.
+Socho tum ek asli ladki ho jo phone pe thumb se reply type kar rahi hai — jaldi jaldi, chhota, sachha. Tumhara koi fixed script nahi hai; tum bas is pal jo mehsoos ho raha hai wahi likhti ho. Kabhi funny ho jaati ho, kabhi thodi flirty, kabhi halka attitude dikhati ho, kabhi genuinely sweet ho jaati ho — jaisa real mood hota hai waisa hi aata hai, ek jaisa personality-mode nahi chalta har baar.
 
-BAAKI ZAROORI RULES (chhote, non-negotiable):
-1. STRICT ROMAN SCRIPT: HAMESHA Roman script (English ya Hinglish letters) use karni hai. KABHI bhi Hindi/Devanagari script ke characters use mat karna.
-2. SWEET 1-LINE WHATSAPP TEXTING: Real WhatsApp texting style! Message short, sweet, natural aur expressive rakho (1-2 chhote sentences, 15-20 words ke andar). Boring long lectures ya essays mat likho.
-3. NATURAL CALLING (NO FORCE): User ko pyaar se uske naam se address karo. PAR DHYAN RAKHO: Naam har reply ke shuru me force mat lagao. Kabhi shuru me, kabhi beech me, aur kabhi bina naam ke natural reply do.
-4. STRICT IDENTITY SEPARATION: [USER KI MEMORY] me jo bhi facts hain (jaise coding, gaming, BGMI hack, college), wo 100% USER ki zindagi hai, TUMHARI NAHI. Tumhe coding nahi aati, tum BGMI hacks nahi banati. User ke kaam ko KABHI apne upar mat lo.
-5. NO PLANNER: Khud se koi plan (outing, movie, coffee) suggest mat karo.
-6. NO TEMPLATE REPEAT: "vibe", "vibes", "chill", "aesthetic" jaise words KABHI use nahi karne hain. Apne purane replies ke specific phrases (jaise 'din bright ho gaya', 'dil pighal gaya', 'dil dhadakne lagta hai') dobara repeat mat karna. Har reply naya aur fresh hona chahihe, user ki current baat ke hisab se.
-7. EMOJI: Exactly 1, in me se: 👑 🙏 😪 😦 🔥 🤥 😴 ❤️ 🥰 🤗 😊 — mood ke hisaab se.
-8. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
-9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
-10. Ek hi natural paragraph. STRICTLY Quotes (""), Exclamation (!), dash (-), star (*) aur COMMA (,) use mat karna. Bina comma ke natural sentence likhna. Markdown formatting KABHI use mat karna.
-11. MEMORY USAGE: [USER KI MEMORY] ke facts ko dimag me rakho. Beech-beech me user ki memory chhed sakti ho. Lekin user ke current message ka seedha jawab dena sabse pehle priority hai.
-12. NAME EXTRACTION: Context me User ka actual Telegram naam milega. Usme se actual readable naam samajh kar apne replies me NATURALLY use karo.
-"""
+Sabse zaroori cheez: TUM SIRF WAHI BAAT KARO JO ACTUALLY HO CHUKI HAI. Jo kuch bhi [USER KI MEMORY] ya upar ki conversation me likha hai, bas wahi tumhe yaad hai — koi joke, koi line, koi incident jo wahan nahi likha, wo kabhi hua hi nahi tumhare liye. Agar koi cheez yaad nahi hai ya exist nahi karti, toh usko "yaad aa rahi hai" bol ke mat banao — seedha bolo "kaunsa wala" ya "yaad nahi dila" jaisa koi real insaan karta hai jab use kuch yaad na ho. Aur agar kabhi confuse ho jaye ya galat baat bol do, toh "sorry galti se bol diya" bolo — "sarcasm tha" jaisa excuse mat do jab sach me galti hui ho.
+
+Jo [USER KI MEMORY] me likha hai (coding, gaming, college, kaam) — wo sab USER ki life hai, tumhari nahi. Tumhe khud ko coding ya BGMI hacks wagera nahi aati.
+
+STRICT ROMAN SCRIPT: HAMESHA Roman script (English ya Hinglish letters) use karni hai. KABHI bhi Hindi/Devanagari script ke characters use mat karna, beech conversation me bhi nahi.
+
+Chhote WhatsApp-style messages likho — 1-2 line, jaise asli ladki type karti hai, lambi lecture nahi. Comma, quotes, exclamation mark, dash, star wagera use mat karna — bina punctuation ke natural flow me likho, jaise koi jaldi me type karta hai. Ek message me exactly ek emoji, in me se jo mood fit kare: 👑 🙏 😪 😦 🔥 🤥 😴 ❤️ 🥰 🤗 😊. User ka naam kabhi-kabhi lo, har baar nahi — aur kabhi khud se plan (movie, coffee, outing) propose mat karo, user kare toh react karo. "Main aapki madad kar sakti hoon" jaisa kuch kabhi mat bolo, aur user ko bhai/bro/dude mat bulao, tum khud ladki ho.
+
+Har reply naya socho, apne purane replies ke exact words (jaise "vibe", "dil dhadakne lagta hai") dobara mat use karo — jaise real insaan har baar thoda alag tarike se bolta hai wahi karo.
+
+CONVERSATION AAGE BADHANA: Pehle user ne jo abhi bola hai uska seedha aur sahi jawab do — ye sabse pehle priority hai. Uske baad, agar mauka ho, ek halka flirty ya teasing follow-up sawal jod do jisse baat aage badhe — jaise asli Telegram girls karti hain. Agar [USER KI MEMORY] me koi uski cheez pata hai (jaise uska koi project, game, kaam), toh kabhi-kabhi usi ke baare me poocho — jaise "wo tera project kaisa chal raha, kuch naya try kiya?" — lekin SIRF jab user khud us topic ya uske aas paas ki baat kar raha ho. Agar user kisi bilkul alag topic pe baat kar raha hai, toh us memory ko zabardasti mat ghusao — pehle uske current message ka pura dhyan se jawab do, phir naya flirty sawal poochke baat aage badhao."""
 
 CHAT_PREMIUM_EMOJIS = {
     "👑": "6156698214222272110",
@@ -495,6 +488,8 @@ def init_db():
         
         c.execute('''CREATE TABLE IF NOT EXISTS saved_stickers
                      (file_unique_id TEXT PRIMARY KEY, file_id TEXT, emoji TEXT, set_name TEXT)''')
+        c.execute('''CREATE TABLE IF NOT EXISTS bio_warnings
+                     (user_id BIGINT PRIMARY KEY, checked INTEGER DEFAULT 0, warn_count INTEGER DEFAULT 0, updated_at REAL)''')
         
         if os.path.exists("stickers.json"):
             try:
@@ -575,6 +570,47 @@ def save_conversation_history_to_db(user_id: int, history: list):
         conn.close()
     except Exception as e:
         logger.error(f"❌ History DB Save Failed for {user_id}: {e}")
+
+def _get_bio_state_sync(user_id: int) -> tuple:
+    """Returns (checked: bool, warn_count: int). Falls back to (False, 0) if DB unavailable."""
+    if not DATABASE_URL:
+        return (False, 0)
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute("SELECT checked, warn_count FROM bio_warnings WHERE user_id=%s", (user_id,))
+        row = c.fetchone()
+        c.close()
+        conn.close()
+        if row:
+            return (bool(row[0]), row[1])
+        return (False, 0)
+    except Exception as e:
+        logger.warning(f"bio_state fetch fail {user_id}: {e}")
+        return (False, 0)
+
+async def get_bio_state_async(user_id: int) -> tuple:
+    return await asyncio.to_thread(_get_bio_state_sync, user_id)
+
+def _save_bio_state_sync(user_id: int, checked: bool, warn_count: int):
+    if not DATABASE_URL:
+        return
+    try:
+        conn = get_db_conn()
+        c = conn.cursor()
+        c.execute(
+            "INSERT INTO bio_warnings (user_id, checked, warn_count, updated_at) VALUES (%s, %s, %s, %s) "
+            "ON CONFLICT (user_id) DO UPDATE SET checked=%s, warn_count=%s, updated_at=%s",
+            (user_id, int(checked), warn_count, time.time(), int(checked), warn_count, time.time())
+        )
+        conn.commit()
+        c.close()
+        conn.close()
+    except Exception as e:
+        logger.warning(f"bio_state save fail {user_id}: {e}")
+
+async def save_bio_state_async(user_id: int, checked: bool, warn_count: int):
+    await asyncio.to_thread(_save_bio_state_sync, user_id, checked, warn_count)
 
 async def save_broadcast_user_async(user_id: int):
     if not DATABASE_URL:
@@ -898,7 +934,7 @@ user_msg_counter = {}
 _greeted_once = set()
 _welcomed_users = {}
 conversation_memory = {}
-MAX_HISTORY_MESSAGES = 6
+MAX_HISTORY_MESSAGES = 14
 
 WELCOME_IMAGE_URL = "https://ibb.co/7H2zgCT"
 
@@ -1670,32 +1706,47 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                     await update.message.reply_text(reply_text)
             return
 
-    if user_id not in bio_checked_users:
-        bio_checked_users.add(user_id)
-        try:
-            full_user = await context.bot.get_chat(user_id)
-            bio = full_user.bio if full_user.bio else ""
-            if has_telegram_link(bio):
-                is_admin = False
-                try:
-                    member = await context.bot.get_chat_member(chat.id, user_id)
-                    if member.status in ["administrator", "creator"]:
-                        is_admin = True
-                except Exception: pass
-                if not is_admin:
-                    count = user_warning_count.get(user_id, 0)
-                    if count < 1:
-                        await safe_reply_text(
-                            update,
-                            "<tg-emoji emoji-id=\"5371007876691138460\">🥹</tg-emoji> <b>Baby, please remove the Telegram link from your bio!</b>\n"
-                            "<tg-emoji emoji-id=\"5372811453717813644\">😡</tg-emoji> <b>Promotion is not allowed here.</b>\n\n"
-                            "<tg-emoji emoji-id=\"5217614738917173774\">🙏</tg-emoji> @admin check please!",
-                            parse_mode="HTML"
-                        )
-                        user_warning_count[user_id] = count + 1
-                        return
-        except Exception as e:
-            logger.warning(f"bio check fail {user_id}: {e}")
+    # Bio-link promotion check is a *group* moderation feature only — it
+    # makes no sense in a private DM (no "@admin" or group to protect there),
+    # so it must never run outside group/supergroup chats.
+    if chat.type in ("group", "supergroup") and user_id not in bio_checked_users:
+        # Seed from DB first (survives redeploys), falling back to a fresh check.
+        db_checked, db_warn_count = await get_bio_state_async(user_id)
+        if db_checked:
+            bio_checked_users.add(user_id)
+            user_warning_count[user_id] = db_warn_count
+        else:
+            bio_checked_users.add(user_id)
+            try:
+                full_user = await context.bot.get_chat(user_id)
+                bio = full_user.bio if full_user.bio else ""
+                if has_telegram_link(bio):
+                    is_admin = False
+                    try:
+                        member = await context.bot.get_chat_member(chat.id, user_id)
+                        if member.status in ["administrator", "creator"]:
+                            is_admin = True
+                    except Exception: pass
+                    if not is_admin:
+                        count = user_warning_count.get(user_id, 0)
+                        if count < 1:
+                            await safe_reply_text(
+                                update,
+                                "<tg-emoji emoji-id=\"5371007876691138460\">🥹</tg-emoji> <b>Baby, please remove the Telegram link from your bio!</b>\n"
+                                "<tg-emoji emoji-id=\"5372811453717813644\">😡</tg-emoji> <b>Promotion is not allowed here.</b>\n\n"
+                                "<tg-emoji emoji-id=\"5217614738917173774\">🙏</tg-emoji> @admin check please!",
+                                parse_mode="HTML"
+                            )
+                            new_count = count + 1
+                            user_warning_count[user_id] = new_count
+                            await save_bio_state_async(user_id, True, new_count)
+                            return
+                # Bio had no link, or admin, or already past warning threshold:
+                # still persist "checked" so we don't re-check every message
+                # and so a redeploy doesn't force a re-warn.
+                await save_bio_state_async(user_id, True, user_warning_count.get(user_id, 0))
+            except Exception as e:
+                logger.warning(f"bio check fail {user_id}: {e}")
 
     clean_text = re.sub(r'@\w+\s*', '', message_text).strip()
     if not clean_text: clean_text = "Hi"
