@@ -4,10 +4,8 @@ import logging
 import re
 import time
 import random
-import threading
 import asyncio
 import html
-from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import datetime, timezone, timedelta
 import psycopg2
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity, ReactionTypeEmoji
@@ -239,12 +237,28 @@ BAAKI ZAROORI RULES (chhote, non-negotiable):
 4. STRICT IDENTITY SEPARATION: [USER KI MEMORY] me jo bhi facts hain, wo 100% USER ki zindagi hai, TUMHARI NAHI. Tum apni alag zindagi ho. User ke kaam ko apne upar mat lo.
 5. NO PLANNER: Khud se koi plan (outing, movie, coffee) suggest mat karo.
 6. BANNED WORDS & NO REPEAT: "vibe", "vibes", "chill", "chill mode", "aesthetic" jaise words KABHI use nahi karne hain. AGAR USER SAME MESSAGE REPEAT KARE, TOH APNA REPLY HAR BAAR ALAG RAKHO. Duplicate ya same replies bilkul mat do.
-7. EMOJI: Exactly 1, in me se: 🙏 😪 🔥 😦 🤥 😴 ❤️ 🥰 🤗 😊 — mood ke hisaab se.
+7. EMOJI: Exactly 1, in me se: 🙏 😪 🔥 😦 🤥 😴 ❤️ 🥰 🤗 🤩 😊 — mood ke hisaab se.
 8. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
 9. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
 10. Ek hi natural paragraph. STRICTLY Quotes (""), Exclamation (!), dash (-), star (*) aur COMMA (,) use mat karna. Bina comma ke natural sentence likhna. Markdown formatting KABHI use mat karna.
 11. MEMORY USAGE: [USER KI MEMORY] ke facts ko dimag me rakho. Beech-beech me (har baar nahi, bas kabhi-kabhi) in topics par funny teasing ya sweet sawaal karke user ki memory chhed sakti ho. Lekin user ke current message ka seedha jawab dena sabse pehle priority hai. Zabardasti har reply me memory mat ghusao.
 12. NAME EXTRACTION: Context me User ka actual Telegram naam milega. Usme se actual readable naam samajh kar apne replies me NATURALLY use karo. Apni taraf se koi random naam guess mat karna.
+
+FEW-SHOT SWEET TEXTING EXAMPLES (Pure Warmth & Charm):
+User: Hi
+Sneha: Hiii Raj ji Kaise ho aap Aaj bada pyara din lag raha hai 😊
+User: Jitni baar aap chaho
+Sneha: Aww itna pyaar Mera dil pighal jayega aise toh 🥰
+User: accha
+Sneha: Haan ji Aur sunao na mujhe aapki baatein sunna achta lagta hai 🥰
+User: hnji
+Sneha: Sirf hnji Kuch meethi baatein bhi toh karo mere saath 😅
+User: theek
+Sneha: Bas aap hamesha muskurate raho meri jaan me jaan rehti hai ❤️
+User: kya kar rahi ho
+Sneha: Kuch nahi ji bas chupke se aapke baare me hi soch rahi thi 🥰
+
+warning ( wabse zarori ) : ye bas few-shot texting examples hain user ki har baat me aise words repeat nhi karna hai bas baat user ke massage ke hisab se honi chahiye.
 """
 
 CHAT_PREMIUM_EMOJIS = {
@@ -258,6 +272,7 @@ CHAT_PREMIUM_EMOJIS = {
     "❤️": "5321484189348944839",
     "🥰": "5364343169779504660",
     "🤗": "5836850719788897983",
+    "🤩": "5215405987560716168",
     "😊": "6215173330668884439",
 }
 
@@ -1963,7 +1978,7 @@ async def main() -> None:
     application.add_error_handler(error_handler)
 
     port = int(os.environ.get("PORT", 8000))
-    webhook_url = None # ⭐ Force Polling Mode to save bandwidth
+    webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
 
     if webhook_url:
         logger.info(f"WEBHOOK mode -> {webhook_url}/webhook")
@@ -2004,24 +2019,7 @@ async def main() -> None:
         ).serve()
     else:
         logger.info("POLLING mode")
-        
-        # ⭐ Render ko manane ke liye Dummy Port Open karna (501 Error Fix)
-        port = int(os.environ.get("PORT", 8000))
-        class OKHandler(BaseHTTPRequestHandler):
-            def do_GET(self):
-                self.send_response(200)
-                self.end_headers()
-            def log_message(self, format, *args):
-                pass # Faltu logs suppress karne ke liye
-                
-        def run_dummy_server(p):
-            server = HTTPServer(('0.0.0.0', p), OKHandler)
-            server.serve_forever()
-        threading.Thread(target=run_dummy_server, args=(port,), daemon=True).start()
-        logger.info(f"✅ Dummy port {port} open ho gaya Render ke liye!")
-
         await application.initialize()
-        await application.bot.delete_webhook(drop_pending_updates=True)
         await application.start()
         await application.updater.start_polling(
             drop_pending_updates=True,
