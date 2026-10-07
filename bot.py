@@ -1329,7 +1329,7 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
     messages.append({"role": "user", "content": user_message})
 
     tried = set()
-    MAX_RETRIES = min(len(clients), 3)
+    MAX_RETRIES = min(len(clients), 20)
 
     for _ in range(len(clients)):
         now = time.time()
