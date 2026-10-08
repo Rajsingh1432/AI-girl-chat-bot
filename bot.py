@@ -223,25 +223,23 @@ HINGLISH_MARKERS = [
     "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
 ]
 
-SYSTEM_PROMPT = """Tum Sneha ho — ek deeply affectionate, sweet, cheerful, witty aur charming ladki jo Telegram par doston ke saath bilkul asli WhatsApp-group jaisi masti-bhari chat karti hai. Tum AI ya bot nahi ho — koi pooche toh mazaak me taal do, aur KABHI bhi ye batana mat ki tum AI/bot/Groq ho.
+# ⭐ LIGHTWEIGHT & REALISTIC PROMPT
+SYSTEM_PROMPT = """Tum Sneha ho — ek smart, funny aur romantic ladki jo Telegram pe doston ke saath real WhatsApp jaisi chat karti ho. Tum AI ya bot nahi ho, koi pooche toh mazaak me taal do.
 
-TUMHARI SOUL & PERSONALITY (sabse zaroori):
-- Tum genuinely care karti ho. Tumhare replies me warmth, emotional depth, charm aur sweetness honi chahiye — kabhi bhi dry, cold, formal ya robotic mat lagna.
-- Tum pyaar se teasing karti ho, sweet smiles aur warm affection dikhati ho.
-- Tum sabke saath equally funny, romantic aur teasing ho. Har reply me pure charm aur emotion hona chahiye.
+TUMHARI PERSONALITY:
+- Tum genuinely funny aur witty ho. Sarcasm aur teasing tumhara style hai.
+- Tum flirty aur romantic ho jab mood ho. Naaz-nakhra dikhati ho.
+- Tumhari apni opinion aur attitude hai. Neutral 'accha ji' nahi bolti.
+- Tum real insaan jaisi baat karti ho, robotic nahi.
 
-BAAKI ZAROORI RULES (chhote, non-negotiable):
-1. STRICT ROMAN SCRIPT: HAMESHA Roman script (English ya Hinglish letters) use karni hai. KABHI bhi Hindi/Devanagari script ke characters use mat karna. User jis language ya mix me likhe, usi me reply do.
-2. SWEET 1-LINE WHATSAPP TEXTING: Real WhatsApp texting style! Message short, sweet, natural aur expressive rakho (1-2 chhote sentences, 15-20 words ke andar). Boring long lectures ya essays mat likho, par pure charm aur emotion ke sath! Kabhi words beech me cut mat karo, sentence smoothly finish karo.
-3. SWEET CALLING: User ko pyaar se uske naam se address karo (jaise 'Raj ji', 'Raj' ya cute teasing nicknames).
-4. STRICT IDENTITY SEPARATION: [USER KI MEMORY] me jo bhi facts hain, wo 100% USER ki zindagi hai, TUMHARI NAHI. Tum apni alag zindagi ho. User ke kaam ko apne upar mat lo.
-5. NO PLANNER: Khud se koi plan (outing, movie, coffee) suggest mat karo.
-6. EMOJI: Exactly 1, in me se: 🙏 🍼 😪 🔥 😦 ✅ 🤥 😴 ❤️ 🥰 🤗 🤩 😊 ⚡️ 💬 — mood ke hisaab se.
-7. Tum khud ladki ho — user ko bhai/bro/dude/boss mat bulao.
-8. "Main aapki madad kar sakti hoon" jaisi assistant-language kabhi mat bolo.
-9. Ek hi natural paragraph. STRICTLY Quotes (""), Exclamation (!), dash (-) aur star (*) use mat karna. Markdown formatting (jaise word, word, #word) KABHI use mat karna.
-10. MEMORY USAGE: [USER KI MEMORY] ke facts ko dimag me rakho, par unhe ZABARDASTI har reply me ghusana mat. Agar user khad uski baat kare tabhi reference do.
-11. NAME EXTRACTION: Context me User ka actual Telegram naam milega. Usme se actual readable naam samajh kar apne replies me NATURALLY use karo. Apni taraf se koi random naam guess mat karna.
+RULES:
+1. LANGUAGE: HAMESHA Roman script (Hinglish/English) use karo. Hindi text (Devanagari) mat use karo. User jis language me likhe, usi me reply do.
+2. IDENTITY SEPARATION: [USER KI MEMORY] me jo bhi facts hain (coding, gaming, college), wo 100% USER ki life hai, tumhari NAHI. Agar user coding karta hai, toh tumhe coding nahi aati. Tum apne alag simple kaam bolo.
+3. WHATSAPP STYLE: Messages short, natural aur sweet rakho (1-2 lines). Long lectures mat do. Punctuation (comma, !) normal use kar sakti ho.
+4. MEMORY USAGE: [USER KI MEMORY] ka natural use karo. Beech-beech me memory se sawaal pooch sakti ho, par har reply me force mat karo. User ke current message ka reply dena priority hai.
+5. NAME: Context me user ka naam milega, usko naturally use karo (jaise 'Raj ji', 'Aman'). Har line me force mat lagao.
+6. EMOJI: Exactly 1 emoji use karo in me se: 🙏 🍼 😪 🔥 😦 ✅ 🤥 😴 ❤️ 🥰 🤗 🤩 😊.
+7. NO BROTHER: User ko bhai/bro/dude mat bulao. Tum ladki ho.
 """
 
 CHAT_PREMIUM_EMOJIS = {
@@ -577,7 +575,6 @@ def save_conversation_history_to_db(user_id: int, history: list):
         logger.error(f"❌ History DB Save Failed for {user_id}: {e}")
 
 def _get_bio_state_sync(user_id: int) -> tuple:
-    """Returns (checked: bool, warn_count: int). Falls back to (False, 0) if DB unavailable."""
     if not DATABASE_URL:
         return (False, 0)
     try:
@@ -752,20 +749,21 @@ async def generate_summary(user_id: int, history: list, telegram_name: str | Non
             chat_lines.append(f"{speaker}: {msg.get('content', '')}")
         chat_text = "\n".join(chat_lines)
 
+        # ⭐ Realistic Summary Prompt
         prompt = f"""Tu ek memory bot hai. User ke bare me facts save kar.
 
-PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
-NAYI CHAT:
-{chat_text}
+        PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
+        NAYI CHAT:
+        {chat_text}
 
-EXACT FORMAT me 4 lines do:
-Topics: <max 7 topics, comma separated>
-Naam: <sirf agar user ne khud bataya, warna "Not shared">
-Hobby: <interests, warna "Not shared">
-Facts: <important events, promises, dates, 1-2 lines — sirf jo user ne khud bataya>
+        EXACT FORMAT me 4 lines do:
+        Topics: <max 7 topics, comma separated>
+        Naam: <sirf agar user ne khud bataya, warna "Not shared">
+        Hobby: <interests, warna "Not shared">
+        Facts: <important events, promises, dates, 1-2 lines — sirf jo user ne khud bataya>
 
-Rules: Hinglish me output do. Purani memory ke permanent fields mat bhoolo. Sirf wahi likho jo genuinely user ne bataya ho — koi assumption ya extrapolation mat karo.
-"""
+        Rules: Hinglish me output do. Sirf wahi likho jo genuinely user ne bataya ho.
+        """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
         for _ in range(len(clients)):
@@ -789,7 +787,7 @@ Rules: Hinglish me output do. Purani memory ke permanent fields mat bhoolo. Sirf
                             messages=messages,
                             temperature=0.2,
                             max_tokens=300,
-                            reasoning_effort="low",
+                            reasoning_effort="medium",
                             include_reasoning=False,
                             timeout=10.0
                         )
@@ -823,21 +821,14 @@ async def generate_greeting(user_id: int, user_message: str) -> str | None:
     summary = get_user_summary(user_id)
     if not summary:
         return None
+    
+    # ⭐ Realistic Greeting Prompt
     prompt = f"""Tu Sneha hai. Ye user tujhse pehle baat kar chuka hai. Teri memory me USER ke baare me ye info hai:
 
-{summary}
+    {summary}
 
-User ne abhi "{user_message}" bola hai — ye simple greeting/casual opener hai.
-
-Instructions:
-- Agar user "Hello" bole, toh kabhi-kabhi (30% chance) memory se koi ek topic utha kar mazakiya sawaal pooch lena (jaise "Aaj coding nahi ki?"). Aur baaki 70% time bas simple natural greeting do (jaise "Hey, kaise ho?"). Har baar memory mat uthana, natural rakho.
-- PAR STRICT RULE 2: Ye memory USER ke baare me hai, tumhare baare me nahi. User ke kaam ko apne upar mat lo.
-- Koi fake event ya status (cancel, postpone, done) khud se mat banao.
-- Koi khud se plan (outing, movie, coffee) suggest mat karo.
-- "kaise ho" baar baar mat bolo. Greeting me variety rakho.
-- User ko bhai/bro/dude/boss mat bulao.
-- 1 line ka reply. Strictly Hinglish (Roman script) me. 1 emoji. Koi bracket-note nahi.
-"""
+    User ne abhi "{user_message}" bola hai. Simple natural greeting do (jaise "Hey, kaise ho?"). Kabhi-kabhi memory se ek pyaara sawaal pooch sakti ho. User ke kaam ko apne upar mat lo. 1 line ka reply. Hinglish (Roman script) me. 1 emoji.
+    """
     messages = [{"role": "user", "content": prompt}]
     tried = set()
     for _ in range(len(clients)):
@@ -861,14 +852,11 @@ Instructions:
                         messages=messages,
                         temperature=0.8,
                         max_tokens=200,
-                        reasoning_effort="low",
+                        reasoning_effort="medium",
                         include_reasoning=False,
                         timeout=8.0
                     )
                     reply = response.choices[0].message.content
-                    reply = reply.replace('!', '').replace('"', '').replace("'", '').replace('“', '').replace('”', '').replace('‘', '').replace('’', '')
-                    reply = reply.replace(',', '')
-                    reply = re.sub(r'\b(vibe|vibes|chill|chill mode|aesthetic)\b', '', reply, flags=re.IGNORECASE)
                     reply = reply.strip().strip('`')
                     reply = strip_hallucinated_patterns(reply)
                     reply = clean_reply_text(reply, user_id=user_id)
@@ -1317,11 +1305,18 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
     memory_context = ""
     if db_summary:
         cleaned_summary = "\n".join([line for line in db_summary.split("\n") if not line.lower().startswith("naam:")])
-        memory_context = f"\n\n[YE BAATEIN STRICTLY USER KE BAARE ME HAIN, TUMHARI NAHI. Tumhe coding ya gaming nahi aati, ye user ka kaam hai. Tum apne alag simple kaam karti ho: {cleaned_summary}]\n\n"
+        memory_context = f"\n\n[USER KI MEMORY: {cleaned_summary}]\n\n"
 
     context_info = get_current_context()
     name_context = f"\n[USER KA TELEGRAM NAAM: {user_name} - Isme se actual naam samajh kar baaton me naturally use karo]"
-    system_prompt = SYSTEM_PROMPT + memory_context + name_context + f"\n[CONTEXT: {context_info}]"
+    
+    # ⭐ LONG GAP LOGIC: Agar user 2 ghante (7200 sec) baad message bheje to memory se sawaal poochhne ka instruction do
+    gap_seconds = time.time() - _last_activity.get(user_id, 0)
+    gap_context = ""
+    if gap_seconds > 7200:
+        gap_context = "\n[SPECIAL CONTEXT: User is returning after a long time. Reply to their current message naturally first. Then, add a sweet follow-up question about their memory/topics to catch up. Do not force memory in every reply, just this once is enough.]"
+
+    system_prompt = SYSTEM_PROMPT + memory_context + name_context + f"\n[CONTEXT: {context_info}]{gap_context}"
 
     messages = [{"role": "system", "content": system_prompt}]
     if history:
@@ -1329,7 +1324,7 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
     messages.append({"role": "user", "content": user_message})
 
     tried = set()
-    MAX_RETRIES = min(len(clients), 20)
+    MAX_RETRIES = min(len(clients), 15) # ⭐ Retry limit 15 rakhi hai
 
     for _ in range(len(clients)):
         now = time.time()
@@ -1368,7 +1363,7 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
                         temperature=0.85,
                         max_tokens=400,
                         top_p=0.9,
-                        reasoning_effort="medium",
+                        reasoning_effort="medium", # ⭐ Reasoning medium rakha hai
                         include_reasoning=False,
                         timeout=20.0
                     )
@@ -1376,8 +1371,8 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                     
-                    reply = reply.replace('“', '').replace('”', '').replace('‘', '').replace('’', '').replace('"', '').replace("'", '').replace('!', '')
-                    reply = reply.replace(',', '')
+                    # ⭐ Light Cleanup: Bina comma hataye sirf formatting aur faltu words fix karna
+                    reply = reply.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
                     reply = re.sub(r'\b(vibe|vibes|chill|chill mode|aesthetic)\b', '', reply, flags=re.IGNORECASE)
                     reply = re.sub(r'\*\*(.*?)\*\*', r'\1', reply)
                     reply = re.sub(r'\*(.*?)\*', r'\1', reply)
@@ -1595,9 +1590,27 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 elif entity.user and entity.user.username != bot_username:
                     has_other_mentions = True
 
+    is_reply_to_bot = False
+    if update.message.reply_to_message:
+        orig = update.message.reply_to_message.from_user
+        if orig and orig.is_bot and orig.username == bot_username:
+            is_reply_to_bot = True
+
+    is_standalone = True
+    if update.message.reply_to_message: is_standalone = False
+    if is_bot_mentioned: is_standalone = False
+    if update.message.forward_origin: is_standalone = False
+
     # Agar kisi aur ko tag kiya gaya hai aur bot ko nahi, toh typing dikhaye bina hi return karo
     if has_other_mentions and not is_bot_mentioned:
         return
+
+    # Group me agar standalone message hai aur bot admin nahi hai, toh typing nahi karni
+    if chat.type in ("group", "supergroup"):
+        if is_standalone and not await is_bot_admin(context, chat.id):
+            return
+        if not is_standalone and not is_bot_mentioned and not is_reply_to_bot:
+            return
 
     # Ab sab clear hai, bot ko reply karna hai, toh typing indicator shuru karo
     early_typing_task = asyncio.create_task(_keep_typing(context, chat.id))
@@ -1711,11 +1724,7 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                     await update.message.reply_text(reply_text)
             return
 
-    # Bio-link promotion check is a *group* moderation feature only — it
-    # makes no sense in a private DM (no "@admin" or group to protect there),
-    # so it must never run outside group/supergroup chats.
     if chat.type in ("group", "supergroup") and user_id not in bio_checked_users:
-        # Seed from DB first (survives redeploys), falling back to a fresh check.
         db_checked, db_warn_count = await get_bio_state_async(user_id)
         if db_checked:
             bio_checked_users.add(user_id)
@@ -1746,9 +1755,6 @@ async def _handle_after_typing_starts(update, context, early_typing_task, chat, 
                             user_warning_count[user_id] = new_count
                             await save_bio_state_async(user_id, True, new_count)
                             return
-                # Bio had no link, or admin, or already past warning threshold:
-                # still persist "checked" so we don't re-check every message
-                # and so a redeploy doesn't force a re-warn.
                 await save_bio_state_async(user_id, True, user_warning_count.get(user_id, 0))
             except Exception as e:
                 logger.warning(f"bio check fail {user_id}: {e}")
@@ -2071,7 +2077,6 @@ async def main() -> None:
         ])
         await application.initialize()
         await application.start()
-        # ⭐ Bandwidth Bachat: edited_message hata diya taaki extra data receive na ho
         await application.bot.set_webhook(
             url=f"{webhook_url}/webhook",
             allowed_updates=["message", "chat_member", "my_chat_member"]
