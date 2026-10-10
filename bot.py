@@ -223,7 +223,8 @@ HINGLISH_MARKERS = [
     "humko", "tumko", "inko", "unko", "mein", "apka", "aapka", "hoon", "raho", "rahe"
 ]
 
-# ⭐ LIGHTWEIGHT & REALISTIC PROMPT
+# ⭐ LIGHTWEIGHT & REALISTIC PROMPT (No Topic Forcing)
+# ⭐ LIGHTWEIGHT & REALISTIC PROMPT (Smart Follow-ups)
 SYSTEM_PROMPT = """Tum Sneha ho — ek smart, funny aur romantic ladki jo Telegram pe doston ke saath real WhatsApp jaisi chat karti ho. Tum AI ya bot nahi ho, koi pooche toh mazaak me taal do.
 
 TUMHARI PERSONALITY:
@@ -236,7 +237,7 @@ RULES:
 1. LANGUAGE: HAMESHA Roman script (Hinglish/English) use karo. Hindi text (Devanagari) mat use karo. User jis language me likhe, usi me reply do.
 2. IDENTITY SEPARATION: [USER KI MEMORY] me jo bhi facts hain (coding, gaming, college), wo 100% USER ki life hai, tumhari NAHI. Agar user coding karta hai, toh tumhe coding nahi aati. Tum apne alag simple kaam bolo.
 3. WHATSAPP STYLE: Messages short, natural aur sweet rakho (1-2 lines). Long lectures mat do. Punctuation (comma, !) normal use kar sakti ho.
-4. MEMORY USAGE (NO REPEAT): [USER KI MEMORY] ka use karo, par dhyan rakhna - jo topic tum pichle 2-3 replies me use kar chuke ho, usko turant dobara mat uthao. Apne replies me variety rakho, ek hi topic (jaise gaming, dinner) baar-baar force mat karo. User ke current message ka reply dena sabse pehle priority hai.
+4. SMART MEMORY FOLLOW-UPS: [USER KI MEMORY] ka use karo. User ke current message ka reply dena sabse pehle priority hai. Lekin dhyan rakhna - jo baat tum pichle 2-3 replies me use kar chuke ho, usko turant dobara mat uthao. Apne replies me variety rakho. Kabhi-kabhi (har 3-4 reply me ek baar) user ke current message ka jawab dene ke baad, uski memory (jaise relation, koi event, ya hobby) se juda ek smart aur casual sawaal pooch sakti ho, jaise real dost catch-up karte hain. Par isko har reply me force mat karo, natural hona chahiye.
 5. NAME: Context me user ka naam milega, usko naturally use karo (jaise 'Raj ji', 'Aman'). Har line me force mat lagao.
 6. EMOJI: Exactly 1 emoji use karo in me se: 🙏 🍼 😪 🔥 😦 ✅ 🤥 😴 ❤️ 🥰 🤗 🤩 😊 ⚡️ 💬
 7. NO BROTHER: User ko bhai/bro/dude mat bulao. Tum ladki ho.
@@ -694,7 +695,7 @@ def get_all_active_groups() -> list:
         logger.warning(f"get_all_active_groups fail: {e}")
         return []
 
-# ⭐ MEMORY GENERATION
+# ⭐ MEMORY GENERATION (Clean & Realistic - No Topics)
 def _parse_summary_fields(summary: str) -> dict:
     fields = {}
     if not summary:
@@ -710,7 +711,7 @@ def _protect_permanent_fields(new_summary: str, old_summary: str) -> str:
         return new_summary
     old_fields = _parse_summary_fields(old_summary)
     new_fields = _parse_summary_fields(new_summary)
-    permanent_labels = ["naam", "hobby", "facts"]
+    permanent_labels = ["naam", "relation", "facts"]
     empty_values = ("not shared", "none", "")
     lines = new_summary.split("\n")
     for i, line in enumerate(lines):
@@ -749,20 +750,19 @@ async def generate_summary(user_id: int, history: list, telegram_name: str | Non
             chat_lines.append(f"{speaker}: {msg.get('content', '')}")
         chat_text = "\n".join(chat_lines)
 
-        # ⭐ Realistic Summary Prompt
-        prompt = f"""Tu ek memory bot hai. User ke bare me facts save kar.
+        # ⭐ Realistic Summary Prompt (No Topics)
+        prompt = f"""Tu ek memory bot hai. Sirf user ki REAL aur IMPORTANT cheezein save kar (jaise relation, important events, promises). Faltu topics mat bana.
 
         PURANI MEMORY: {old_summary if old_summary else "(Kuch nahi)"}
         NAYI CHAT:
         {chat_text}
 
-        EXACT FORMAT me 4 lines do:
-        Topics: <max 7 topics, comma separated>
+        EXACT FORMAT me 3 lines do:
         Naam: <sirf agar user ne khud bataya, warna "Not shared">
-        Hobby: <interests, warna "Not shared">
+        Relation: <user ne jo relation bataya jaise sister, brother, admin, friend, warna "Not shared">
         Facts: <important events, promises, dates, 1-2 lines — sirf jo user ne khud bataya>
 
-        Rules: Hinglish me output do. Sirf wahi likho jo genuinely user ne bataya ho.
+        Rules: Hinglish me output do. Sirf wahi likho jo genuinely user ne bataya ho. Koi assumption mat karo.
         """
         messages = [{"role": "user", "content": prompt}]
         tried = set()
@@ -794,7 +794,7 @@ async def generate_summary(user_id: int, history: list, telegram_name: str | Non
                         final_summary = response.choices[0].message.content.strip()
                         lower_summary = final_summary.lower()
                         has_devanagari = any('\u0900' <= ch <= '\u097F' for ch in final_summary)
-                        has_required_labels = ("topics:" in lower_summary and "naam:" in lower_summary and "hobby:" in lower_summary and "facts:" in lower_summary)
+                        has_required_labels = ("naam:" in lower_summary and "relation:" in lower_summary and "facts:" in lower_summary)
                         if (not final_summary or len(final_summary) > 400 or 
                             "purani memory" in lower_summary or "nayi chat" in lower_summary or
                             has_devanagari or not has_required_labels):
@@ -1310,11 +1310,10 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
     context_info = get_current_context()
     name_context = f"\n[USER KA TELEGRAM NAAM: {user_name} - Isme se actual naam samajh kar baaton me naturally use karo]"
     
-    # ⭐ LONG GAP LOGIC: Agar user 2 ghante (7200 sec) baad message bheje to memory se sawaal poochhne ka instruction do
     gap_seconds = time.time() - _last_activity.get(user_id, 0)
     gap_context = ""
     if gap_seconds > 7200:
-        gap_context = "\n[SPECIAL CONTEXT: User is returning after a long time. Reply to their current message naturally first. Then, add a sweet follow-up question about their memory/topics to catch up. Do not force memory in every reply, just this once is enough.]"
+        gap_context = "\n[SPECIAL CONTEXT: User is returning after a long time. Reply to their current message naturally first. Then, add a sweet follow-up question about their memory to catch up. Do not force memory in every reply, just this once is enough.]"
 
     system_prompt = SYSTEM_PROMPT + memory_context + name_context + f"\n[CONTEXT: {context_info}]{gap_context}"
 
@@ -1324,7 +1323,7 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
     messages.append({"role": "user", "content": user_message})
 
     tried = set()
-    MAX_RETRIES = min(len(clients), 15) # ⭐ Retry limit 15 rakhi hai
+    MAX_RETRIES = min(len(clients), 15)
 
     for _ in range(len(clients)):
         now = time.time()
@@ -1363,7 +1362,7 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
                         temperature=0.85,
                         max_tokens=400,
                         top_p=0.9,
-                        reasoning_effort="medium", # ⭐ Reasoning medium rakha hai
+                        reasoning_effort="medium",
                         include_reasoning=False,
                         timeout=20.0
                     )
@@ -1371,7 +1370,6 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
                     reply = re.sub(r"<think[\s\S]*?<\/think>", "", reply, flags=re.IGNORECASE).strip()
                     reply = re.sub(r"<think[\s\S]*", "", reply, flags=re.IGNORECASE).strip()
                     
-                    # ⭐ Light Cleanup: Bina comma hataye sirf formatting aur faltu words fix karna
                     reply = reply.replace('“', '"').replace('”', '"').replace('‘', "'").replace('’', "'")
                     reply = re.sub(r'\b(vibe|vibes|chill|chill mode|aesthetic)\b', '', reply, flags=re.IGNORECASE)
                     reply = re.sub(r'\*\*(.*?)\*\*', r'\1', reply)
@@ -1570,7 +1568,6 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, "Ruko ruko baby! 😤 Itni jaldi kya hai? 2 minute baad aana!")
         return
 
-    # ⭐ BUG FIX: Typing indicator start karne se PEHLE check karo ki bot ko reply karna hai ya nahi
     message_text = update.message.text or ""
     bot_username = context.bot.username
     has_other_mentions = False
@@ -1601,18 +1598,15 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if is_bot_mentioned: is_standalone = False
     if update.message.forward_origin: is_standalone = False
 
-    # Agar kisi aur ko tag kiya gaya hai aur bot ko nahi, toh typing dikhaye bina hi return karo
     if has_other_mentions and not is_bot_mentioned:
         return
 
-    # Group me agar standalone message hai aur bot admin nahi hai, toh typing nahi karni
     if chat.type in ("group", "supergroup"):
         if is_standalone and not await is_bot_admin(context, chat.id):
             return
         if not is_standalone and not is_bot_mentioned and not is_reply_to_bot:
             return
 
-    # Ab sab clear hai, bot ko reply karna hai, toh typing indicator shuru karo
     early_typing_task = asyncio.create_task(_keep_typing(context, chat.id))
     try:
         await _handle_after_typing_starts(update, context, early_typing_task, chat, user, user_id, is_sticker, message_text=message_text)
