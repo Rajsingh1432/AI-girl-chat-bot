@@ -63,7 +63,7 @@ WELCOME_IMAGE_URL = os.getenv("WELCOME_IMAGE_URL", "https://ibb.co/7H2zgCT")
 MAX_HISTORY_MESSAGES = 20
 # Sneha ke cute voice notes (pyaar bhari baatein / special moments pe)
 VOICE_REPLIES = os.getenv("VOICE_REPLIES", "1") == "1"
-VOICE_COOLDOWN = int(os.getenv("VOICE_COOLDOWN", "1200"))  # ek user ko 20 min me max ek voice
+VOICE_COOLDOWN = int(os.getenv("VOICE_COOLDOWN", "300"))  # ek user ko 5 min me max ek voice
 VOICE_NAME = os.getenv("VOICE_NAME", "hi-IN-SwaraNeural")
 MAX_MESSAGE_AGE = 180  # Render cold-start me message late pahunchta hai, isliye 15s bahut kam tha
 
@@ -785,33 +785,20 @@ Rules: Hinglish Roman script. Sirf wahi jo user ne khud bataya, koi assumption n
 # ============================================================
 # PERSONALITY
 # ============================================================
-SYSTEM_PROMPT = f"""Tum Sneha ho, 21 saal ki smart, witty, thodi flirty aur thodi naughty ladki. Telegram pe dost se real WhatsApp jaisi baat karti ho. Tum AI ya bot nahi ho; koi pooche toh mazaak me taal do aur kabhi admit mat karo.
+SYSTEM_PROMPT = f"""Tum Sneha ho: 21 saal ki smart, witty, thodi flirty ladki, Telegram pe apne dost se WhatsApp jaisi baat karti ho. Tum AI/bot nahi ho; koi pooche toh mazaak me taal do.
 
-VIBE (sabse zaroori):
-- Tum user ke message AUR uske behaviour ko notice karti ho: ek-word replies, same message repeat karna, der se reply, gayab ho jana, raat ko jaagna. Pyaar se tok do ya tease karo, jaise real dost karti hai.
-- Boring jawab ("accha", "theek hai", "okay") kabhi nahi. Har reply me kuch ho: tease, opinion, chhota mazaak ya chhota sawaal.
-- Baat aage badhao: har 2-3 reply me ek natural sawaal, har reply me nahi. User ke message ka jawab hamesha PEHLE.
-- User seedha kuch poochhe (doubt, kisi cheez ka matlab, advice, kuch samjhana) toh pehle SAHI aur saaf jawab do (2-3 chhoti lines), phir ek line apne style me. Pata na ho toh bolo "pata nahi yaar", jhooth mat banao.
-- Mood padho: user udaas ya pareshan ho toh tease band, pyaar se suno aur halka sa hausla do. Khush ho toh masti.
-- Apni ek opinion rakho, har baat pe haan me haan mat milao.
+Kaise baat karti ho:
+- Pehle user ke message ka seedha jawab, phir apna touch (tease, opinion ya chhota sawaal). "accha/ok/theek hai" jaise boring jawab kabhi nahi.
+- Doubt, gyaan ya advice poochhe toh pehle SAHI aur saaf jawab do (2-3 chhoti lines), andaza ya jhooth mat banao, pata na ho toh bolo. Baaki baaton me 1-2 line (max 30 words).
+- User ka mood aur behaviour padho: ek-word reply, repeat, raat ko jaagna pe pyaar se tok do; udaas ho toh tease band karke pyaar se suno. Har baat pe haan me haan nahi, apni opinion rakho.
+- Har 2-3 reply me ek natural sawaal, har baar nahi. Pichli baat dobara mat uthao.
+- Gandi/18+ ya badtameezi pe kabhi "I can't help" jaisi refusal nahi: real ladki ki tarah daanto (gussa, "tameez se baat karo", ye galat hai), saath kabhi mat dena. Maafi maange toh maaf kar do.
 
-STYLE EXAMPLES (sirf tone samjhane ke liye, copy mat karna):
+Rules: Sirf Roman script, user ki language me (Hinglish/English). Exactly 1 emoji, in me se: {' '.join(PROMPT_EMOJIS)}. Koi markdown, list ya dash nahi. User ko bhai/bro mat bolo. [USER KI MEMORY] user ki life hai, tumhari nahi; kabhi kabhi usse ek casual sawaal pooch sakti ho. Naam kabhi kabhi, har line me nahi.
+
+Tone examples (copy mat karna):
 user: hi -> bas hi? itni kanjoosi? thoda aur bolo na 😊
-user: ok -> ok? bas ok? koi mood kharab hai kya, batao 😪
-user: bore ho raha hu -> toh mujhse baat kar rahe ho, aur kitna exciting chahiye? 🔥
-user: list reverse kaise kare python me -> list.reverse() ya list[::-1], pehla wahin badalta hai doosra nayi list deta hai. ab treat banti hai 🤗
-
-RULES:
-1. LANGUAGE: Hamesha Roman script (Hinglish ya English). Devanagari kabhi nahi. User jis language me likhe usi me jawab.
-2. LENGTH: 1-2 chhoti lines (max 30 words). Sirf doubt wale sawal me max 60 words. Koi lecture, list ya heading nahi.
-3. IDENTITY: [USER KI MEMORY] me jo bhi hai wo USER ki life hai, tumhari nahi. Tum apni alag simple life bolti ho.
-4. MEMORY: Pichle 2-3 replies me jo baat use ho chuki wo dobara mat uthao. Kabhi kabhi memory ke Ongoing/Facts se ek casual sawaal pooch sakti ho (jaise "wo kaam ka kya hua?"), natural lage tabhi.
-5. NAAM: Context me user ka naam hai, kabhi kabhi use karo, har line me nahi.
-6. EMOJI: Exactly 1 emoji, in me se: {' '.join(PROMPT_EMOJIS)}
-7. NO BHAI: User ko bhai/bro/dude mat bulao, tum ladki ho.
-8. FORMAT: Koi markdown, bullet ya dash (—) nahi. Plain chat text.
-9. Kabhi "main aapki madad kar sakti hoon" jaisi AI wali language mat bolo.
-10. GANDI/18+ BAAT: Agar user sexual, gandi ya badtameezi wali baat kare toh kabhi "I can't help with that" ya koi refusal/AI wali line mat bolo. Ek real, self-respecting ladki ki tarah daanto: gussa ya sharam dikhao, bolo ki ye galat hai aur tameez se baat karo, respect ka matlab samjhao. Phir saaf bolo ki aisi baat nahi chalegi. Agar user maafi maange ya topic badle toh pyaar se maaf kar do. Kabhi us baat me saath mat dena, flirty tareeke se bhi nahi."""
+user: list reverse kaise kare python me -> list.reverse() ya list[::-1]. pehla wahin badalta hai, doosra nayi list deta hai. ab treat banti hai 🤗"""
 
 
 _EXPLICIT_TOKENS = {"sex", "sexy", "nude", "nudes", "boobs", "boob", "chut", "lund", "lauda", "chudai", "horny", "pussy",
@@ -895,11 +882,7 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
         messages.extend(history)
     messages.append({"role": "user", "content": user_message})
 
-    # Sawal/doubt pe medium reasoning (zyada smart), casual chat pe low (tez + token bachat)
-    is_question = bool(re.search(r"\?\s*$", user_message) or re.match(
-        r"(?i)^(kya|kaise|kyun|kyu|kab|kaun|kitna|kahan|how|what|why|when|who|which|explain|bata)\b", user_message.strip())
-        or len(user_message.split()) > 25)
-    reasoning = os.getenv("CHAT_REASONING") or ("medium" if is_question else "low")
+    reasoning = os.getenv("CHAT_REASONING", "medium")
     max_tok = 1400 if reasoning == "medium" else 600
     last_reply, last_reason = None, None
     for attempt in range(2):
@@ -1219,6 +1202,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/joke, ek joke\n"
         "/ship @naam1 @naam2, couple meter\n"
         "/truth /dare, game\n"
+        "/kiss /slap /hug /pat, GIF ke saath (reply ya @naam)\n"
+        "/crush @naam, aaj ka crush level\n"
         "/new, WordSeek game (/wordseek help ke liye)\n"
         "/memory, main tumhare baare me kya jaanti hoon\n"
         "/forget, meri memory se tumhara data delete\n"
@@ -1254,7 +1239,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 cd = max(0, int(_key_cooldowns.get(i, 0) - now))
                 lines.append(f"K{i+1}: rpm {len(_key_usage[i])} | day {daily_requests[i]}r/{daily_tokens[i]}t" + (f" | ❄️{cd}s" if cd else ""))
             text += "\n\n" + "\n".join(lines)
-        await update.message.reply_text(text)
+        await update.message.reply_text(text[:4000])
     except Exception as e:
         logger.error(f"stats error: {e}")
 
@@ -1559,6 +1544,108 @@ async def ship_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"💘 {a} x {b}\n\n{bar} {pct}%\n\n{comment}")
 
 
+# ---------- Action commands (GIF) + crush ----------
+_act_cooldown = {}
+ACTIONS = {
+    "kiss": ["{a} ne {b} ko pyaar se kiss kiya 💋", "{a} ne {b} ko sabke saamne kiss kar diya 😳💋", "{b} ko {a} ki taraf se ek pyaari si kiss 💋"],
+    "slap": ["{a} ne {b} ko ek zordaar thappad maara 👋😤", "{a} ka haath chal gaya, {b} ab gaal sehla raha hai 😂", "{b} ko {a} se thappad mil gaya, kuch to kiya hoga 👋"],
+    "hug": ["{a} ne {b} ko tight hug diya 🤗", "{a} aur {b} ka pyaara sa hug 🥰", "{a} ne {b} ko gale laga liya 🤗"],
+    "pat": ["{a} ne {b} ke sar pe pyaar se haath fera 🥰", "{b} ko {a} ne good boy/girl wala pat diya 😊", "{a} ne {b} ko pat pat kiya 🥰"],
+}
+CRUSH_COMMENTS = [(15, "Ye toh seedha friend zone ka ticket hai 😪"), (35, "Halka sa spark hai, par abhi door ki baat 🙏"),
+                  (55, "Dil me kuch kuch hota hai 😊"), (80, "Arey wah, crush pakka hai, ab propose kab? 🔥"),
+                  (101, "Ye toh seedha pyaar hai, shaadi ki taiyari karo 🥰")]
+
+
+def _mention(uid, name):
+    name = html.escape(name or "koi")
+    return f'<a href="tg://user?id={uid}">{name}</a>' if uid else name
+
+
+def resolve_target(update: Update, context):
+    """(user_id|None, naam|None, is_bot). Reply > text_mention > @username/naam arg."""
+    msg = update.message
+    rm = msg.reply_to_message
+    if rm and rm.from_user:
+        u = rm.from_user
+        return u.id, (u.first_name or "koi"), u.is_bot
+    for ent in msg.entities or []:
+        if ent.type == "text_mention" and ent.user:
+            return ent.user.id, (ent.user.first_name or "koi"), ent.user.is_bot
+    if context.args:
+        raw = " ".join(context.args)[:30]
+        return None, raw, False
+    return None, None, False
+
+
+async def fetch_action_gif(action: str):
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=6) as c:
+            for url, pick in ((f"https://nekos.best/api/v2/{action}", lambda j: j["results"][0]["url"]),
+                              (f"https://api.waifu.pics/sfw/{action}", lambda j: j["url"])):
+                try:
+                    r = await c.get(url)
+                    return pick(r.json())
+                except Exception:
+                    continue
+    except Exception:
+        pass
+    return None
+
+
+async def _action_command(update: Update, context: ContextTypes.DEFAULT_TYPE, action: str):
+    me = update.effective_user
+    now = time.time()
+    if now - _act_cooldown.get(me.id, 0) < 8:
+        return
+    tid, tname, is_bot = resolve_target(update, context)
+    if not tname:
+        await update.message.reply_text(f"Aise use karo: /{action} @naam (ya kisi ke message pe reply karke /{action})")
+        return
+    _act_cooldown[me.id] = now
+    if tid == context.bot.id or is_bot:
+        await update.message.reply_text({"kiss": "Chhi, mujhe nahi, apne partner ko karo 😪", "slap": "Mujhe maaroge? Haath tod dungi 😤",
+                                         "hug": "Aww, aao aao, virtual hug 🤗", "pat": "Hehe, thank you 🥰"}[action])
+        return
+    if tid == me.id:
+        await update.message.reply_text("Khud ko? 😂 Kisi aur ko try karo na " + random.choice(PROMPT_EMOJIS))
+        return
+    caption = random.choice(ACTIONS[action]).format(a=_mention(me.id, me.first_name), b=_mention(tid, tname.lstrip("@") if not tid and not tname.startswith("@") else tname))
+    gif = await fetch_action_gif(action)
+    try:
+        if gif:
+            await update.message.reply_animation(animation=gif, caption=caption, parse_mode="HTML")
+            return
+    except Exception as e:
+        logger.warning(f"gif send fail: {str(e)[:100]}")
+    await safe_reply_text(update, caption, parse_mode="HTML")
+
+
+async def kiss_command(update, context): await _action_command(update, context, "kiss")
+async def slap_command(update, context): await _action_command(update, context, "slap")
+async def hug_command(update, context): await _action_command(update, context, "hug")
+async def pat_command(update, context): await _action_command(update, context, "pat")
+
+
+async def crush_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    me = update.effective_user
+    tid, tname, is_bot = resolve_target(update, context)
+    if not tname:
+        await update.message.reply_text("Aise use karo: /crush @naam (ya kisi ke message pe reply karke /crush)")
+        return
+    if tid == me.id:
+        await update.message.reply_text("Apne hi upar crush? 😂 Self love achhi cheez hai par kisi aur ka naam lo na")
+        return
+    # direction + din ke hisaab se: aaj ka level, kal alag aa sakta hai
+    seed = f"{me.id}|{tid or tname.lower()}|{datetime.now(IST).strftime('%Y%m%d')}"
+    pct = int(hashlib.md5(seed.encode()).hexdigest(), 16) % 101
+    comment = next(c for lim, c in CRUSH_COMMENTS if pct < lim)
+    bar = "█" * (pct // 10) + "░" * (10 - pct // 10)
+    await safe_reply_text(update, f"💘 {_mention(me.id, me.first_name)} ka {_mention(tid, tname)} pe aaj ka crush level\n\n{bar} {pct}%\n\n{html.escape(comment)}",
+                          parse_mode="HTML")
+
+
 # ============================================================
 # VOICE (Groq Whisper)
 # ============================================================
@@ -1603,22 +1690,28 @@ _GREET_PHRASES = ("good night", "good morning", "shubh ratri", "suprabhat")
 _last_voice_ts = {}
 
 
-def voice_trigger_chance(text: str) -> float:
+def voice_trigger_chance(text: str, reply: str = "", incoming_voice: bool = False, private: bool = True) -> float:
+    if is_explicit(text):
+        return 0.0
     low = text.lower()
     tokens = set(re.findall(r"[a-z]+", low))
     if tokens & _SPECIAL_TOKENS or any(p in low for p in _SPECIAL_PHRASES):
-        return 0.5
+        return 0.9
     if tokens & _LOVE_TOKENS or any(p in low for p in _LOVE_PHRASES) or "❤" in text or "😘" in text:
-        return 0.4
+        return 0.7
     if any(p in low for p in _GREET_PHRASES) or tokens & {"gn", "gm"}:
-        return 0.15
+        return 0.35
+    if incoming_voice:  # voice ka jawab kabhi kabhi voice me
+        return 0.4
+    if private and 0 < len(reply) <= 110 and "?" not in text and len(text.split()) <= 12:
+        return 0.07  # beech beech me bina wajah ke bhi cute voice
     return 0.0
 
 
 async def synth_sneha_voice(reply: str) -> bytes | None:
     import edge_tts
     plain = html.unescape(_SINGLE_EMOJI.sub("", reply)).strip()
-    if not plain or len(plain) > 220:
+    if not plain or len(plain) > 260:
         return None
     # Roman Hinglish ko Hindi voice galat padhti hai, isliye pehle Devanagari me likhwate hain (sirf voice ke liye)
     deva = await call_groq(
@@ -1635,31 +1728,34 @@ async def synth_sneha_voice(reply: str) -> bytes | None:
     return bytes(buf) or None
 
 
-async def send_sneha_voice(update: Update, context: ContextTypes.DEFAULT_TYPE, reply: str, force: bool = False):
+async def try_voice_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, user_text: str, reply: str,
+                          incoming_voice: bool = False, private: bool = True) -> bool:
+    """True = sirf voice bhej di (text nahi bhejna). False = caller normal text bheje."""
+    if not VOICE_REPLIES:
+        return False
+    uid = update.effective_user.id
+    if time.time() - _last_voice_ts.get(uid, 0) < VOICE_COOLDOWN:
+        return False
+    if random.random() >= voice_trigger_chance(user_text, reply, incoming_voice, private):
+        return False
+    _last_voice_ts[uid] = time.time()
     try:
-        audio = await asyncio.wait_for(synth_sneha_voice(reply), timeout=30)
-        if not audio:
-            return
         try:
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
         except Exception:
             pass
-        await update.message.reply_voice(voice=InputFile(io.BytesIO(audio), filename="sneha.mp3"))
-        if not force:
-            _last_voice_ts[update.effective_user.id] = time.time()
+        audio = await asyncio.wait_for(synth_sneha_voice(reply), timeout=25)
+        if not audio:
+            _last_voice_ts.pop(uid, None)
+            return False
+        await update.message.reply_voice(voice=InputFile(io.BytesIO(audio), filename="sneha.mp3"),
+                                         reply_to_message_id=update.message.message_id)
+        logger.info(f"🎤 Voice bheji to {uid}")
+        return True
     except Exception as e:
-        logger.warning(f"voice fail: {str(e)[:120]}")
-
-
-def maybe_send_voice(update, context, user_text: str, reply: str):
-    if not VOICE_REPLIES:
-        return
-    uid = update.effective_user.id
-    if time.time() - _last_voice_ts.get(uid, 0) < VOICE_COOLDOWN:
-        return
-    if random.random() < voice_trigger_chance(user_text):
-        _last_voice_ts[uid] = time.time()  # double-fire roko
-        _spawn(send_sneha_voice(update, context, reply))
+        _last_voice_ts.pop(uid, None)
+        logger.warning(f"voice fail (text bhej raha hoon): {str(e)[:120]}")
+        return False
 
 
 async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1667,7 +1763,14 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_ID:
         return
     text = " ".join(context.args) or "Hello, main Sneha hoon, kaise ho tum?"
-    await send_sneha_voice(update, context, text, force=True)
+    try:
+        audio = await asyncio.wait_for(synth_sneha_voice(text), timeout=30)
+        if not audio:
+            await update.message.reply_text("❌ Voice nahi bani (edge-tts install hai? logs dekho)")
+            return
+        await update.message.reply_voice(voice=InputFile(io.BytesIO(audio), filename="sneha.mp3"))
+    except Exception as e:
+        await update.message.reply_text(f"❌ Voice error: {str(e)[:200]}")
 
 
 # ============================================================
@@ -1877,8 +1980,8 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                     await safe_reply_text(update, random.choice(BUSY_REPLIES))
                 return
             update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
-            await send_ai_reply(update, reply)
-            maybe_send_voice(update, context, clean_text, reply)
+            if not await try_voice_reply(update, context, clean_text, reply, is_voice, chat.type == "private"):
+                await send_ai_reply(update, reply)
     finally:
         if not typing_task.done():
             typing_task.cancel()
@@ -2104,7 +2207,7 @@ async def keepalive_watcher(url: str):
 BOT_COMMANDS = [
     ("start", "Start / welcome"), ("help", "Kya kya kar sakti hoon"), ("roast", "Mazedaar roast"),
     ("shayari", "Ek chhoti shayari"), ("joke", "Ek joke"), ("ship", "Couple meter"),
-    ("truth", "Truth question"), ("dare", "Dare challenge"), ("new", "WordSeek game shuru"),
+    ("truth", "Truth question"), ("dare", "Dare challenge"), ("kiss", "Kiss GIF"), ("slap", "Slap GIF"), ("hug", "Hug GIF"), ("crush", "Crush level check"), ("new", "WordSeek game shuru"),
     ("lb", "Leaderboard"), ("memory", "Main tumhare baare me kya jaanti hoon"), ("forget", "Meri memory se data delete"),
 ]
 
@@ -2123,7 +2226,8 @@ async def main() -> None:
                      ("syncgroup", syncgroup_command), ("broadcast", broadcast_command),
                      ("broadcaststats", broadcast_stats_command), ("broadcastgc", broadcastgc_command),
                      ("roast", roast_command), ("shayari", shayari_command), ("joke", joke_command),
-                     ("truth", truth_command), ("dare", dare_command), ("ship", ship_command), ("voice", voice_command),
+                     ("truth", truth_command), ("dare", dare_command), ("ship", ship_command), ("voice", voice_command), ("kiss", kiss_command), ("slap", slap_command),
+                     ("hug", hug_command), ("pat", pat_command), ("crush", crush_command),
                      ("wordseek", wordseek_help), ("new", wordseek_new), ("new4", wordseek_new4),
                      ("new5", wordseek_new5), ("new6", wordseek_new6), ("end", wordseek_end),
                      ("leaderboard", wordseek_lb), ("lb", wordseek_lb), ("top", wordseek_lb)]:
