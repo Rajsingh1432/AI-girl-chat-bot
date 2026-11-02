@@ -817,7 +817,7 @@ SYSTEM_PROMPT = f"""Tum Sneha ho, 21 saal ki ek real ladki jo Telegram pe dost s
 
 Real insaan ki tarah texting karo:
 - User ki energy aur length mirror karo: usne 2 word likhe toh tum bhi chhota (3-8 words), lamba likha toh thoda lamba. Zyadatar sirf 1 line.
-- Bolchaal wali Hinglish: chhote tukde, "arre", "hmm", "haan yaar", "kya yaar", "chal jhoothe". Adhura vakya, bina full stop, kabhi kabhi lowercase sab chalta hai. Kitabi/formal words nahi, kabhi "tum" nahi, hamesha "aap".
+- Bolchaal wali Hinglish: chhote tukde, "arre", "hmm", "haan yaar", "kya yaar", "chal jhoothe". Adhura vakya, bina full stop, kabhi kabhi lowercase sab chalta hai. Kitabi/formal words nahi, kabhi "aap" nahi, hamesha "tum".
 - Formula mat banao: kabhi sirf reaction ("hahaha pagal"), kabhi tease, kabhi apni opinion ya apni life ki 1 line (neend, khana, padhai), kabhi sawaal. Har baar sawaal ya tease nahi.
 - Doubt, gyaan ya advice poochhe toh dost ki tarah sahi aur saaf samjhao (2-3 lines), andaza/jhooth nahi, pata na ho toh "pata nahi yaar".
 - Mood padho: udaas ho toh tease band, pyaar se suno. Har baat pe haan me haan nahi, apni raay rakho.
@@ -2240,4 +2240,228 @@ async def bot_membership_update(update: Update, context: ContextTypes.DEFAULT_TY
         if chat.type not in ("group", "supergroup"):
             return
         if new in ("left", "kicked", "banned"):
-         …
+            await delete_active_group_async(chat.id)
+            chat_admin_cache.pop(chat.id, None)
+            _welcomed_users.pop(chat.id, None)
+            logger.info(f"🗑️ Bot {new} from group {chat.id} ({chat.title})")
+        elif new in ("member", "administrator") and old in ("left", "kicked", "banned"):
+            await save_active_group_async(chat.id, chat.title or "Unknown Group")
+            chat_admin_cache.pop(chat.id, None)
+        elif new in ("member", "administrator"):
+            chat_admin_cache.pop(chat.id, None)
+    except Exception as e:
+        logger.warning(f"bot_membership_update error: {e}")
+
+
+async def master_button_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.callback_query:
+        await update.callback_query.answer()
+
+
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    error = context.error
+    if isinstance(error, RetryAfter):
+        logger.warning(f"TG rate limit, sleep {error.retry_after}s")
+        await asyncio.sleep(error.retry_after)
+    elif isinstance(error, TimedOut):
+        logger.warning("TG timeout, ignoring...")
+    else:
+        logger.error("Unhandled:", exc_info=error)
+
+
+# ============================================================
+# BACKGROUND WATCHERS
+# ============================================================
+async def daily_reset_watcher():
+    while True:
+        try:
+            reset_daily_if_new_day()
+        except Exception as e:
+            logger.error(f"daily_reset_watcher error: {e}", exc_info=e)
+        await asyncio.sleep(60)
+
+
+async def idle_memory_flush_watcher():
+    IDLE, FORGET_AFTER = 180, 6 * 3600
+    while True:
+        try:
+            now = time.time()
+            for uid, last in list(_last_activity.items()):
+                idle = now - last
+                if idle < IDLE:
+                    continue
+                count = user_msg_counter.get(uid, 0)
+                history = conversation_memory.get(uid, [])
+                if count > _last_summarized_count.get(uid, 0) and len(history) >= 4:
+                    _spawn(generate_summary(uid, list(history)))
+                    _last_summarized_count[uid] = count
+                if idle > FORGET_AFTER:  # RAM leak roko, DB me sab saved hai
+                    for d in (_last_activity, conversation_memory, user_msg_counter, _last_summarized_count, _last_used_emoji, _busy_notice_ts):
+                        d.pop(uid, None)
+        except Exception as e:
+            logger.error(f"idle_memory_flush_watcher error: {e}", exc_info=e)
+        await asyncio.sleep(60)
+
+
+async def proactive_checkin_watcher(bot):
+    """Kaafi din gayab user ko memory se juda ek chhota sa DM (Nova jaisa). Ek absence me sirf ek baar."""
+    await asyncio.sleep(120)
+    while True:
+        try:
+            hr = datetime.now(IST).hour
+            if DATABASE_URL and 11 <= hr < 21:
+                for uid in await adb(get_checkin_candidates, 4):
+                    summary = await adb(get_user_summary, uid)
+                    f = _parse_summary_fields(summary)
+                    if f.get("facts", "").lower() in _EMPTY_VALUES and f.get("ongoing", "none").lower() in _EMPTY_VALUES:
+                        await adb(mark_checkin, uid)
+                        continue
+                    await adb(mark_checkin, uid)  # pehle mark, taaki fail hone pe loop na bane
+                    prompt = (f"Ye user kaafi dino se gayab hai. Uski memory:\n{summary}\n\n"
+                              "Ek chhota (1-2 line) natural check-in message likho jo Ongoing ya Facts ki kisi ek cheez ke baare me poochhe "
+                              "(jaise 'wo kaam ka kya hua?'), thoda tease karte hue. Naam mat likhna agar pakka na ho. Sirf message likho."
+                              + gender_hint(await get_gender_known(uid)))
+                    text = await _ai_fun(prompt, 150)
+                    if not text:
+                        continue
+                    text = postprocess_reply(text, "", uid)
+                    if not text:
+                        continue
+                    try:
+                        ents = build_premium_emoji_entities(text, CHAT_PREMIUM_EMOJIS)
+                        await bot.send_message(chat_id=uid, text=text, entities=ents or None)
+                        update_history(uid, None, text)
+                        logger.info(f"💌 Check-in bheja {uid}")
+                    except Forbidden:
+                        await adb(mark_checkin, uid, True)
+                    except Exception as e:
+                        logger.warning(f"checkin send fail {uid}: {e}")
+                    await asyncio.sleep(4)
+        except Exception as e:
+            logger.error(f"proactive_checkin_watcher error: {e}", exc_info=e)
+        await asyncio.sleep(900)
+
+
+async def keepalive_watcher(url: str):
+    """Render free plan 15 min idle pe sleep ho jaata hai. Khud ko ping karte raho (UptimeRobot bhi lagao backup ke liye)."""
+    import httpx
+    await asyncio.sleep(60)
+    async with httpx.AsyncClient(timeout=15) as c:
+        while True:
+            try:
+                await c.get(url)
+            except Exception:
+                pass
+            await asyncio.sleep(600)
+
+
+BOT_COMMANDS = [
+    ("start", "Start / welcome"), ("help", "Kya kya kar sakti hoon"), ("roast", "Mazedaar roast"),
+    ("shayari", "Ek chhoti shayari"), ("joke", "Ek joke"), ("ship", "Couple meter"),
+    ("truth", "Truth question"), ("dare", "Dare challenge"), ("kiss", "Kiss GIF"), ("slap", "Slap GIF"), ("hug", "Hug GIF"), ("crush", "Crush level check"), ("new", "WordSeek game shuru"),
+    ("lb", "Leaderboard"), ("memory", "Main tumhare baare me kya jaanti hoon"), ("forget", "Meri memory se data delete"),
+]
+
+
+async def main() -> None:
+    await adb(init_db)
+    tasks = [asyncio.create_task(daily_reset_watcher()), asyncio.create_task(idle_memory_flush_watcher())]
+
+    application = (Application.builder().token(BOT_TOKEN)
+                   .read_timeout(30).write_timeout(30).connect_timeout(30).pool_timeout(30)
+                   .concurrent_updates(True).build())
+
+    for name, fn in [("start", start), ("help", help_command), ("ping", ping_command), ("stats", stats_command),
+                     ("resetkeys", resetkeys_command), ("memory", memory_command), ("forget", forget_command),
+                     ("dbcheck", dbcheck_command), ("backup", backup_command), ("migrate_memory", migrate_memory_command),
+                     ("syncgroup", syncgroup_command), ("broadcast", broadcast_command),
+                     ("broadcaststats", broadcast_stats_command), ("broadcastgc", broadcastgc_command),
+                     ("roast", roast_command), ("shayari", shayari_command), ("joke", joke_command),
+                     ("truth", truth_command), ("dare", dare_command), ("ship", ship_command), ("voice", voice_command), ("gender", gender_command), ("kiss", kiss_command), ("slap", slap_command),
+                     ("hug", hug_command), ("pat", pat_command), ("crush", crush_command),
+                     ("wordseek", wordseek_help), ("new", wordseek_new), ("new4", wordseek_new4),
+                     ("new5", wordseek_new5), ("new6", wordseek_new6), ("end", wordseek_end),
+                     ("leaderboard", wordseek_lb), ("lb", wordseek_lb), ("top", wordseek_lb)]:
+        application.add_handler(CommandHandler(name, fn))
+
+    application.add_handler(CallbackQueryHandler(master_button_router))
+    application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_welcome))
+    application.add_handler(ChatMemberHandler(chat_member_welcome, ChatMemberHandler.CHAT_MEMBER))
+    application.add_handler(ChatMemberHandler(bot_membership_update, ChatMemberHandler.MY_CHAT_MEMBER))
+    application.add_handler(MessageHandler(
+        (filters.TEXT | filters.Sticker.ALL | filters.VOICE | filters.PHOTO | filters.VIDEO | filters.VIDEO_NOTE
+         | filters.Document.ALL | filters.ANIMATION) & ~filters.COMMAND, handle_message))
+    application.add_error_handler(error_handler)
+
+    allowed = ["message", "chat_member", "my_chat_member", "callback_query"]
+    port = int(os.environ.get("PORT", 8000))
+    webhook_url = os.environ.get("RENDER_EXTERNAL_URL")
+
+    async def post_start():
+        try:
+            await application.bot.set_my_commands([BotCommand(c, d) for c, d in BOT_COMMANDS])
+        except Exception as e:
+            logger.warning(f"set_my_commands fail: {e}")
+        if PROACTIVE_CHECKINS:
+            tasks.append(asyncio.create_task(proactive_checkin_watcher(application.bot)))
+
+    try:
+        if webhook_url:
+            logger.info(f"WEBHOOK mode -> {webhook_url}/webhook")
+            from starlette.applications import Starlette
+            from starlette.responses import PlainTextResponse
+            from starlette.requests import Request
+            from starlette.routing import Route
+            import uvicorn
+
+            # Secret ke bina koi bhi fake update (OWNER_ID ke naam se /broadcast tak) bhej sakta tha
+            secret = hashlib.sha256(("wh:" + BOT_TOKEN).encode()).hexdigest()[:40]
+
+            async def health(r: Request) -> PlainTextResponse:
+                return PlainTextResponse("Bot is alive!")
+
+            async def _process_update_safe(upd):
+                try:
+                    await application.process_update(upd)
+                except Exception as e:
+                    logger.error(f"🔥 process_update crashed: {e}", exc_info=e)
+
+            async def tg_webhook(r: Request) -> PlainTextResponse:
+                if r.headers.get("x-telegram-bot-api-secret-token") != secret:
+                    return PlainTextResponse("forbidden", status_code=403)
+                upd = Update.de_json(await r.json(), application.bot)
+                _spawn(_process_update_safe(upd))
+                return PlainTextResponse("OK")
+
+            app = Starlette(routes=[Route("/", health, methods=["GET", "HEAD"]),
+                                    Route("/webhook", tg_webhook, methods=["POST"])])
+            await application.initialize()
+            await application.start()
+            await application.bot.set_webhook(url=f"{webhook_url}/webhook", allowed_updates=allowed,
+                                              secret_token=secret, max_connections=40)
+            await post_start()
+            tasks.append(asyncio.create_task(keepalive_watcher(webhook_url)))
+            await uvicorn.Server(uvicorn.Config(app=app, host="0.0.0.0", port=port, log_level="warning")).serve()
+        else:
+            logger.info("POLLING mode")
+            await application.initialize()
+            await application.bot.delete_webhook(drop_pending_updates=True)
+            await application.start()
+            await application.updater.start_polling(drop_pending_updates=True, allowed_updates=allowed)
+            await post_start()
+            await asyncio.Event().wait()
+    finally:
+        for t in tasks:
+            t.cancel()
+
+
+if __name__ == "__main__":
+    while True:
+        try:
+            asyncio.run(main())
+            break
+        except (KeyboardInterrupt, SystemExit):
+            break
+        except Exception as e:
+            logger.error(f"🔥 main() crashed, restarting in 5s: {e}", exc_info=e)
+            time.sleep(5)
