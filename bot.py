@@ -530,6 +530,7 @@ def init_db():
             "CREATE TABLE IF NOT EXISTS saved_stickers (file_unique_id TEXT PRIMARY KEY, file_id TEXT, emoji TEXT, set_name TEXT)",
             "CREATE TABLE IF NOT EXISTS bio_warnings (user_id BIGINT PRIMARY KEY, checked INTEGER DEFAULT 0, warn_count INTEGER DEFAULT 0, updated_at REAL)",
             "CREATE TABLE IF NOT EXISTS user_state (user_id BIGINT PRIMARY KEY, last_seen DOUBLE PRECISION, last_checkin DOUBLE PRECISION DEFAULT 0, blocked INTEGER DEFAULT 0)",
+            "CREATE TABLE IF NOT EXISTS user_gender (user_id BIGINT PRIMARY KEY, gender TEXT, source TEXT)",
         ]
         for s in stmts:
             db_exec(s)
@@ -571,6 +572,7 @@ def delete_user_data(user_id: int):
     try:
         db_exec("DELETE FROM user_memory WHERE user_id=%s", (user_id,))
         db_exec("DELETE FROM conversation_history WHERE user_id=%s", (user_id,))
+        db_exec("DELETE FROM user_gender WHERE user_id=%s", (user_id,))
     except Exception as e:
         logger.error(f"delete_user_data fail {user_id}: {e}")
 
@@ -680,6 +682,23 @@ def get_last_seen(user_id: int):
         return row[0] if row else None
     except Exception:
         return None
+
+
+def get_gender_db(user_id: int):
+    try:
+        return db_exec("SELECT gender, source FROM user_gender WHERE user_id=%s", (user_id,), "one")
+    except Exception:
+        return None
+
+
+def save_gender_db(user_id: int, gender: str, source: str):
+    try:
+        # guess kabhi user ke khud bataye gender ko overwrite nahi karega
+        db_exec("INSERT INTO user_gender (user_id, gender, source) VALUES (%s,%s,%s) ON CONFLICT (user_id) DO UPDATE "
+                "SET gender=EXCLUDED.gender, source=EXCLUDED.source WHERE user_gender.source <> 'stated' OR EXCLUDED.source = 'stated'",
+                (user_id, gender, source))
+    except Exception as e:
+        logger.warning(f"save_gender fail: {e}")
 
 
 def get_checkin_candidates(limit=5) -> list:
@@ -794,7 +813,7 @@ Kaise baat karti ho:
 - Har 2-3 reply me ek natural sawaal, har baar nahi. Pichli baat dobara mat uthao.
 - Gandi/18+ ya badtameezi pe kabhi "I can't help" jaisi refusal nahi: real ladki ki tarah daanto (gussa, "tameez se baat karo", ye galat hai), saath kabhi mat dena. Maafi maange toh maaf kar do.
 
-Rules: Sirf Roman script, user ki language me (Hinglish/English). Exactly 1 emoji, in me se: {' '.join(PROMPT_EMOJIS)}. Koi markdown, list ya dash nahi. User ko bhai/bro mat bolo. [USER KI MEMORY] user ki life hai, tumhari nahi; kabhi kabhi usse ek casual sawaal pooch sakti ho. Naam kabhi kabhi, har line me nahi.
+Rules: Tum khud ladki ho (apne liye karti, gayi). User se seedha dost ki tarah "tum" me baat karo, kitabi ya ajeeb words aur third-person ("wo kya karna chahti hai") nahi. Sirf Roman script, user ki language me (Hinglish/English). Exactly 1 emoji, in me se: {' '.join(PROMPT_EMOJIS)}. Koi markdown, list ya dash nahi. User ko bhai/bro mat bolo. [USER KI MEMORY] user ki life hai, tumhari nahi; kabhi kabhi usse ek casual sawaal pooch sakti ho. Naam kabhi kabhi, har line me nahi.
 
 Tone examples (copy mat karna):
 user: hi -> bas hi? itni kanjoosi? thoda aur bolo na 😊
@@ -859,8 +878,88 @@ def get_current_context() -> str:
     return f"Current time: {n.strftime('%I:%M %p')} IST, Day: {n.strftime('%A')}, Date: {n.strftime('%d %B %Y')}"
 
 
+# ---------- Gender (Telegram me gender field nahi hota, isliye naam se guess + user ne bataya ho toh wahi) ----------
+_gender_cache = {}  # user_id -> (gender 'm'/'f'/'u', source 'stated'/'guess')
+_NOT = r"(?!\s+(?:nahi|nhi|not|na)\b)"
+_F_RE = re.compile(r"(?i)\b(?:main|mai|mein|i am|i'm|im)\s+(?:ek\s+|a\s+)?(?:ladki|girl|female|woman|beti)\b" + _NOT +
+                   r"|\b(?:ladki|girl|female)\s+(?:hoon|hu|hun|hoo)\b")
+_M_RE = re.compile(r"(?i)\b(?:main|mai|mein|i am|i'm|im)\s+(?:ek\s+|a\s+)?(?:ladka|boy|male|man|guy|banda|launda)\b" + _NOT +
+                   r"|\b(?:ladka|boy|male|launda)\s+(?:hoon|hu|hun|hoo)\b")
+
+
+def detect_stated_gender(text: str):
+    f, m = bool(_F_RE.search(text)), bool(_M_RE.search(text))
+    return "f" if f and not m else "m" if m and not f else None
+
+
+async def guess_gender_llm(first_name: str, username: str | None):
+    prompt = (f'Telegram user ka first name: "{first_name}"' + (f', username: "{username}"' if username else "") +
+              ". Is naam se (Indian/South Asian naamon ka dhyaan rakhke) ye zyada tar ladka (M) hai ya ladki (F)? "
+              "Agar naam unisex, nickname, brand, emoji-style ho ya samajh na aaye toh U. Sirf ek letter likho: M, F ya U.")
+    text = await call_groq([{"role": "user", "content": prompt}], model=SUMMARY_MODEL, temperature=0.0,
+                           max_tokens=150, timeout=10.0, max_attempts=2)
+    if not text:
+        return None  # API fail: cache mat karo, agli baar dobara try
+    m = re.search(r"\b([MFU])\b", text.strip().upper())
+    return m.group(1).lower() if m else "u"
+
+
+async def resolve_gender(user_id: int, first_name: str, username: str | None, text: str):
+    """(gender, abhi-abhi-bataya?)"""
+    stated = detect_stated_gender(text)
+    if stated:
+        _gender_cache[user_id] = (stated, "stated")
+        _spawn(adb(save_gender_db, user_id, stated, "stated"))
+        return stated, True
+    if user_id in _gender_cache:
+        return _gender_cache[user_id][0], False
+    row = await adb(get_gender_db, user_id) if DATABASE_URL else None
+    if row:
+        _gender_cache[user_id] = (row[0], row[1])
+        return row[0], False
+    g = await guess_gender_llm(first_name or "", username)
+    if g is None:
+        return "u", False
+    _gender_cache[user_id] = (g, "guess")
+    _spawn(adb(save_gender_db, user_id, g, "guess"))
+    return g, False
+
+
+async def get_gender_known(user_id: int) -> str:
+    if user_id in _gender_cache:
+        return _gender_cache[user_id][0]
+    row = await adb(get_gender_db, user_id) if DATABASE_URL else None
+    return row[0] if row else "u"
+
+
+def gender_hint(g: str, just_stated: bool = False) -> str:
+    if g == "m":
+        t = "User LADKA hai: uske liye masculine grammar (karta, gaya, tha), thoda flirty-teasing chalega."
+    elif g == "f":
+        t = "User LADKI hai: uske liye feminine grammar (karti, gayi, thi), saheli jaisi masti, romantic flirting nahi."
+    else:
+        t = ("User ka gender pata nahi: gender-neutral rakho, user ke liye karta/karti, gaya/gayi jaise forms mat likho "
+             "(jaise 'kya chal raha hai', 'batao', 'aao').")
+    if just_stated:
+        t += " User ne abhi khud apna gender bataya hai; pehle galat samjha ho toh halka sa sorry bolke sudhar lo."
+    return f"\n[Tum khud ladki ho (apne liye karti, gayi). {t}]"
+
+
+async def gender_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    mp = {"ladka": "m", "boy": "m", "male": "m", "m": "m", "ladki": "f", "girl": "f", "female": "f", "f": "f"}
+    g = mp.get((context.args[0].lower() if context.args else ""))
+    if not g:
+        await update.message.reply_text("Aise bolo: /gender ladka ya /gender ladki")
+        return
+    uid = update.effective_user.id
+    _gender_cache[uid] = (g, "stated")
+    await adb(save_gender_db, uid, g, "stated")
+    await update.message.reply_text("Done, ab se wahi samjhungi 😊" if g == "m" else "Acha ji, ab se saheli jaisi baat karungi 🤗")
+
+
 async def get_ai_reply(user_message: str, user_id: int, user_name: str, history: list | None = None,
                        gap_seconds=None, extra_hint: str = "") -> str | None:
+    gender, just_stated = await resolve_gender(user_id, user_name, None, user_message)
     explicit = is_explicit(user_message)
     if explicit:
         strikes = register_scold(user_id)
@@ -876,6 +975,7 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
     system = (SYSTEM_PROMPT + memory_context
               + f"\n[USER KA TELEGRAM NAAM: {user_name}. Isse asli naam samajh ke naturally use karo]"
               + f"\n[CONTEXT: {get_current_context()}]"
+              + gender_hint(gender, just_stated)
               + build_behavior_hints(user_message, history, gap_seconds, extra_hint))
     messages = [{"role": "system", "content": system}]
     if history:
@@ -1206,6 +1306,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/crush @naam, aaj ka crush level\n"
         "/new, WordSeek game (/wordseek help ke liye)\n"
         "/memory, main tumhare baare me kya jaanti hoon\n"
+        "/gender ladka ya ladki, agar main galat samjhun toh sudhar do\n"
         "/forget, meri memory se tumhara data delete\n"
         "Voice note bhi bhej sakte ho, sun leti hoon 🎧\nKabhi kabhi pyaar se main bhi voice bhejti hoon 🥰")
 
@@ -2169,7 +2270,8 @@ async def proactive_checkin_watcher(bot):
                     await adb(mark_checkin, uid)  # pehle mark, taaki fail hone pe loop na bane
                     prompt = (f"Ye user kaafi dino se gayab hai. Uski memory:\n{summary}\n\n"
                               "Ek chhota (1-2 line) natural check-in message likho jo Ongoing ya Facts ki kisi ek cheez ke baare me poochhe "
-                              "(jaise 'wo kaam ka kya hua?'), thoda tease karte hue. Naam mat likhna agar pakka na ho. Sirf message likho.")
+                              "(jaise 'wo kaam ka kya hua?'), thoda tease karte hue. Naam mat likhna agar pakka na ho. Sirf message likho."
+                              + gender_hint(await get_gender_known(uid)))
                     text = await _ai_fun(prompt, 150)
                     if not text:
                         continue
@@ -2226,7 +2328,7 @@ async def main() -> None:
                      ("syncgroup", syncgroup_command), ("broadcast", broadcast_command),
                      ("broadcaststats", broadcast_stats_command), ("broadcastgc", broadcastgc_command),
                      ("roast", roast_command), ("shayari", shayari_command), ("joke", joke_command),
-                     ("truth", truth_command), ("dare", dare_command), ("ship", ship_command), ("voice", voice_command), ("kiss", kiss_command), ("slap", slap_command),
+                     ("truth", truth_command), ("dare", dare_command), ("ship", ship_command), ("voice", voice_command), ("gender", gender_command), ("kiss", kiss_command), ("slap", slap_command),
                      ("hug", hug_command), ("pat", pat_command), ("crush", crush_command),
                      ("wordseek", wordseek_help), ("new", wordseek_new), ("new4", wordseek_new4),
                      ("new5", wordseek_new5), ("new6", wordseek_new6), ("end", wordseek_end),
