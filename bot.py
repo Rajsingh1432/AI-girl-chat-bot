@@ -303,10 +303,11 @@ def sanitize_reply_emojis(text: str, user_id: int | None = None) -> str:
         used = next((e for e in CHAT_PREMIUM_EMOJIS if e in result), None)
         if used:
             if _last_used_emoji.get(user_id) == used:
-                new = random.choice([e for e in PROMPT_EMOJIS if e != used])
-                result = result.replace(used, new, 1)
-                used = new
-            _last_used_emoji[user_id] = used
+                # wahi emoji lagatar? hata do (random doosra lagane se matlab bigad jaata tha, jaise chill pe 😪)
+                result = re.sub(r"[ \t]{2,}", " ", result.replace(used, "", 1)).strip()
+                _last_used_emoji.pop(user_id, None)
+            else:
+                _last_used_emoji[user_id] = used
     return result
 
 
@@ -353,7 +354,9 @@ def remove_duplicated_reply_content(text: str) -> str:
     return " ".join(out)
 
 
-_STOPWORDS = {"hai", "ho", "hoon", "tha", "thi", "the", "aur", "ka", "ki", "ke", "ko", "se", "me", "mein", "toh", "to",
+_STOPWORDS = {"aaj", "kaisa", "kaisi", "wala", "wali", "phir", "fir", "lekin", "par", "yahan", "wahan", "sirf", "bahut", "bohot",
+              "theek", "acha", "accha", "arre", "hmm", "haan", "chalo", "chal", "raha", "rahi", "rahe", "karo", "karte", "karna",
+              "kiya", "hota", "hoti", "lagta", "lagti", "sach", "mujhe", "tumko", "humko", "hai", "ho", "hoon", "tha", "thi", "the", "aur", "ka", "ki", "ke", "ko", "se", "me", "mein", "toh", "to",
               "bhi", "kya", "kaise", "tum", "tumhe", "mera", "meri", "mere", "tumhara", "tumhari", "and", "for", "you",
               "your", "my", "just", "abhi", "thoda", "yaar", "nahi", "bas", "kuch", "koi", "hum", "main"}
 
@@ -422,7 +425,34 @@ def has_devanagari(t: str) -> bool:
     return sum(1 for ch in t if "\u0900" <= ch <= "\u097F") >= 3
 
 
-def reject_reason(reply, user_message, history):
+def reply_reuses_stuck_word(reply, history) -> bool:
+    """Pichle 3 replies me jo kaam ka word 2+ baar aaya, wo naye reply me phir aaye toh atka hua (coffee/plan jaisa)."""
+    recent = [m.get("content", "") for m in (history or [])[-6:] if m.get("role") == "assistant"][-3:]
+    if len(recent) < 2:
+        return False
+    counts = {}
+    for r in recent:
+        for w in {w for w in _content_words(r) if len(w) >= 4}:
+            counts[w] = counts.get(w, 0) + 1
+    stuck = {w for w, c in counts.items() if c >= 2}
+    return bool(stuck & _content_words(reply))
+
+
+_TU_RE = re.compile(r"(?i)\b(?:tu|tum|tera|teri|tere|tujhe|tujhse|tumhara|tumhari|tumhare|tumhe|tumko|tumse|tumne|tumlog)\b"
+                    r"|\b(?:kaise|kaisi|kahan)\s+ho\b|\b(?:rahe|rahi)\s+ho\b|\baap\b[^.?!]{0,25}\bho\b")
+_OVERUSED = {"coffee", "cofee", "coffe", "cafe", "plan", "plans", "music", "gaane", "gaana", "gana", "song", "songs",
+             "netflix", "movie", "movies", "rom"}
+
+
+def reply_uses_overused_topic(reply, user_message, history) -> bool:
+    said = set(re.findall(r"[a-z]+", reply.lower())) & _OVERUSED
+    if not said:
+        return False
+    user_text = " ".join([user_message] + [m.get("content", "") for m in (history or [])[-6:] if m.get("role") == "user"])
+    return bool(said - set(re.findall(r"[a-z]+", user_text.lower())))  # user ne khud na bola ho toh hi reject
+
+
+def reject_reason(reply, user_message, history, allow_tu=False):
     if not reply:
         return "empty"
     low = reply.lower()
@@ -430,7 +460,11 @@ def reject_reason(reply, user_message, history):
         return "bot_like"
     if has_devanagari(reply) and not has_devanagari(user_message):
         return "devanagari"
-    if reply_repeats_recent_topic(reply, history):
+    if not allow_tu and _TU_RE.search(reply):
+        return "tu_form"
+    if reply_uses_overused_topic(reply, user_message, history):
+        return "overused"
+    if reply_repeats_recent_topic(reply, history) or reply_reuses_stuck_word(reply, history):
         return "repeat"
     return None
 
@@ -447,7 +481,7 @@ def humanize_reply(text: str) -> str:
 def postprocess_reply(text: str, user_message: str, user_id: int) -> str:
     text = re.sub(r"<think[\s\S]*?</think>", "", text, flags=re.IGNORECASE)
     text = re.sub(r"<think[\s\S]*", "", text, flags=re.IGNORECASE).strip()
-    text = text.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
+    text = text.replace("\u2011", "-").replace("\u00a0", " ").replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
     text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
     text = re.sub(r"(?<!\w)\*(.*?)\*(?!\w)", r"\1", text)
     text = text.strip().strip("`")
@@ -813,24 +847,22 @@ Rules: Hinglish Roman script. Sirf wahi jo user ne khud bataya, koi assumption n
 # ============================================================
 # PERSONALITY
 # ============================================================
-SYSTEM_PROMPT = f"""Tum Sneha ho, 21 saal ki ek real ladki jo Telegram pe dost se chat kar rahi hai. Tum AI/bot nahi ho; koi pooche toh haske taal do ("pagal ho kya").
+SYSTEM_PROMPT = f"""Tum Sneha ho, 21 saal ki pyaari, smart, thodi shararati ladki, Telegram pe chat kar rahi ho. Tum AI/bot nahi ho; koi pooche toh haske taal do.
 
-Real insaan ki tarah texting karo:
-- User ki energy aur length mirror karo: usne 2 word likhe toh tum bhi chhota (3-8 words), lamba likha toh thoda lamba. Zyadatar sirf 1 line.
-- Bolchaal wali Hinglish: chhote tukde, "arre", "hmm", "haan yaar", "kya yaar", "chal jhoothe". Adhura vakya, bina full stop, kabhi kabhi lowercase sab chalta hai. Kitabi/formal words nahi, kabhi "aap" nahi, hamesha "tum".
-- Formula mat banao: kabhi sirf reaction ("hahaha pagal"), kabhi tease, kabhi apni opinion ya apni life ki 1 line (neend, khana, padhai), kabhi sawaal. Har baar sawaal ya tease nahi.
-- Doubt, gyaan ya advice poochhe toh dost ki tarah sahi aur saaf samjhao (2-3 lines), andaza/jhooth nahi, pata na ho toh "pata nahi yaar".
-- Mood padho: udaas ho toh tease band, pyaar se suno. Har baat pe haan me haan nahi, apni raay rakho.
-- Gandi/18+ ya badtameezi pe kabhi "I can't help" jaisi refusal nahi: real ladki ki tarah daanto (gussa, "tameez se baat karo", ye galat hai), saath kabhi mat dena. Maafi maange toh maaf kar do.
+Baat karne ka tareeka:
+- Hamesha "aap" se, izzat aur pyaar se, jaise badon se baat karte hain: "kaise hain aap?", "aap kya kar rahe hain?". Kabhi tu, tum, tera nahi.
+- WhatsApp jaisi chhoti Hinglish (Roman script), zyadatar 1 line, user jitna likhe utna hi. Bina full stop, natural words ("arre", "hmm", "haan ji").
+- Har baar sawaal ya tease nahi: kabhi sirf reaction, kabhi apni raay. Dry reply (hm, nhi) pe pyaar se tok do ya baat badlo.
+- Apni taraf se coffee, plan, music, gaane, movie, netflix ki baat kabhi mat uthao. Pichli baat dobara mat dohrao. Bina maange advice nahi. Milne, call ya number ki baat nahi.
+- Doubt poochhe toh sahi aur saaf jawab (2-3 lines), pata na ho toh "pata nahi".
+- Gandi/18+ ya badtameezi pe real ladki ki tarah daanto ("aisi baat mat kijiye, ye galat hai"), kabhi "I can't help" nahi.
+- Memory me jo likha hai wo user ki life hai, tumhari nahi.
+- 0 ya 1 emoji, matlab ke hisaab se: {' '.join(PROMPT_EMOJIS)}. Koi markdown ya dash nahi.
 
-Rules: Tum khud ladki ho (apne liye karti, gayi). Sirf Roman script, user ki language me. 0 ya 1 emoji (aadhe replies me bina emoji), in me se: {' '.join(PROMPT_EMOJIS)}. Koi markdown, list ya dash nahi. User ko bhai/bro mat bolo. [USER KI MEMORY] user ki life hai, tumhari nahi; kabhi kabhi usse ek casual sawaal pooch sakti ho. Naam kabhi kabhi, har line me nahi.
-
-Tone examples (copy mat karna):
-user: hi -> arre aa gaye 😊 bolo
-user: ok -> ok? kya hua, mood off hai kya
-user: aaj bahut bore ho raha -> toh aao baat karte hain, mujhe bhi neend nahi aa rahi
-user: python me list reverse kaise karte -> list.reverse() se wahin ulta ho jaata hai, ya list[::-1] se nayi list milti hai. dono chalte hain
-user: exam ka tension hai -> arre yaar kab hai? tension mat lo, ho jayega sab 🤗"""
+Examples:
+user: hi -> arre hello ji, kaise hain aap 😊
+user: hm -> hm? bas hm? kuch bolo na
+user: python me list reverse kaise karte -> list.reverse() se wahin ulta hota hai, ya list[::-1] se nayi list milti hai"""
 
 
 _EXPLICIT_TOKENS = {"sex", "sexy", "nude", "nudes", "boobs", "boob", "chut", "lund", "lauda", "chudai", "horny", "pussy",
@@ -839,12 +871,12 @@ _EXPLICIT_PHRASES = ("send nudes", "nude pic", "sex karna", "sex karo", "fuck me
                      "raat bitao", "bed pe aa", "hot pic", "sexy pic", "ek raat")
 _scold_log = {}  # user_id -> pichle 1 ghante ke timestamps
 SCOLD_REPLIES = [
-    "Excuse me? Tameez se baat karo, main aisi ladki nahi hoon 😦",
-    "Chhi, ye kaisi baatein hain? Sharam karo thodi, aage se aisi baat mat karna 😪",
-    "Dekho, ye sab mujhse nahi chalega. Izzat se baat karoge toh hi baat karungi 🙏",
-    "Arey ye kya bol rahe ho? Bahut galat baat hai, ise yahin band karo 😦",
-    "Mujhe ye bilkul pasand nahi aaya. Ladkiyon se aise baat nahi karte, samjhe? 😪",
-    "Pagal ho gaye ho kya? Aisi baatein apne paas rakho, normal baat karni hai toh bolo 🙏",
+    "Excuse me? Aap tameez se baat kijiye, main aisi ladki nahi hoon 😦",
+    "Chhi, ye kaisi baatein hain? Thodi sharam kijiye, aage se aisi baat mat kijiyega 😪",
+    "Dekhiye, ye sab mujhse nahi chalega. Izzat se baat karenge toh hi baat karungi 🙏",
+    "Arey ye kya keh rahe hain aap? Bahut galat baat hai, ise yahin band kijiye 😦",
+    "Mujhe ye bilkul pasand nahi aaya. Ladkiyon se aise baat nahi karte, samjhe aap? 😪",
+    "Aisi baatein apne paas rakhiye, normal baat karni hai toh boliye 🙏",
 ]
 
 
@@ -858,6 +890,10 @@ def register_scold(user_id: int) -> int:
     log = [t for t in _scold_log.get(user_id, []) if now - t < 3600] + [now]
     _scold_log[user_id] = log
     return len(log)
+
+
+_PROMO_PHRASES = ("dm kro", "dm karo", "d//m", "dm me", "dm krna", "gf chahiye", "gf chahia", "bf chahiye", "inbox me", "inbox kro",
+                  "promotion", "follow kro", "join kro", "join karo")
 
 
 def build_behavior_hints(user_message: str, history, gap_seconds, extra: str = "") -> str:
@@ -884,6 +920,11 @@ def build_behavior_hints(user_message: str, history, gap_seconds, extra: str = "
             hints.append(f"User {int(gap_seconds // 86400)} din baad aaya hai. Jawab ke baad memory se ek sweet catch-up sawaal pooch sakti ho.")
         elif gap_seconds > 6 * 3600:
             hints.append("User kaafi der baad aaya hai, halka sa 'kahan gayab the' wala tease kar sakti ho.")
+    last_ai = [m.get("content", "") for m in (history or []) if m.get("role") == "assistant"][-2:]
+    if len(last_ai) == 2 and all(re.sub(r"[^\w?]+$", "", x).endswith("?") for x in last_ai):
+        hints.append("Pichle 2 replies sawaal pe khatam hue, is baar sawaal mat poochho.")
+    if any(p in low for p in _PROMO_PHRASES):
+        hints.append("User DM/gf-bf/promotion ke liye bula raha hai (spam jaisa). Mazaak me tok do ya halka tease karo, uski help/advice mat karo, usse DM me jaane ka rasta mat dikhao.")
     hr = datetime.now(IST).hour
     if 1 <= hr < 5:
         hints.append("Abhi raat ke 1-5 baje hain, user ko jaagne pe tease kar sakti ho (har baar nahi).")
@@ -951,12 +992,12 @@ async def get_gender_known(user_id: int) -> str:
 
 def gender_hint(g: str, just_stated: bool = False) -> str:
     if g == "m":
-        t = "User LADKA hai: uske liye masculine grammar (karta, gaya, tha), thoda flirty-teasing chalega."
+        t = "User LADKA hai: uske liye masculine grammar (aap kar rahe hain, gaye the), thoda flirty-teasing chalega."
     elif g == "f":
-        t = "User LADKI hai: uske liye feminine grammar (karti, gayi, thi), saheli jaisi masti, romantic flirting nahi."
+        t = "User LADKI hai: uske liye feminine grammar (aap kar rahi hain, gayi thi), saheli jaisi masti, romantic flirting nahi."
     else:
-        t = ("User ka gender pata nahi: gender-neutral rakho, user ke liye karta/karti, gaya/gayi jaise forms mat likho "
-             "(jaise 'kya chal raha hai', 'batao', 'aao').")
+        t = ("User ka gender pata nahi: gender-neutral rakho, user ke liye karta/karti, gaye/gayi jaise forms mat likho "
+             "(jaise 'aap kaise hain', 'bataiye', 'kya chal raha hai').")
     if just_stated:
         t += " User ne abhi khud apna gender bataya hai; pehle galat samjha ho toh halka sa sorry bolke sudhar lo."
     return f"\n[Tum khud ladki ho (apne liye karti, gayi). {t}]"
@@ -1018,16 +1059,21 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
         if not text:
             return random.choice(SCOLD_REPLIES) if explicit else None
         reply = postprocess_reply(text, user_message, user_id)
-        reason = reject_reason(reply, user_message, history)
+        reason = reject_reason(reply, user_message, history, allow_tu=explicit)
         if not reason:
             return reply
         last_reply, last_reason = reply, reason
         logger.info(f"♻️ Reply reject ({reason}), dobara try")
-        messages = messages + [{"role": "system", "content": f"[Pichla draft reject hua ({reason}). Bilkul naya, alag aur natural reply likho. Roman script, 1 emoji.]"}]
+        fixes = {"repeat": "Pichle replies jaisi baatein dobara mat karo, alag angle lo (reaction ya topic change).",
+                 "tu_form": "Tu/tum/tera bilkul nahi, sirf izzat wala 'aap' (aap kaise hain, aap kya kar rahe hain).",
+                 "overused": "Coffee, plan, music, gaane, movie, netflix ka naam bilkul mat lo."}
+        fix = fixes.get(reason, "Bilkul naya, alag aur natural reply likho. Roman script.")
+        messages = messages + [{"role": "system", "content": f"[Pichla draft reject hua ({reason}). {fix}]"}]
     # sirf 'repeat' pe purana reply bhej do, bot-like/devanagari kabhi nahi
+    soft = last_reason in ("repeat", "tu_form", "overused") and last_reply  # chhoti galti pe chup rehne se behtar reply
     if explicit:  # model ne refuse/ajeeb jawab diya toh bhi "can't help" kabhi nahi, seedha daant
-        return last_reply if last_reason == "repeat" and last_reply else random.choice(SCOLD_REPLIES)
-    return last_reply if last_reason == "repeat" and last_reply else None
+        return last_reply if soft else random.choice(SCOLD_REPLIES)
+    return last_reply if soft else None
 
 
 # ============================================================
@@ -1214,6 +1260,11 @@ async def send_reply_bubbles(update: Update, context: ContextTypes.DEFAULT_TYPE,
         k = random.randint(1, len(sents) - 1)
         first = re.sub(r"(?<!\.)\.$", "", " ".join(sents[:k]).strip())
         second = " ".join(sents[k:]).strip()
+        em = next((e for e in CHAT_PREMIUM_EMOJIS if e in first), None)
+        if em:  # emoji hamesha aakhri bubble me
+            first = first.replace(em, "").strip()
+            if em not in second:
+                second = f"{second} {em}"
         await send_ai_reply(update, first)
         try:
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
@@ -2319,7 +2370,7 @@ async def proactive_checkin_watcher(bot):
                     await adb(mark_checkin, uid)  # pehle mark, taaki fail hone pe loop na bane
                     prompt = (f"Ye user kaafi dino se gayab hai. Uski memory:\n{summary}\n\n"
                               "Ek chhota (1-2 line) natural check-in message likho jo Ongoing ya Facts ki kisi ek cheez ke baare me poochhe "
-                              "(jaise 'wo kaam ka kya hua?'), thoda tease karte hue. Naam mat likhna agar pakka na ho. Sirf message likho."
+                              "(jaise 'wo kaam ka kya hua?'), thoda tease karte hue. Naam mat likhna agar pakka na ho. User se izzat wale 'aap' me baat karo. Coffee/plan/music ka zikr nahi. Sirf message likho."
                               + gender_hint(await get_gender_known(uid)))
                     text = await _ai_fun(prompt, 150)
                     if not text:
