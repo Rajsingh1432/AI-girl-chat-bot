@@ -206,7 +206,7 @@ async def throttle_dispatch():
 
 
 async def call_groq(messages, *, model, temperature=0.8, max_tokens=400, timeout=20.0,
-                    reasoning="low", top_p=None, max_attempts=4):
+                    reasoning="low", top_p=None, max_attempts=4, tag="chat"):
     """Ek hi jagah se saari Groq calls (chat, summary, fun commands). Text return karta hai ya None."""
     est = sum(len(m["content"]) for m in messages) // 3 + 250
     tried = set()
@@ -216,6 +216,7 @@ async def call_groq(messages, *, model, temperature=0.8, max_tokens=400, timeout
             break
         tried.add(idx)
         entry = pre_record_key_usage(idx, est)
+        t0 = time.time()
         try:
             async with _concurrency_semaphore:
                 await throttle_dispatch()
@@ -233,7 +234,9 @@ async def call_groq(messages, *, model, temperature=0.8, max_tokens=400, timeout
             _key_429_counts[idx] = 0
             text = (resp.choices[0].message.content or "").strip()
             if text:
+                logger.info(f"🔑 Key {idx+1}/{len(clients)} ✓ [{tag}] {model.split('/')[-1]} | {actual} tok | {time.time() - t0:.1f}s")
                 return text
+            logger.warning(f"⚠️ Key {idx+1} [{tag}] khali reply (finish={getattr(resp.choices[0], 'finish_reason', '?')}), agli key try")
         except Exception as e:
             s = str(e).lower()
             if "429" in s or "rate_limit" in s:
@@ -829,7 +832,7 @@ Ongoing: <abhi chal rahi cheezein jo baad me poochhne layak hon (koi problem, ex
 
 Rules: Hinglish Roman script. Sirf wahi jo user ne khud bataya, koi assumption nahi. Phone number, password, address, card ya OTP KABHI save mat karna."""
         text = await call_groq([{"role": "user", "content": prompt}], model=SUMMARY_MODEL,
-                               temperature=0.2, max_tokens=500, timeout=25.0)
+                               temperature=0.2, max_tokens=500, timeout=25.0, tag="summary")
         if not text:
             return
         low = text.lower()
@@ -955,7 +958,7 @@ async def guess_gender_llm(first_name: str, username: str | None):
               ". Is naam se (Indian/South Asian naamon ka dhyaan rakhke) ye zyada tar ladka (M) hai ya ladki (F)? "
               "Agar naam unisex, nickname, brand, emoji-style ho ya samajh na aaye toh U. Sirf ek letter likho: M, F ya U.")
     text = await call_groq([{"role": "user", "content": prompt}], model=SUMMARY_MODEL, temperature=0.0,
-                           max_tokens=150, timeout=10.0, max_attempts=2)
+                           max_tokens=150, timeout=10.0, max_attempts=2, tag="gender")
     if not text:
         return None  # API fail: cache mat karo, agli baar dobara try
     m = re.search(r"\b([MFU])\b", text.strip().upper())
@@ -1055,7 +1058,7 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
     last_reply, last_reason = None, None
     for attempt in range(2):
         text = await call_groq(messages, model=CHAT_MODEL, temperature=0.95 if attempt == 0 else 1.05,
-                               max_tokens=max_tok, timeout=25.0, top_p=0.95, reasoning=reasoning)
+                               max_tokens=max_tok, timeout=25.0, top_p=0.95, reasoning=reasoning, tag="chat")
         if not text:
             return random.choice(SCOLD_REPLIES) if explicit else None
         reply = postprocess_reply(text, user_message, user_id)
@@ -1063,7 +1066,7 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
         if not reason:
             return reply
         last_reply, last_reason = reply, reason
-        logger.info(f"♻️ Reply reject ({reason}), dobara try")
+        logger.info(f"♻️ Reply reject ({reason}) | {reply[:70]!r}")
         fixes = {"repeat": "Pichle replies jaisi baatein dobara mat karo, alag angle lo (reaction ya topic change).",
                  "tu_form": "Tu/tum/tera bilkul nahi, sirf izzat wala 'aap' (aap kaise hain, aap kya kar rahe hain).",
                  "overused": "Coffee, plan, music, gaane, movie, netflix ka naam bilkul mat lo."}
@@ -1675,7 +1678,7 @@ def _cooldown_ok(uid: int, secs: float = 12.0) -> bool:
 
 async def _ai_fun(prompt: str, max_tokens: int = 300):
     text = await call_groq([{"role": "system", "content": PERSONA_MINI}, {"role": "user", "content": prompt}],
-                           model=CHAT_MODEL, temperature=1.0, max_tokens=max_tokens, timeout=20.0)
+                           model=CHAT_MODEL, temperature=1.0, max_tokens=max_tokens, timeout=20.0, tag="fun")
     if not text:
         return None
     text = re.sub(r"<think[\s\S]*?</think>", "", text, flags=re.I).replace("**", "").strip()
@@ -1918,7 +1921,7 @@ async def synth_sneha_voice(reply: str) -> bytes | None:
     deva = await call_groq(
         [{"role": "user", "content": "Is Hinglish line ko Devanagari Hindi me likho (transliterate, English words bhi Devanagari me, "
                                      "meaning aur tone same). Sirf output likho, koi explanation nahi:\n" + plain}],
-        model=SUMMARY_MODEL, temperature=0.1, max_tokens=300, timeout=15.0)
+        model=SUMMARY_MODEL, temperature=0.1, max_tokens=300, timeout=15.0, tag="voice-txt")
     if not deva or not has_devanagari(deva):
         return None
     comm = edge_tts.Communicate(deva.strip(), VOICE_NAME, rate="+3%", pitch="+6Hz")
