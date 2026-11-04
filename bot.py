@@ -410,12 +410,17 @@ def clean_leaked_template_fragments(reply: str) -> str:
 
 
 def strip_echoed_user_message(reply: str, user_message: str) -> str:
+    """Sirf tab hatao jab model ne user ka POORA lamba message copy karke newline/colon ke baad jawab likha ho.
+    (Pehle 'Employees' jaise 1 word pe bhi reply ka pehla word kaat deta tha: 'Employees ke baare me...' -> 'ke baare me...')"""
     if not reply or not user_message:
         return reply
     r, u = reply.strip(), user_message.strip()
-    if u and len(u) > 3 and r.lower().startswith(u.lower()):
-        rem = r[len(u):].lstrip("-—:,.\n ").strip()
-        return rem or r
+    if len(u.split()) < 4 or not r.lower().startswith(u.lower()):
+        return reply
+    rest = r[len(u):]
+    if rest[:1] in ("\n", ":", "|") or rest.lstrip()[:1] in ("-", "—", ":"):
+        rem = rest.lstrip("-—:|,.\n ").strip()
+        return rem or reply
     return reply
 
 
