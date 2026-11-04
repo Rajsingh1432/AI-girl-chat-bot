@@ -1032,8 +1032,45 @@ def sneha_mood(user_id: int) -> str:
     return _MOODS[int(hashlib.md5(f"{user_id}{n.strftime('%Y%m%d')}{n.hour // 2}".encode()).hexdigest(), 16) % len(_MOODS)]
 
 
+_last_ask = {}
+
+
+def memory_ask_hint(user_id: int, summary: str, user_message: str, history, private: bool) -> str:
+    """Kabhi kabhi izzat se user ke baare me ek sawaal poochho (naam, kaam, shauk, ya chal rahi baat), taaki memory bane."""
+    if is_explicit(user_message):
+        return ""
+    now = time.time()
+    if now - _last_ask.get(user_id, 0) < (600 if private else 1800):  # group me kam baar
+        return ""
+    if "?" in user_message or len(user_message.split()) < 2:  # sawaal ya dry reply pe nahi
+        return ""
+    last_ai = [m.get("content", "") for m in (history or []) if m.get("role") == "assistant"][-1:]
+    if last_ai and re.sub(r"[^\w?]+$", "", last_ai[0]).endswith("?"):
+        return ""
+    f = _parse_summary_fields(summary)
+    asks = []
+    ongoing = f.get("ongoing", "")
+    # saved personal baat (Ongoing) sirf DM me poochho, group me sabke saamne nahi
+    if private and ongoing.lower() not in _EMPTY_VALUES and random.random() < 0.5:
+        asks.append(f"unki chal rahi baat ka haal ('{ongoing[:80]}')")
+    naam = f.get("naam", "")
+    if naam.lower() in _EMPTY_VALUES or "telegram name" in naam.lower():
+        asks.append("unka naam ('waise aapka naam kya hai?')")
+    facts = f.get("facts", "")
+    if facts.lower() in _EMPTY_VALUES:
+        asks += ["wo kya karte hain (padhai ya kaam)", "unka koi shauk ya hobby"]
+    elif len(facts) < 80:
+        asks.append("unki koi aur pasand ya rozmarra ki baat")
+    if not asks or random.random() > (0.6 if private else 0.3):
+        return ""
+    _last_ask[user_id] = now
+    return ("\n[Is baar jawab ke baad izzat aur dilchaspi se ek sawaal pooch sakti ho: " + random.choice(asks) +
+            ". Interview jaisa nahi, baat ke flow me, 'aap' se. Phone, address ya private cheezein kabhi nahi poochhna."
+            + ("" if private else " Group me ho, isliye sawaal halka aur public-friendly rakho.") + "]")
+
+
 async def get_ai_reply(user_message: str, user_id: int, user_name: str, history: list | None = None,
-                       gap_seconds=None, extra_hint: str = "") -> str | None:
+                       gap_seconds=None, extra_hint: str = "", private: bool = True) -> str | None:
     gender, just_stated = await resolve_gender(user_id, user_name, None, user_message)
     explicit = is_explicit(user_message)
     if explicit:
@@ -1051,6 +1088,7 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
               + f"\n[USER KA TELEGRAM NAAM: {user_name}. Isse asli naam samajh ke naturally use karo]"
               + f"\n[CONTEXT: {get_current_context()}]"
               + gender_hint(gender, just_stated)
+              + memory_ask_hint(user_id, db_summary, user_message, history, private)
               + f"\n[Tumhara abhi ka mood: {sneha_mood(user_id)}]"
               + build_behavior_hints(user_message, history, gap_seconds, extra_hint))
     messages = [{"role": "system", "content": system}]
@@ -2181,7 +2219,7 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await send_sneha_reaction(update)
             reply = await get_reply_with_live_typing(
                 context, chat.id,
-                get_ai_reply(clean_text, user_id, user.first_name or "dost", history, gap, extra_hint),
+                get_ai_reply(clean_text, user_id, user.first_name or "dost", history, gap, extra_hint, chat.type == "private"),
                 existing_typing_task=typing_task)
             if not reply:
                 if chat.type == "private" and time.time() - _busy_notice_ts.get(user_id, 0) > 60:
