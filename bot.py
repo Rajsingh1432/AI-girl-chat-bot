@@ -8,6 +8,7 @@ import asyncio
 import html
 import hashlib
 import io
+import calendar
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
@@ -84,6 +85,13 @@ logger.info(f"✅ Total {len(GROQ_API_KEYS)} Groq API keys loaded hui!")
 clients = [AsyncGroq(api_key=key, max_retries=0) for key in GROQ_API_KEYS]
 
 IST = timezone(timedelta(hours=5, minutes=30))
+
+# Render outbound bandwidth ka andaza (sirf bot se BAHAR jaane wala data ginta hai; inbound free hai)
+_bw_delta = {"groq": 0, "voice": 0, "db": 0, "tg": 0, "other": 0}
+
+
+def add_bw(kind: str, nbytes: int):
+    _bw_delta[kind] = _bw_delta.get(kind, 0) + int(nbytes)
 
 
 def now_ist_str() -> str:
@@ -209,6 +217,7 @@ async def call_groq(messages, *, model, temperature=0.8, max_tokens=400, timeout
                     reasoning="low", top_p=None, max_attempts=4, tag="chat"):
     """Ek hi jagah se saari Groq calls (chat, summary, fun commands). Text return karta hai ya None."""
     est = sum(len(m["content"]) for m in messages) // 3 + 250
+    req_bytes = len(json.dumps(messages, ensure_ascii=False).encode("utf-8")) + 700
     tried = set()
     for _ in range(min(max_attempts, len(clients))):
         idx = pick_best_key(time.time(), est, tried)
@@ -216,6 +225,7 @@ async def call_groq(messages, *, model, temperature=0.8, max_tokens=400, timeout
             break
         tried.add(idx)
         entry = pre_record_key_usage(idx, est)
+        add_bw("groq", req_bytes)
         t0 = time.time()
         try:
             async with _concurrency_semaphore:
@@ -376,14 +386,18 @@ def reply_repeats_recent_topic(reply, history, min_shared=4) -> bool:
     return len(new) >= min_shared and any(len(new & _content_words(o)) >= min_shared for o in recent)
 
 
-def cap_reply_sentences(text: str, max_sentences: int = 3, max_chars: int = 420) -> str:
+def cap_reply_sentences(text: str, max_sentences: int = 4, max_chars: int = 520) -> str:
+    """Zyada lamba ho toh poore sentences hata ke chhota karo (beech vakya me nahi kaatna)."""
     if not text:
         return text
     units = []
     for line in (ln.strip() for ln in text.split("\n") if ln.strip()):
         units.extend(p.strip() for p in re.split(r"(?<=[.?!])\s+", line) if p.strip())
-    out = " ".join(units[:max_sentences])
-    if len(out) > max_chars:
+    units = units[:max_sentences]
+    while len(units) > 1 and len(" ".join(units)) > max_chars:
+        units.pop()
+    out = " ".join(units)
+    if len(out) > max_chars:  # ek hi bahut lamba sentence: aakhri option
         cut = out[:max_chars]
         out = cut[:max(cut.rfind(" "), 40)].rstrip(",;:") + "..."
     return out
@@ -582,6 +596,9 @@ def init_db():
             "CREATE TABLE IF NOT EXISTS bio_warnings (user_id BIGINT PRIMARY KEY, checked INTEGER DEFAULT 0, warn_count INTEGER DEFAULT 0, updated_at REAL)",
             "CREATE TABLE IF NOT EXISTS user_state (user_id BIGINT PRIMARY KEY, last_seen DOUBLE PRECISION, last_checkin DOUBLE PRECISION DEFAULT 0, blocked INTEGER DEFAULT 0)",
             "CREATE TABLE IF NOT EXISTS user_gender (user_id BIGINT PRIMARY KEY, gender TEXT, source TEXT)",
+            "CREATE TABLE IF NOT EXISTS bw_month (month TEXT PRIMARY KEY, groq BIGINT DEFAULT 0, voice BIGINT DEFAULT 0, db BIGINT DEFAULT 0, tg BIGINT DEFAULT 0, other BIGINT DEFAULT 0)",
+            "CREATE TABLE IF NOT EXISTS user_stats (user_id BIGINT PRIMARY KEY, msgs INTEGER DEFAULT 0, streak INTEGER DEFAULT 0, best INTEGER DEFAULT 0, last_day TEXT)",
+            "CREATE TABLE IF NOT EXISTS group_activity (chat_id BIGINT, user_id BIGINT, name TEXT, total INTEGER DEFAULT 0, today INTEGER DEFAULT 0, day TEXT, last_seen DOUBLE PRECISION, PRIMARY KEY (chat_id, user_id))",
         ]
         for s in stmts:
             db_exec(s)
@@ -613,6 +630,7 @@ def get_user_summary(user_id: int) -> str:
 def save_user_summary(user_id: int, summary: str):
     try:
         t = time.time()
+        add_bw("db", len(summary) + 300)
         db_exec("INSERT INTO user_memory (user_id, summary, updated_at) VALUES (%s,%s,%s) "
                 "ON CONFLICT (user_id) DO UPDATE SET summary=%s, updated_at=%s", (user_id, summary, t, summary, t))
     except Exception as e:
@@ -624,6 +642,7 @@ def delete_user_data(user_id: int):
         db_exec("DELETE FROM user_memory WHERE user_id=%s", (user_id,))
         db_exec("DELETE FROM conversation_history WHERE user_id=%s", (user_id,))
         db_exec("DELETE FROM user_gender WHERE user_id=%s", (user_id,))
+        db_exec("DELETE FROM user_stats WHERE user_id=%s", (user_id,))
     except Exception as e:
         logger.error(f"delete_user_data fail {user_id}: {e}")
 
@@ -640,6 +659,7 @@ def load_conversation_history_from_db(user_id: int) -> list:
 def save_conversation_history_to_db(user_id: int, history: list):
     try:
         j, t = json.dumps(history), time.time()
+        add_bw("db", len(j) + 300)
         db_exec("INSERT INTO conversation_history (user_id, history_json, updated_at) VALUES (%s,%s,%s) "
                 "ON CONFLICT (user_id) DO UPDATE SET history_json=%s, updated_at=%s", (user_id, j, t, j, t))
     except Exception as e:
@@ -752,6 +772,73 @@ def save_gender_db(user_id: int, gender: str, source: str):
         logger.warning(f"save_gender fail: {e}")
 
 
+def load_stats_db(user_id: int):
+    try:
+        row = db_exec("SELECT msgs, streak, best, last_day FROM user_stats WHERE user_id=%s", (user_id,), "one")
+        return {"msgs": row[0], "streak": row[1], "best": row[2], "last_day": row[3] or ""} if row else None
+    except Exception as e:
+        logger.warning(f"load_stats fail: {e}")
+        return None
+
+
+def save_stats_db(user_id: int, st: dict):
+    try:
+        db_exec("INSERT INTO user_stats (user_id, msgs, streak, best, last_day) VALUES (%s,%s,%s,%s,%s) ON CONFLICT (user_id) DO UPDATE "
+                "SET msgs=EXCLUDED.msgs, streak=EXCLUDED.streak, best=EXCLUDED.best, last_day=EXCLUDED.last_day",
+                (user_id, st["msgs"], st["streak"], st["best"], st["last_day"]))
+    except Exception as e:
+        logger.warning(f"save_stats fail: {e}")
+
+
+def flush_group_activity_db(items: list, day: str):
+    now = time.time()
+    for chat_id, user_id, name, delta in items:
+        try:
+            db_exec("INSERT INTO group_activity (chat_id, user_id, name, total, today, day, last_seen) VALUES (%s,%s,%s,%s,%s,%s,%s) "
+                    "ON CONFLICT (chat_id, user_id) DO UPDATE SET name=EXCLUDED.name, total=group_activity.total+EXCLUDED.total, "
+                    "today=CASE WHEN group_activity.day=EXCLUDED.day THEN group_activity.today+EXCLUDED.today ELSE EXCLUDED.today END, "
+                    "day=EXCLUDED.day, last_seen=EXCLUDED.last_seen", (chat_id, user_id, name, delta, delta, day, now))
+        except Exception as e:
+            logger.warning(f"group_activity flush fail: {e}")
+
+
+def get_group_top_db(chat_id: int, day: str):
+    try:
+        today = db_exec("SELECT name, today FROM group_activity WHERE chat_id=%s AND day=%s ORDER BY today DESC LIMIT 5", (chat_id, day), "all") or []
+        total = db_exec("SELECT name, total FROM group_activity WHERE chat_id=%s ORDER BY total DESC LIMIT 5", (chat_id,), "all") or []
+        return today, total
+    except Exception as e:
+        logger.warning(f"group_top fail: {e}")
+        return [], []
+
+
+def get_group_members_db(chat_id: int, since: float) -> list:
+    try:
+        return db_exec("SELECT user_id, name FROM group_activity WHERE chat_id=%s AND last_seen>%s ORDER BY last_seen DESC LIMIT 300",
+                       (chat_id, since), "all") or []
+    except Exception as e:
+        logger.warning(f"group_members fail: {e}")
+        return []
+
+
+def flush_bw_db(month: str, d: dict):
+    try:
+        db_exec("INSERT INTO bw_month (month, groq, voice, db, tg, other) VALUES (%s,%s,%s,%s,%s,%s) ON CONFLICT (month) DO UPDATE SET "
+                "groq=bw_month.groq+EXCLUDED.groq, voice=bw_month.voice+EXCLUDED.voice, db=bw_month.db+EXCLUDED.db, "
+                "tg=bw_month.tg+EXCLUDED.tg, other=bw_month.other+EXCLUDED.other",
+                (month, d.get("groq", 0), d.get("voice", 0), d.get("db", 0), d.get("tg", 0), d.get("other", 0)))
+    except Exception as e:
+        logger.warning(f"flush_bw fail: {e}")
+
+
+def get_bw_month_db(month: str):
+    try:
+        row = db_exec("SELECT groq, voice, db, tg, other FROM bw_month WHERE month=%s", (month,), "one")
+        return dict(zip(("groq", "voice", "db", "tg", "other"), row)) if row else None
+    except Exception:
+        return None
+
+
 def get_checkin_candidates(limit=5) -> list:
     now = time.time()
     try:
@@ -859,7 +946,7 @@ SYSTEM_PROMPT = f"""Tum Sneha ho, 21 saal ki pyaari, smart, thodi shararati ladk
 
 Baat karne ka tareeka:
 - Hamesha "aap" se, izzat aur pyaar se, jaise badon se baat karte hain: "kaise hain aap?", "aap kya kar rahe hain?". Kabhi tu, tum, tera nahi.
-- WhatsApp jaisi chhoti Hinglish (Roman script), zyadatar 1 line, user jitna likhe utna hi. Bina full stop, natural words ("arre", "hmm", "haan ji").
+- WhatsApp jaisi chhoti Hinglish (Roman script), zyadatar 1-2 chhoti lines (max ~35 words), user jitna likhe utna hi. Baat poori karke khatam karo, adhura vakya nahi. Bina full stop, natural words ("arre", "hmm", "haan ji").
 - Har baar sawaal ya tease nahi: kabhi sirf reaction, kabhi apni raay. Dry reply (hm, nhi) pe pyaar se tok do ya baat badlo.
 - Apni taraf se coffee, plan, music, gaane, movie, netflix ki baat kabhi mat uthao. Pichli baat dobara mat dohrao. Bina maange advice nahi. Milne, call ya number ki baat nahi.
 - Doubt poochhe toh sahi aur saaf jawab (2-3 lines), pata na ho toh "pata nahi".
@@ -909,7 +996,7 @@ def build_behavior_hints(user_message: str, history, gap_seconds, extra: str = "
     words = user_message.split()
     low = user_message.strip().lower()
     if len(words) <= 3:
-        hints.append("User ne chhota likha hai, tum bhi bahut chhota (3-8 words) reply do.")
+        hints.append("User ne chhota likha hai, tum bhi chhota (5-12 words, poora vakya) reply do.")
     elif len(words) >= 25:
         hints.append("User ne detail me likha hai, tum bhi thoda detail me, par phir bhi chat jaisa.")
     prev_users = [m["content"] for m in (history or []) if m.get("role") == "user"][-3:]
@@ -925,7 +1012,7 @@ def build_behavior_hints(user_message: str, history, gap_seconds, extra: str = "
         hints.append("User kuch poochh raha hai: pehle seedha sahi jawab do, phir apna style.")
     if gap_seconds is not None:
         if gap_seconds > 2 * 86400:
-            hints.append(f"User {int(gap_seconds // 86400)} din baad aaya hai. Jawab ke baad memory se ek sweet catch-up sawaal pooch sakti ho.")
+            hints.append(f"User {int(gap_seconds // 86400)} din baad aaya hai, pyaar se bolo ki yaad aa rahi thi.")
         elif gap_seconds > 6 * 3600:
             hints.append("User kaafi der baad aaya hai, halka sa 'kahan gayab the' wala tease kar sakti ho.")
     last_ai = [m.get("content", "") for m in (history or []) if m.get("role") == "assistant"][-2:]
@@ -1035,38 +1122,48 @@ def sneha_mood(user_id: int) -> str:
 _last_ask = {}
 
 
-def memory_ask_hint(user_id: int, summary: str, user_message: str, history, private: bool) -> str:
-    """Kabhi kabhi izzat se user ke baare me ek sawaal poochho (naam, kaam, shauk, ya chal rahi baat), taaki memory bane."""
+def _memory_asks(summary: str, private: bool) -> list:
+    f = _parse_summary_fields(summary)
+    naam, facts, ongoing = f.get("naam", ""), f.get("facts", ""), f.get("ongoing", "")
+    asks = []
+    # saved personal baat (Ongoing) sirf DM me poochho, group me sabke saamne nahi
+    if private and ongoing.lower() not in _EMPTY_VALUES:
+        asks += [f"unki chal rahi baat ka haal ('{ongoing[:80]}')"] * 2
+    if facts.lower() not in _EMPTY_VALUES:
+        asks.append(f"unki is memory me se koi ek halka-phulka topic chunke uske baare me ('{facts[:120]}'), problem/personal wali baat nahi")
+    else:
+        asks += ["wo kya karte hain (padhai ya kaam)", "unka koi shauk ya hobby"]
+    if naam.lower() in _EMPTY_VALUES or "telegram name" in naam.lower():
+        asks.append("unka naam ('waise aapka naam kya hai?')")
+    return asks
+
+
+def memory_ask_hint(user_id: int, summary: str, user_message: str, history, private: bool, session_start: bool = False) -> str:
+    """Session start pe: pehle haal-chaal, phir memory se ek pyaara sawaal. Beech chat me kabhi kabhi."""
     if is_explicit(user_message):
         return ""
+    rules = " 'aap' se, interview jaisa nahi. Phone, address ya private cheezein kabhi nahi poochhna." + \
+            ("" if private else " Group me ho, isliye halka aur public-friendly.")
+    if session_start:
+        if "?" in user_message and len(user_message.split()) >= 4:  # seedha doubt hai, pehle uska jawab, sawaal nahi
+            return ""
+        pick = random.choice(_memory_asks(summary, private) or ["unka din kaisa ja raha hai"])
+        _last_ask[user_id] = time.time()
+        return ("\n[PEHLI BAAT (naya ya der baad aaya user): pehle ek chhoti line me haal-chaal ('kaise hain aap?' jaisa, unke message ke flow me). "
+                f"Phir usi message me ek pyaara sawaal: {pick}. Total 2 chhoti lines.{rules}]")
     now = time.time()
-    if now - _last_ask.get(user_id, 0) < (600 if private else 1800):  # group me kam baar
+    if now - _last_ask.get(user_id, 0) < (600 if private else 1800):
         return ""
     if "?" in user_message or len(user_message.split()) < 2:  # sawaal ya dry reply pe nahi
         return ""
     last_ai = [m.get("content", "") for m in (history or []) if m.get("role") == "assistant"][-1:]
     if last_ai and re.sub(r"[^\w?]+$", "", last_ai[0]).endswith("?"):
         return ""
-    f = _parse_summary_fields(summary)
-    asks = []
-    ongoing = f.get("ongoing", "")
-    # saved personal baat (Ongoing) sirf DM me poochho, group me sabke saamne nahi
-    if private and ongoing.lower() not in _EMPTY_VALUES and random.random() < 0.5:
-        asks.append(f"unki chal rahi baat ka haal ('{ongoing[:80]}')")
-    naam = f.get("naam", "")
-    if naam.lower() in _EMPTY_VALUES or "telegram name" in naam.lower():
-        asks.append("unka naam ('waise aapka naam kya hai?')")
-    facts = f.get("facts", "")
-    if facts.lower() in _EMPTY_VALUES:
-        asks += ["wo kya karte hain (padhai ya kaam)", "unka koi shauk ya hobby"]
-    elif len(facts) < 80:
-        asks.append("unki koi aur pasand ya rozmarra ki baat")
+    asks = _memory_asks(summary, private)
     if not asks or random.random() > (0.6 if private else 0.3):
         return ""
     _last_ask[user_id] = now
-    return ("\n[Is baar jawab ke baad izzat aur dilchaspi se ek sawaal pooch sakti ho: " + random.choice(asks) +
-            ". Interview jaisa nahi, baat ke flow me, 'aap' se. Phone, address ya private cheezein kabhi nahi poochhna."
-            + ("" if private else " Group me ho, isliye sawaal halka aur public-friendly rakho.") + "]")
+    return f"\n[Is baar jawab ke baad ek pyaara sawaal pooch sakti ho: {random.choice(asks)}.{rules}]"
 
 
 async def get_ai_reply(user_message: str, user_id: int, user_name: str, history: list | None = None,
@@ -1088,7 +1185,8 @@ async def get_ai_reply(user_message: str, user_id: int, user_name: str, history:
               + f"\n[USER KA TELEGRAM NAAM: {user_name}. Isse asli naam samajh ke naturally use karo]"
               + f"\n[CONTEXT: {get_current_context()}]"
               + gender_hint(gender, just_stated)
-              + memory_ask_hint(user_id, db_summary, user_message, history, private)
+              + memory_ask_hint(user_id, db_summary, user_message, history, private,
+                                (gap_seconds is None and not history) or (gap_seconds is not None and gap_seconds > 7200))
               + f"\n[Tumhara abhi ka mood: {sneha_mood(user_id)}]"
               + build_behavior_hints(user_message, history, gap_seconds, extra_hint))
     messages = [{"role": "system", "content": system}]
@@ -1272,6 +1370,7 @@ def apply_premium_emoji_html(text: str) -> str:
 
 async def safe_reply_text(update: Update, text: str, use_premium_emojis: bool = True, **kwargs):
     original = text
+    add_bw("tg", len(text.encode("utf-8", "ignore")) + 800)
     try:
         if use_premium_emojis:
             if kwargs.get("parse_mode") == "HTML":
@@ -1319,6 +1418,7 @@ async def send_reply_bubbles(update: Update, context: ContextTypes.DEFAULT_TYPE,
         await asyncio.sleep(random.uniform(0.8, 1.6))
         try:
             ents = build_premium_emoji_entities(second, CHAT_PREMIUM_EMOJIS)
+            add_bw("tg", len(second.encode("utf-8", "ignore")) + 800)
             await context.bot.send_message(chat_id=update.effective_chat.id, text=second, entities=ents or None)
         except Exception as e:
             logger.warning(f"2nd bubble fail: {str(e)[:80]}")
@@ -1331,6 +1431,7 @@ async def _keep_typing(context: ContextTypes.DEFAULT_TYPE, chat_id: int):
         while True:
             try:
                 await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+                add_bw("tg", 450)
             except Exception:
                 pass
             await asyncio.sleep(4.0)
@@ -1390,6 +1491,7 @@ async def send_sneha_reaction(update: Update):
         if update.message and update.message.text:
             r = pick_reaction(update.message.text)
             if r:
+                add_bw("tg", 500)
                 await update.message.set_reaction(reaction=[ReactionTypeEmoji(emoji=r)])
     except Exception:
         pass
@@ -1450,6 +1552,9 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "/truth /dare, game\n"
         "/kiss /slap /hug /pat, GIF ke saath (reply ya @naam)\n"
         "/crush @naam, aaj ka crush level\n"
+        "/profile, Sneha ke saath aapka dosti level aur streak (kisi ke message pe reply karke unka bhi)\n"
+        "/chatters, group ke top chatters\n"
+        "/couple, aaj ka couple (group me)\n"
         "/new, WordSeek game (/wordseek help ke liye)\n"
         "/memory, main tumhare baare me kya jaanti hoon\n"
         "/gender ladka ya ladki, agar main galat samjhun toh sudhar do\n"
@@ -1461,6 +1566,28 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     t = time.time()
     m = await update.message.reply_text("pong 🏓")
     await m.edit_text(f"pong 🏓 {int((time.time() - t) * 1000)}ms")
+
+
+async def bw_text() -> str:
+    now = datetime.now(timezone.utc)
+    row = await adb(get_bw_month_db, now.strftime("%Y%m")) if DATABASE_URL else None
+    tot = {k: (row or {}).get(k, 0) + _bw_delta.get(k, 0) for k in ("groq", "voice", "db", "tg", "other")}
+    total = sum(tot.values()) * 1.15  # TLS/headers ka overhead
+    limit = float(os.getenv("RENDER_BW_LIMIT_GB", "5")) * 1024 ** 3
+    elapsed = max(now.day - 1 + now.hour / 24, 0.5)
+    proj = total / elapsed * calendar.monthrange(now.year, now.month)[1]
+    fmt = lambda b: f"{b / 1024 ** 2:.0f} MB" if b < 1024 ** 3 else f"{b / 1024 ** 3:.2f} GB"
+    txt = (f"📡 Render Bandwidth (is mahine, andaza)\n• Ab tak: {fmt(total)} / {limit / 1024 ** 3:.0f} GB ({total / limit * 100:.1f}%)\n"
+           f"• Isi raftaar se mahine ant tak: ~{fmt(proj)}\n"
+           f"• Groq {fmt(tot['groq'])} | Voice {fmt(tot['voice'])} | DB {fmt(tot['db'])} | Telegram {fmt(tot['tg'])} | Other {fmt(tot['other'])}")
+    if proj > limit * 0.9:
+        txt += "\n⚠️ Limit ke paas! GROUP_REPLY_CHANCE kam karo ya VOICE_COOLDOWN badhao."
+    return txt
+
+
+async def bw_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user.id == OWNER_ID:
+        await update.message.reply_text(await bw_text())
 
 
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1479,6 +1606,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
                 f"⚡ Active: {n - cooling} | ❄️ Cooldown: {cooling}\n"
                 f"⏳ In-flight: {MAX_CONCURRENT_REQUESTS - _concurrency_semaphore._value}/{MAX_CONCURRENT_REQUESTS}\n"
                 f"👥 Chats in RAM: {len(conversation_memory)}")
+        text += "\n\n" + await bw_text()
         if context.args and context.args[0].lower() == "live":
             lines = []
             for i in range(n):
@@ -1533,6 +1661,7 @@ async def forget_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     conversation_memory.pop(uid, None)
     user_msg_counter.pop(uid, None)
     _last_summarized_count.pop(uid, None)
+    _stats.pop(uid, None)
     await update.message.reply_text("Ho gaya, sab bhula diya maine 🙏 ab hum fresh start karte hain.")
 
 
@@ -1893,6 +2022,132 @@ async def crush_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                           parse_mode="HTML")
 
 
+# ---------- Dosti level, streak, group top chatters, couple of the day ----------
+LEVELS = [(0, "Ajnabi"), (10, "Jaan-pehchaan"), (30, "Dost"), (75, "Achha Dost"), (150, "Bestie"), (300, "Khaas Dost"), (600, "Dil ke kareeb")]
+STREAK_MILESTONES = (3, 7, 14, 30, 50, 100)
+_stats = {}      # user_id -> {"msgs","streak","best","last_day","dirty"}
+_ga_buf = {}     # (chat_id, user_id) -> [naam, naye messages]
+_couple_cache = {}
+COUPLE_LINES = ["Nazar na lage 🥰", "Aaj ki sabse pyaari jodi 😍", "Ab toh shaadi ka card chhapwana padega 😂", "Group ki nayi jodi, sabko mubarak ho 🎉"]
+
+
+def level_info(msgs: int):
+    idx = max(i for i, (t, _) in enumerate(LEVELS) if msgs >= t)
+    if idx == len(LEVELS) - 1:
+        return idx, LEVELS[idx][1], None, 1.0
+    prev, nxt = LEVELS[idx][0], LEVELS[idx + 1][0]
+    return idx, LEVELS[idx][1], nxt - msgs, (msgs - prev) / (nxt - prev)
+
+
+async def get_stats(uid: int) -> dict:
+    st = _stats.get(uid)
+    if st is None:
+        row = await adb(load_stats_db, uid) if DATABASE_URL else None
+        st = row or {"msgs": 0, "streak": 0, "best": 0, "last_day": ""}
+        st["dirty"] = False
+        _stats[uid] = st
+    return st
+
+
+async def bump_stats(uid: int, private: bool) -> list:
+    """Sneha se ek interaction gina, level-up / streak milestone ke cute notes wapas karta hai."""
+    st = await get_stats(uid)
+    old_lvl = level_info(st["msgs"])[0]
+    st["msgs"] += 1
+    notes = []
+    n = datetime.now(IST)
+    today, yday = n.strftime("%Y%m%d"), (n - timedelta(days=1)).strftime("%Y%m%d")
+    if st["last_day"] != today:
+        st["streak"] = st["streak"] + 1 if st["last_day"] == yday else 1
+        st["best"] = max(st["best"], st["streak"])
+        st["last_day"] = today
+        if private and st["streak"] in STREAK_MILESTONES:
+            notes.append(random.choice([f"🔥 aap lagatar {st['streak']} din se mujhse baat kar rahe hain, ab toh aadat si ho gayi hai 😊",
+                                        f"{st['streak']} din ka streak ho gaya aapka 🔥 mujhe bhi accha lagta hai aapse baat karna"]))
+    new_lvl, name, _, _ = level_info(st["msgs"])
+    if new_lvl > old_lvl:
+        notes.append(random.choice([f"waise ek baat bataun? baat karte karte hum ab '{name}' wale ban gaye hain 🥰",
+                                    f"level up! 🎉 aapke aur mere beech ab '{name}' wali dosti ho gayi hai"]))
+    st["dirty"] = True
+    return notes
+
+
+def record_group_activity(chat_id: int, user_id: int, name: str):
+    k = (chat_id, user_id)
+    cur = _ga_buf.get(k)
+    _ga_buf[k] = [name[:40], (cur[1] if cur else 0) + 1]
+
+
+async def stats_flush_watcher():
+    while True:
+        await asyncio.sleep(30)
+        try:
+            for uid, st in [(u, dict(x)) for u, x in _stats.items() if x.get("dirty")]:
+                _stats[uid]["dirty"] = False
+                await adb(save_stats_db, uid, st)
+            if _ga_buf:
+                items = [(c, u, v[0], v[1]) for (c, u), v in _ga_buf.items()]
+                _ga_buf.clear()
+                await adb(flush_group_activity_db, items, datetime.now(IST).strftime("%Y%m%d"))
+            if DATABASE_URL and any(_bw_delta.values()):
+                d = dict(_bw_delta)
+                for k in _bw_delta:
+                    _bw_delta[k] = 0
+                await adb(flush_bw_db, datetime.now(timezone.utc).strftime("%Y%m"), d)
+        except Exception as e:
+            logger.error(f"stats_flush_watcher error: {e}", exc_info=e)
+
+
+async def profile_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    me = update.effective_user
+    tid, tname, is_bot = resolve_target(update, context)
+    uid, name = (tid, tname) if tid and not is_bot else (me.id, me.first_name or "Aap")
+    st = await get_stats(uid)
+    idx, lname, need, frac = level_info(st["msgs"])
+    bar = "█" * int(frac * 10) + "░" * (10 - int(frac * 10))
+    nxt = f"\n🎯 Agle level me {need} messages baaki" if need else "\n👑 Sabse upar wala level, wah!"
+    await safe_reply_text(update, f"👤 <b>{html.escape(name)}</b> ki Sneha ke saath dosti\n\n💖 Level {idx + 1}: <b>{lname}</b>\n{bar}\n"
+                                  f"💬 Messages: {st['msgs']}{nxt}\n🔥 Streak: {st['streak']} din (best {st['best']})", parse_mode="HTML")
+
+
+async def chatters_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("Ye command group me chalta hai 😊")
+        return
+    if _ga_buf:  # taaza numbers dikhane ke liye buffer pehle likh do
+        items = [(c, u, v[0], v[1]) for (c, u), v in _ga_buf.items()]
+        _ga_buf.clear()
+        await adb(flush_group_activity_db, items, datetime.now(IST).strftime("%Y%m%d"))
+    today, total = await adb(get_group_top_db, chat.id, datetime.now(IST).strftime("%Y%m%d"))
+    if not total:
+        await update.message.reply_text("Abhi tak koi data nahi hai, thodi baatein karo phir dekhna 😊")
+        return
+    medals = ["🥇", "🥈", "🥉", "4️⃣", "5️⃣"]
+    fmt = lambda rows: "\n".join(f"{medals[i]} {html.escape(n or 'User')} ({c})" for i, (n, c) in enumerate(rows))
+    await safe_reply_text(update, "🏆 <b>Aaj ke top chatters</b>\n" + (fmt(today) or "abhi koi nahi") + "\n\n👑 <b>All-time top</b>\n" + fmt(total), parse_mode="HTML")
+
+
+async def couple_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("Couple of the day sirf group me hota hai 😊")
+        return
+    today = datetime.now(IST).strftime("%Y%m%d")
+    for k in [k for k in _couple_cache if k[1] != today]:
+        del _couple_cache[k]
+    key = (chat.id, today)
+    if key not in _couple_cache:
+        rows = await adb(get_group_members_db, chat.id, time.time() - 7 * 86400)
+        if len(rows) < 2:
+            await update.message.reply_text("Group me abhi itni activity nahi hai, thodi aur baat karo phir couple chunungi 😊")
+            return
+        _couple_cache[key] = random.Random(f"{chat.id}{today}").sample(rows, 2)
+    (a_id, a_name), (b_id, b_name) = _couple_cache[key]
+    await safe_reply_text(update, f"💞 <b>Aaj ka couple</b>\n\n{_mention(a_id, a_name)} ❤️ {_mention(b_id, b_name)}\n\n{random.choice(COUPLE_LINES)}",
+                          parse_mode="HTML")
+
+
 # ============================================================
 # VOICE (Groq Whisper)
 # ============================================================
@@ -1909,6 +2164,7 @@ async def transcribe_voice(context: ContextTypes.DEFAULT_TYPE, voice) -> str | N
                 break
             tried.add(idx)
             entry = pre_record_key_usage(idx, 100)
+            add_bw("groq", len(data) + 700)
             try:
                 r = await clients[idx].audio.transcriptions.create(file=("voice.ogg", data), model=WHISPER_MODEL, timeout=25.0)
                 settle_key_usage(idx, entry, 30)
@@ -1995,6 +2251,7 @@ async def try_voice_reply(update: Update, context: ContextTypes.DEFAULT_TYPE, us
         if not audio:
             _last_voice_ts.pop(uid, None)
             return False
+        add_bw("voice", len(audio) + 1000)
         await update.message.reply_voice(voice=InputFile(io.BytesIO(audio), filename="sneha.mp3"),
                                          reply_to_message_id=update.message.message_id)
         logger.info(f"🎤 Voice bheji to {uid}")
@@ -2015,6 +2272,7 @@ async def voice_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not audio:
             await update.message.reply_text("❌ Voice nahi bani (edge-tts install hai? logs dekho)")
             return
+        add_bw("voice", len(audio) + 1000)
         await update.message.reply_voice(voice=InputFile(io.BytesIO(audio), filename="sneha.mp3"))
     except Exception as e:
         await update.message.reply_text(f"❌ Voice error: {str(e)[:200]}")
@@ -2142,6 +2400,9 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await safe_reply_text(update, "Ruko ruko baby! 😤 Itni jaldi kya hai? 2 minute baad aana!")
         return
 
+    if is_group and text and not text.startswith("/"):
+        record_group_activity(chat.id, user_id, user.first_name or user.username or "User")
+
     mentioned, other_mentions, reply_to_bot = analyze_mentions(update, context, text)
     called_by_name = bool(re.search(r"\bsneha\b", text, re.I))
     addressed = mentioned or reply_to_bot or (is_group and called_by_name)
@@ -2229,6 +2490,13 @@ async def _handle_inner(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             update_history(user_id, clean_text, reply, telegram_name=user.first_name, chat_id=chat.id)
             if not await try_voice_reply(update, context, clean_text, reply, is_voice, chat.type == "private"):
                 await send_reply_bubbles(update, context, reply)
+            try:
+                for note in await bump_stats(user_id, chat.type == "private"):
+                    await asyncio.sleep(random.uniform(0.8, 1.4))
+                    add_bw("tg", len(note.encode("utf-8", "ignore")) + 800)
+                    await context.bot.send_message(chat_id=chat.id, text=note)
+            except Exception as e:
+                logger.warning(f"stats note fail: {str(e)[:80]}")
     finally:
         if not typing_task.done():
             typing_task.cancel()
@@ -2393,6 +2661,8 @@ async def idle_memory_flush_watcher():
                     _spawn(generate_summary(uid, list(history)))
                     _last_summarized_count[uid] = count
                 if idle > FORGET_AFTER:  # RAM leak roko, DB me sab saved hai
+                    if uid in _stats and not _stats[uid].get("dirty"):
+                        _stats.pop(uid, None)
                     for d in (_last_activity, conversation_memory, user_msg_counter, _last_summarized_count, _last_used_emoji, _busy_notice_ts):
                         d.pop(uid, None)
         except Exception as e:
@@ -2446,6 +2716,7 @@ async def keepalive_watcher(url: str):
     async with httpx.AsyncClient(timeout=15) as c:
         while True:
             try:
+                add_bw("other", 1500)
                 await c.get(url)
             except Exception:
                 pass
@@ -2455,14 +2726,15 @@ async def keepalive_watcher(url: str):
 BOT_COMMANDS = [
     ("start", "Start / welcome"), ("help", "Kya kya kar sakti hoon"), ("roast", "Mazedaar roast"),
     ("shayari", "Ek chhoti shayari"), ("joke", "Ek joke"), ("ship", "Couple meter"),
-    ("truth", "Truth question"), ("dare", "Dare challenge"), ("kiss", "Kiss GIF"), ("slap", "Slap GIF"), ("hug", "Hug GIF"), ("crush", "Crush level check"), ("new", "WordSeek game shuru"),
+    ("truth", "Truth question"), ("dare", "Dare challenge"), ("kiss", "Kiss GIF"), ("slap", "Slap GIF"), ("hug", "Hug GIF"), ("crush", "Crush level check"), ("profile", "Sneha ke saath aapki dosti"), ("chatters", "Group ke top chatters"), ("couple", "Aaj ka couple"), ("new", "WordSeek game shuru"),
     ("lb", "Leaderboard"), ("memory", "Main tumhare baare me kya jaanti hoon"), ("forget", "Meri memory se data delete"),
 ]
 
 
 async def main() -> None:
     await adb(init_db)
-    tasks = [asyncio.create_task(daily_reset_watcher()), asyncio.create_task(idle_memory_flush_watcher())]
+    tasks = [asyncio.create_task(daily_reset_watcher()), asyncio.create_task(idle_memory_flush_watcher()),
+             asyncio.create_task(stats_flush_watcher())]
 
     application = (Application.builder().token(BOT_TOKEN)
                    .read_timeout(30).write_timeout(30).connect_timeout(30).pool_timeout(30)
@@ -2474,8 +2746,9 @@ async def main() -> None:
                      ("syncgroup", syncgroup_command), ("broadcast", broadcast_command),
                      ("broadcaststats", broadcast_stats_command), ("broadcastgc", broadcastgc_command),
                      ("roast", roast_command), ("shayari", shayari_command), ("joke", joke_command),
-                     ("truth", truth_command), ("dare", dare_command), ("ship", ship_command), ("voice", voice_command), ("gender", gender_command), ("kiss", kiss_command), ("slap", slap_command),
+                     ("truth", truth_command), ("dare", dare_command), ("ship", ship_command), ("voice", voice_command), ("bw", bw_command), ("gender", gender_command), ("kiss", kiss_command), ("slap", slap_command),
                      ("hug", hug_command), ("pat", pat_command), ("crush", crush_command),
+                     ("profile", profile_command), ("level", profile_command), ("chatters", chatters_command), ("couple", couple_command),
                      ("wordseek", wordseek_help), ("new", wordseek_new), ("new4", wordseek_new4),
                      ("new5", wordseek_new5), ("new6", wordseek_new6), ("end", wordseek_end),
                      ("leaderboard", wordseek_lb), ("lb", wordseek_lb), ("top", wordseek_lb)]:
